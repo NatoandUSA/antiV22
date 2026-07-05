@@ -1,5 +1,36 @@
 # Etsy Product Manager V20.2-FINAL
 
+## Run it on a new computer (Mac M1 / Windows / Linux)
+
+The tool is pure Python and cross-platform. To set it up on another machine
+(e.g. a MacBook Pro M1):
+
+    # 1. Get the code
+    git clone https://github.com/NatoandUSA/etsy-agent.git
+    cd etsy-agent
+
+    # 2. Create an isolated environment (recommended)
+    python3 -m venv .venv
+    source .venv/bin/activate         # Windows: .venv\Scripts\activate
+
+    # 3. Install dependencies
+    pip install -r requirements.txt
+
+    # 4. Add your secrets (NEVER commit this file)
+    cp .env.example .env              # Windows: copy .env.example .env
+    #   then edit .env and fill in your real API tokens
+
+    # 5. Verify + run
+    python3 main.py selftest          # health check, no network needed
+    python3 main.py daily             # the daily command
+
+On macOS/Linux use `python3`; on Windows use `py` or `python`. Everything
+in this README that shows `py main.py` works the same as `python3 main.py`.
+
+Your `.env` (API tokens/cookies) is git-ignored and stays on each machine —
+copy it over manually or re-fill it from `.env.example`. To pull the latest
+changes on any machine later: `git pull`.
+
 ## Simple daily workflow (this is all most people need)
 
     python main.py selftest      <- after install/update only: health check
