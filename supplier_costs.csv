@@ -1,0 +1,12 @@
+product_type,supplier_name,base_cost,shipping_cost,processing_time,variants_available,personalization_supported,production_partner_required,material,size
+bags & pouches,printway,7.20,5.00,3-5 business days,"colors,sizes",yes,yes,,
+bags & pouches,printify,8.50,4.50,2-5 business days,"colors,sizes",yes,yes,,
+bags & pouches,burgerprints,7.80,4.80,3-6 business days,colors,yes,yes,,
+apparel,burgerprints,9.50,5.00,3-6 business days,"sizes,colors",yes,yes,,
+apparel,printify,11.00,4.75,2-5 business days,"sizes,colors",yes,yes,,
+apparel,printway,10.20,4.60,3-5 business days,"sizes,colors",yes,yes,,
+jewelry,shineon,9.00,5.00,2-4 business days,"metals,card",yes,yes,,
+drinkware,printway,8.40,6.00,3-5 business days,"sizes,colors",yes,yes,,
+wall art & prints,printify,5.00,4.00,2-5 business days,sizes,yes,yes,,
+home & textile,printway,11.00,6.50,3-6 business days,"sizes,colors",yes,yes,,
+headwear,printify,9.50,4.25,2-5 business days,colors,yes,yes,,

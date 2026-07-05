@@ -1,0 +1,11 @@
+.env
+data/
+reports/
+__pycache__/
+*.pyc
+.pytest_cache/
+keyword_data.csv
+supplier_products.csv
+social_signals.csv
+*.har
+*.zip

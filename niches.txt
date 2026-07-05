@@ -1,0 +1,39 @@
+# One term per line. A keyword matches if it CONTAINS any of these.
+embroider
+necklace
+jewelry
+bracelet
+pendant
+hoodie
+sweatshirt
+shirt
+tee
+crewneck
+tote
+bag
+pouch
+ornament
+mug
+pet
+dog
+cat
+mama
+mom
+grandma
+nana
+dad
+papa
+couple
+memorial
+birth flower
+birthstone
+wedding
+bridesmaid
+teacher
+nurse
+# auto-added 2026-07-06 (review and delete any you don't want)
+flame
+lucky
+summer
+travel
+twin

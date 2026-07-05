@@ -1,0 +1,20 @@
+{
+  "keywords": [
+    {"keyword": "personalized bags", "etsy_listings": 270, "seller_count": 120, "views_24h": 4200, "avg_price": 20.87, "avg_revenue": 4080, "conversion_rate": 0.023, "momentum": 35, "source": "test", "collected_at": "2026-07-01"},
+    {"keyword": "clear concert bag", "etsy_listings": 40, "seller_count": 22, "views_24h": 5100, "avg_price": 30.67, "avg_revenue": 6200, "conversion_rate": 0.031, "momentum": 44, "source": "test", "collected_at": "2026-07-01"},
+    {"keyword": "custom travel bag", "etsy_listings": 163, "seller_count": 95, "views_24h": 4254, "avg_price": 26.69, "avg_revenue": 8057, "conversion_rate": 0.028, "momentum": 38, "source": "test", "collected_at": "2026-07-01"},
+    {"keyword": "toiletry organizer", "etsy_listings": 75, "seller_count": 41, "views_24h": 3900, "avg_price": 28.4, "avg_revenue": 8538, "conversion_rate": 0.032, "momentum": 30, "source": "test", "collected_at": "2026-07-01"},
+    {"keyword": "transparent bag", "etsy_listings": 37, "seller_count": 21, "views_24h": 2600, "avg_price": 42.2, "avg_revenue": 9100, "conversion_rate": 0.025, "momentum": 41, "source": "test", "collected_at": "2026-07-01"},
+    {"keyword": "psychic reading", "etsy_listings": 900, "seller_count": 300, "views_24h": 9000, "avg_price": 12, "avg_revenue": 20000, "conversion_rate": 0.15, "momentum": 60, "source": "test", "collected_at": "2026-07-01"},
+    {"keyword": "taylor swift hoodie", "etsy_listings": 100, "seller_count": 60, "views_24h": 8000, "avg_price": 30, "avg_revenue": 9000, "conversion_rate": 0.03, "momentum": 50, "source": "test", "collected_at": "2026-07-01"},
+    {"keyword": "fathers day print", "etsy_listings": 48, "seller_count": 40, "views_24h": 6398, "avg_price": 12, "avg_revenue": 4000, "conversion_rate": 0.025, "momentum": 10, "source": "test", "collected_at": "2026-07-01"},
+    {"keyword": "gift for her", "etsy_listings": 77750, "seller_count": 30000, "views_24h": 90000, "avg_price": 22, "avg_revenue": 2805, "conversion_rate": 0.025, "momentum": 5, "source": "test", "collected_at": "2026-07-01"},
+    {"keyword": "weird data bag", "etsy_listings": 20, "seller_count": 10, "views_24h": 500000, "avg_price": 3.0, "avg_revenue": 100, "conversion_rate": 0.9, "momentum": 0, "source": "", "collected_at": ""}
+  ],
+  "listings": [
+    {"title": "Personalized Clear Concert Bag Custom Stadium Purse", "price_usd": 32.5, "total_sold": 210, "listing_id": 111},
+    {"title": "Custom Transparent Bag for Game Day Festival", "price_usd": 29.0, "total_sold": 150, "listing_id": 222},
+    {"title": "Clear Purse Stadium Approved Personalized Pouch", "price_usd": 34.0, "total_sold": 90, "listing_id": 333},
+    {"title": "Monogram Travel Pouch Clear Toiletry Bag", "price_usd": 27.0, "total_sold": 60, "listing_id": 444}
+  ]
+}
