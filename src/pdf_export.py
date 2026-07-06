@@ -6,8 +6,16 @@ import re
 from pathlib import Path
 
 FONT_CANDIDATES = [
+    # macOS (Vietnamese-capable; ship with the OS)
+    ("VN", "/System/Library/Fonts/Supplemental/Arial.ttf",
+     "/System/Library/Fonts/Supplemental/Arial Bold.ttf"),
+    ("VN", "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+     "/System/Library/Fonts/Supplemental/Arial Unicode.ttf"),
+    ("VN", "/Library/Fonts/Arial Unicode.ttf", "/Library/Fonts/Arial Unicode.ttf"),
+    # Windows
     ("VN", r"C:\Windows\Fonts\arial.ttf", r"C:\Windows\Fonts\arialbd.ttf"),
     ("VN", r"C:\Windows\Fonts\segoeui.ttf", r"C:\Windows\Fonts\segoeuib.ttf"),
+    # Linux
     ("VN", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
      "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
 ]
