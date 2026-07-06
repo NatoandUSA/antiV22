@@ -162,58 +162,91 @@ def _cg_mockup_prompt(b):
     ])
 
 
+def _img_slug(text):
+    keep = [c.lower() if c.isalnum() else "-" for c in text]
+    slug = "".join(keep)
+    while "--" in slug:
+        slug = slug.replace("--", "-")
+    return slug.strip("-")
+
+
+def chatgpt_prompt_items(briefs, edges=None):
+    """Structured, machine-readable list of every single-image prompt.
+
+    Both the markdown pack and the OpenAI image generator build from this, so
+    the two never drift. Each item: product_index, product, n/total, kind
+    ('design'|'mockup'), label, size, prompt, filename.
+    """
+    edge_line = (edges or
+                 ["First image must read clearly at thumbnail size"])[0]
+    items = []
+    for i, b in enumerate(briefs, 1):
+        is_emb = b.get("production_type") in ("EMBROIDERY", "CHENILLE_PATCH")
+        variations = [("design", label, _cg_flat_prompt(b, is_emb, style),
+                       "1024x1024")
+                      for label, style in CG_TYPO_STYLES]
+        variations += [("design", label,
+                        _cg_flat_prompt(b, is_emb,
+                                        "a simple clean typographic treatment",
+                                        icon_desc=icon), "1024x1024")
+                       for label, icon in CG_ICON_STYLES]
+        variations.append(("mockup", "Lifestyle mockup",
+                           _cg_mockup_prompt(b), "1024x1536"))
+        total = len(variations)
+        for n, (kind, label, prompt, size) in enumerate(variations, 1):
+            items.append({
+                "product_index": i, "product": b["product"],
+                "primary_keyword": b["primary_keyword"],
+                "target_buyer": b["target_buyer"],
+                "buyer_intent": b["buyer_intent"], "edge": edge_line,
+                "n": n, "total": total, "kind": kind, "label": label,
+                "size": size, "prompt": prompt,
+                "filename": f"p{i}_{n}_{_img_slug(label)}.png",
+            })
+    return items
+
+
 def write_chatgpt_prompts(briefs, audit, packages, mode_label="", edges=None):
     """Single-image prompts tuned for ChatGPT's image generator.
 
     One prompt per message: 3 typography + 2 icon design concepts and 1
-    lifestyle mockup per product.
+    lifestyle mockup per product. Also writes a JSON sidecar that
+    `py main.py images` reads to generate the PNGs via the OpenAI API.
     """
+    import json
     from src.report_paths import rdir
     path = rdir(TODAY, "design") / f"chatgpt_prompts_{TODAY}.md"
-    edge_line = (edges or
-                 ["First image must read clearly at thumbnail size"])[0]
+    items = chatgpt_prompt_items(briefs, edges)
 
     L = [f"# ChatGPT Image Prompts{mode_label} - {TODAY}",
          "",
          "How to use: open ChatGPT in image mode and send each numbered prompt "
          "below as its OWN message - one image comes back per message. Do them "
-         "in order, then pick the strongest per product.",
+         "in order, then pick the strongest per product. Or run "
+         "`py main.py images --all` to generate them via the OpenAI API.",
          "",
          "Note: ChatGPT cannot output transparent PNGs or 300 DPI print files. "
          "Treat these as concept images; your designer rebuilds the winner as "
          "the final 4500x5400 transparent PNG for the supplier.", ""]
 
     for i, b in enumerate(briefs, 1):
-        is_emb = b.get("production_type") in ("EMBROIDERY", "CHENILLE_PATCH")
+        head = next(x for x in items if x["product_index"] == i)
         L += [f"## PRODUCT #{i}: {b['product']}",
               "",
               f"Buyers: {b['target_buyer']} - they buy for {b['buyer_intent']}.",
-              f"Edge to express: {edge_line}",
+              f"Edge to express: {head['edge']}",
               f"Primary Etsy keyword: {b['primary_keyword']}", ""]
-        n, total = 0, len(CG_TYPO_STYLES) + len(CG_ICON_STYLES) + 1
-        for label, style_desc in CG_TYPO_STYLES:
-            n += 1
-            L += [f"### {n} of {total} - {label}", "",
-                  "``````",
-                  _cg_flat_prompt(b, is_emb, style_desc),
-                  "``````", ""]
-        for label, icon_desc in CG_ICON_STYLES:
-            n += 1
-            L += [f"### {n} of {total} - {label}", "",
-                  "``````",
-                  _cg_flat_prompt(b, is_emb,
-                                  "a simple clean typographic treatment",
-                                  icon_desc=icon_desc),
-                  "``````", ""]
-        n += 1
-        L += [f"### {n} of {total} - Lifestyle mockup", "",
-              "``````",
-              _cg_mockup_prompt(b),
-              "``````", ""]
+        for it in (x for x in items if x["product_index"] == i):
+            L += [f"### {it['n']} of {it['total']} - {it['label']}", "",
+                  "``````", it["prompt"], "``````", ""]
 
     path.write_text("\n".join(L), encoding="utf-8")
     from src.lang import finalize_pack
     finalize_pack(path)
+    # JSON sidecar for the OpenAI image generator (not stamped/translated).
+    (rdir(TODAY, "design") / f"chatgpt_prompts_{TODAY}.json").write_text(
+        json.dumps({"date": TODAY, "mode_label": mode_label, "items": items},
+                   ensure_ascii=False, indent=2), encoding="utf-8")
     return path
 
 

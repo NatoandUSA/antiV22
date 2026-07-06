@@ -11,6 +11,8 @@ Commands:
   py main.py grow "niche keyword"       -> deep research one niche
   py main.py grow pod | grow embroidery -> auto-grow one product line
   py main.py daily [pod|embroidery]  -> THE team command: 5 clean reports
+  py main.py images                  -> list AI design prompts (no API calls)
+  py main.py images --all            -> generate design PNGs via OpenAI (needs OPENAI_API_KEY, costs money)
   py main.py rawreports [pod|embroidery] -> detailed/debug report set
   py main.py listreports         -> paths of every latest operational report
   py main.py tasks               -> daily team tasks report (9 roles)
@@ -170,6 +172,12 @@ def cmd_listreports(cmd, args):
         list_reports()
 
 
+def cmd_images(cmd, args):
+    """Generate PNGs from the ChatGPT design prompts via the OpenAI API."""
+    from src.image_gen import run_images
+    run_images(args)
+
+
 def cmd_ops(cmd, args):
     """Shared handler for tasks / blockers / statusboard / finalqa / performance."""
     from datetime import date as _date
@@ -308,6 +316,7 @@ COMMANDS = {
     "finalqa": cmd_ops, "performance": cmd_ops,
     "openreports": cmd_openreports,
     "daily": cmd_daily, "allreports": cmd_daily,
+    "images": cmd_images,
     "rawreports": cmd_rawreports,
     "market": cmd_adhoc, "seller": cmd_adhoc, "designer": cmd_adhoc,
     "grow": cmd_grow,

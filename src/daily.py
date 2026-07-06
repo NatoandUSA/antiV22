@@ -553,6 +553,13 @@ def run_daily(mode=None, data_ok=None,
                 src = run_dir / f"{name}{ext}"
                 if src.exists():
                     shutil.copy(src, latest / f"{name}{ext}")
+        # mirror the AI image-prompt data so `py main.py images` finds it
+        # at a stable path (the working reports/<day> folder was archived).
+        for extra in (f"chatgpt_prompts_{day}.json",
+                      f"chatgpt_prompts_{day}.md"):
+            esrc = arch / day / "design" / extra
+            if esrc.exists():
+                shutil.copy(esrc, latest / extra)
         (latest / "_run_info.txt").write_text(
             f"{run_dir}\n{ts['display']}\n", encoding="utf-8")
 
