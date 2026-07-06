@@ -21,6 +21,13 @@ def fetch_momentum(keywords, geo="US", retries=3):
                 df = pytrends.interest_over_time()
                 break
             except Exception as exc:
+                # A 429 is an IP-level rate limit; short in-process retries
+                # almost never clear it, so bail immediately instead of
+                # blocking the whole daily run for ~90s on a secondary signal.
+                if "429" in str(exc) or "code 429" in str(exc):
+                    print("  Google Trends rate-limited this IP (HTTP 429); "
+                          "skipping the Trends signal for now.")
+                    break
                 wait = 15 * (attempt + 1)
                 print(f"  Google Trends hiccup ({exc}). Retrying in {wait}s...")
                 time.sleep(wait)
