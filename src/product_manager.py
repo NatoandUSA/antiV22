@@ -22,6 +22,7 @@ from src.trademark import check as tm_check
 from src.ytrends_client import top_keywords, trending, hidden_gems, top_listings
 from src.supplier_pull import (classify_production_type, best_record_for,
                                compute_status)
+from src.timestamp import data_is_fresh
 
 TODAY = str(date.today())
 
@@ -108,7 +109,7 @@ def load_keyword_data(path="keyword_data.csv"):
         with open(path, newline="", encoding="utf-8") as f:
             rows = list(csv.DictReader(f))
         dates = [r.get("collected_at", "") for r in rows if r.get("collected_at")]
-        if dates and max(dates) >= TODAY:
+        if data_is_fresh(dates):
             return rows
         print(f"keyword_data.csv is stale (newest: "
               f"{max(dates) if dates else 'unknown'}) -> refreshing...")

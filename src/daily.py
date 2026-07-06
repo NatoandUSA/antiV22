@@ -542,8 +542,16 @@ def run_daily(mode=None, data_ok=None,
         shutil.move(str(day_dir), str(arch / day))
 
     # 5) mirror latest
-    if update_latest:
-        latest = Path(latest_dir)
+    # Guard: on a no-data run, keep the last good reports instead of
+    # overwriting them with DATA_UNAVAILABLE placeholders (e.g. a server that
+    # can't fetch live data, or a stale-data day between syncs).
+    latest = Path(latest_dir)
+    keep_existing = (update_latest and not data_ok
+                     and (latest / "01_MANAGER_ACTION_REPORT.md").exists())
+    if keep_existing:
+        print(f"Data unavailable - kept the last good reports in {latest_dir} "
+              "(not overwritten).")
+    if update_latest and not keep_existing:
         latest.mkdir(parents=True, exist_ok=True)
         for old in latest.glob("*"):
             if old.is_file():

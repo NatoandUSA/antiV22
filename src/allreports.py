@@ -11,7 +11,7 @@ from pathlib import Path
 
 from src.report_paths import rdir
 from src.timestamp import (get_report_timestamp, stamp_file,
-                           report_type_for, get_command)
+                           report_type_for, get_command, data_is_fresh)
 from src.version import VERSION
 
 TODAY = str(date.today())
@@ -26,8 +26,8 @@ def data_available():
             with p.open(newline="", encoding="utf-8") as f:
                 dates = [r.get("collected_at", "")
                          for r in csv.DictReader(f)]
-            if dates and max(d for d in dates if d) >= TODAY:
-                return True, "fresh keyword_data.csv"
+            if data_is_fresh(dates):
+                return True, "recent keyword_data.csv (within freshness window)"
         except Exception:
             pass
     try:

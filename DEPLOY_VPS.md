@@ -134,6 +134,35 @@ restart on crash. Visit **https://etsy.theglobalserviceteam.site** — done. �
 
 ---
 
+## Refreshing the data (this VPS can't fetch YTrends)
+YTrends blocks datacenter IPs (the VPS gets `403`), so the fetch commands
+(`discover`, `ideas`, `grow`, and the fetch half of `daily`) run **only on your
+laptop** — a normal residential IP. The VPS just **serves** the reports.
+
+To refresh what the team sees, run one command **on your laptop**:
+
+```bash
+# macOS / Linux
+bash deploy/push-to-vps.sh
+```
+```powershell
+# Windows
+powershell -ExecutionPolicy Bypass -File deploy\push-to-vps.ps1
+```
+
+It builds the reports locally (fetching fresh data) and copies `keyword_data.csv`
++ `reports/latest/` to the VPS. Enter the `etsy` password when prompted (twice —
+once per copy; set up an SSH key to skip that).
+
+Data counts as "fresh" for **`YTRENDS_FRESH_DAYS`** days (default **7**), so a
+weekly run is enough — the dashboard serves valid reports in between, and a
+no-data day never wipes the last good ones. Want a different window? add
+`YTRENDS_FRESH_DAYS=14` to `.env`.
+
+On the VPS dashboard, the **discover / ideas / grow** buttons won't work (they
+need live fetch) — run those on your laptop. **Build daily reports** and the
+report viewer work fine.
+
 ## Running it day to day
 - **Update the tool:** `cd ~/etsy-agent && git pull && .venv/bin/python -m pip install -r requirements.txt && sudo systemctl restart etsy-web`
 - **See logs:** `journalctl -u etsy-web -f` (app) · `journalctl -u etsy-tunnel -f` (tunnel)
