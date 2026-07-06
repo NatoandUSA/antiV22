@@ -25,6 +25,40 @@ MAIN_FILES = ["00_START_HERE", "01_MANAGER_ACTION_REPORT",
               "02_MARKET_KEYWORD_OPPORTUNITY_REPORT",
               "03_SELLER_EXECUTION_REPORT", "04_DESIGNER_BRIEF_REPORT"]
 
+# Detailed reports every `daily` run also produces (in reports/<day>/<cat>/).
+# We copy the newest of each to reports/latest under a stable canonical name
+# so the team portal + the sync surface them, not just the clean 5.
+# (category folder, filename prefix, canonical name in reports/latest)
+EXTRA_LATEST = [
+    ("research", "research_report_", "research_report"),
+    ("manager", "manager_", "manager_report"),
+    ("ideas", "ideas_", "ideas_report"),
+    ("discover", "discover_", "discover_report"),
+    ("seller", "seller_pack_", "seller_pack"),
+    ("design", "design_prompts_", "design_prompts"),
+    ("design", "chatgpt_prompts_", "chatgpt_prompts"),
+    ("listing", "listing_", "listing_pack"),
+    ("tasks", "daily_tasks_", "daily_tasks"),
+    ("blockers", "blocker_report_", "blocker_report"),
+    ("status_board", "product_status_board", "product_status_board"),
+    ("final_qa", "final_qa_summary_", "final_qa"),
+    ("performance", "performance_report_", "performance_report"),
+]
+
+
+def _pick_report(folder, prefix):
+    """Newest .md in folder starting with prefix; prefer an _EN variant,
+    never a _VI (Vietnamese) one. Returns a Path or None."""
+    if not folder.exists():
+        return None
+    cands = [p for p in folder.glob(f"{prefix}*.md")
+             if not p.stem.endswith("_VI")]
+    if not cands:
+        return None
+    english = [p for p in cands if p.stem.endswith("_EN")]
+    pool = english or cands
+    return max(pool, key=lambda p: p.stat().st_mtime)
+
 NO_DATA = ("DATA_UNAVAILABLE\n\n"
            "No fresh keyword_data.csv and live API unavailable.\n"
            "No product can move forward today.\n"
@@ -556,18 +590,27 @@ def run_daily(mode=None, data_ok=None,
         for old in latest.glob("*"):
             if old.is_file():
                 old.unlink()
+        # 1) the 5 clean daily reports
         for name in MAIN_FILES:
             for ext in (".md", ".pdf"):
                 src = run_dir / f"{name}{ext}"
                 if src.exists():
                     shutil.copy(src, latest / f"{name}{ext}")
-        # mirror the AI image-prompt data so `py main.py images` finds it
-        # at a stable path (the working reports/<day> folder was archived).
-        for extra in (f"chatgpt_prompts_{day}.json",
-                      f"chatgpt_prompts_{day}.md"):
-            esrc = arch / day / "design" / extra
-            if esrc.exists():
-                shutil.copy(esrc, latest / extra)
+        # 2) every detailed report this run produced (newest of each type),
+        #    under canonical names so the team portal + sync can show them.
+        daydir = arch / day
+        for cat, prefix, canon in EXTRA_LATEST:
+            md = _pick_report(daydir / cat, prefix)
+            if not md:
+                continue
+            shutil.copy(md, latest / f"{canon}.md")
+            pdf = md.with_suffix(".pdf")
+            if pdf.exists():
+                shutil.copy(pdf, latest / f"{canon}.pdf")
+        # 3) chatgpt prompt DATA (date-named json) for the `images` command
+        cj = daydir / "design" / f"chatgpt_prompts_{day}.json"
+        if cj.exists():
+            shutil.copy(cj, latest / cj.name)
         (latest / "_run_info.txt").write_text(
             f"{run_dir}\n{ts['display']}\n", encoding="utf-8")
 

@@ -35,6 +35,36 @@ REPORTS = [
      "Design briefs + copy-paste prompts for each approved product."),
 ]
 
+# Detailed reports each `daily` run also produces, mirrored to reports/latest
+# under canonical names. Shown when present.
+DETAIL_REPORTS = [
+    ("research_report.md", "Research Report",
+     "All keywords in one place: ideas + analysis + discover + performance."),
+    ("manager_report.md", "Manager Report (full)",
+     "The complete manager report — 12 sections, profit model, audit."),
+    ("ideas_report.md", "Best Ideas",
+     "Product clusters, verdicts, and a 7-day validation plan."),
+    ("discover_report.md", "Discover / Niches",
+     "Rising, low-competition niches worth researching."),
+    ("seller_pack.md", "Seller Pack (full)",
+     "Every listing field in Etsy's paste order (drafts only)."),
+    ("design_prompts.md", "Design Prompts (Claude)",
+     "Copy-paste design briefs for Claude / Claude Design."),
+    ("chatgpt_prompts.md", "ChatGPT Image Prompts",
+     "One-image-per-message prompts for the ChatGPT app."),
+    ("listing_pack.md", "Listing Pack",
+     "A full listing draft for the top clean keyword."),
+    ("daily_tasks.md", "Daily Tasks",
+     "What each role should do today."),
+    ("blocker_report.md", "Blockers",
+     "What's blocking progress, grouped by severity."),
+    ("product_status_board.md", "Status Board",
+     "Product-by-product status at a glance."),
+    ("final_qa.md", "Final QA", "Pre-publish QA summary."),
+    ("performance_report.md", "Performance",
+     "Shop performance from shop_performance.csv."),
+]
+
 
 def _last_updated():
     info = LATEST / "_run_info.txt"
@@ -88,31 +118,39 @@ def build_app(password, secret):
         session.clear()
         return redirect(url_for("login"))
 
-    # ---- report list ----
-    @app.route("/")
-    @login_required
-    def index():
-        cards = []
-        for rid, fname, title, desc in REPORTS:
-            if not (LATEST / fname).exists():
-                continue
-            pdf = (LATEST / fname).with_suffix(".pdf")
-            pdf_btn = (f'<span class="btn ghost" data-href="/pdf/{pdf.name}">PDF</span>'
-                       if pdf.exists() else "")
-            cards.append(
-                f'<a class="report" href="/report/{fname}">'
-                f'<span class="rid">{rid}</span>'
+    def _card(fname, badge, title, desc):
+        pdf = (LATEST / fname).with_suffix(".pdf")
+        pdf_btn = (f'<span class="btn ghost" data-href="/pdf/{pdf.name}">PDF</span>'
+                   if pdf.exists() else "")
+        return (f'<a class="report" href="/report/{fname}">'
+                f'<span class="rid">{badge}</span>'
                 f'<span class="rmeta"><span class="rt">{title}</span>'
                 f'<span class="rd">{desc}</span></span>'
                 f'<span class="ractions">{pdf_btn}'
                 f'<span class="btn">Read &rarr;</span></span></a>')
-        if cards:
-            body = ('<p class="lead">Read in order, starting with '
-                    '<b>00</b>.</p><div class="reports">'
-                    + "".join(cards) + "</div>")
-        else:
+
+    # ---- report list ----
+    @app.route("/")
+    @login_required
+    def index():
+        daily = [_card(f, rid, t, d) for rid, f, t, d in REPORTS
+                 if (LATEST / f).exists()]
+        detail = [_card(f, "&bull;", t, d) for f, t, d in DETAIL_REPORTS
+                  if (LATEST / f).exists()]
+        if not daily and not detail:
             body = ('<p class="empty">No reports published yet. The operator '
                     'syncs them from the research machine — check back soon.</p>')
+        else:
+            body = ""
+            if daily:
+                body += ('<p class="lead">The core reports — read in order '
+                         'from <b>00</b>.</p><div class="reports">'
+                         + "".join(daily) + "</div>")
+            if detail:
+                body += ('<h2 class="grouph">All reports</h2>'
+                         '<p class="lead">Every report the tool produced this '
+                         'run.</p><div class="reports">'
+                         + "".join(detail) + "</div>")
         upd = _last_updated()
         updated = f'<span class="updated">Updated {upd}</span>' if upd else ""
         return page("Reports", PORTAL
@@ -128,7 +166,9 @@ def build_app(password, secret):
             abort(404)
         html = md.markdown(p.read_text(encoding="utf-8"),
                            extensions=["tables", "fenced_code", "sane_lists"])
-        title = next((t for _, f, t, _ in REPORTS if f == name), name)
+        titles = {f: t for _, f, t, _ in REPORTS}
+        titles.update({f: t for f, t, _ in DETAIL_REPORTS})
+        title = titles.get(name, name)
         pdf = p.with_suffix(".pdf")
         pdf_btn = (f'<a class="btn ghost" href="/pdf/{pdf.name}" '
                    f'target="_blank" rel="noopener">Download PDF</a>'
@@ -212,6 +252,9 @@ h1{font-size:1.55rem;font-weight:800;letter-spacing:-.02em;margin:.15em 0 0}
 .logout{color:var(--accent);font-weight:600}
 .lead{color:var(--ink-soft);font-size:.92rem;margin:0 0 16px}
 .lead b{color:var(--accent)}
+.grouph{font-size:.8rem;font-family:var(--mono);letter-spacing:.12em;
+text-transform:uppercase;color:var(--ink-faint);margin:30px 0 4px;
+border-top:1px solid var(--line);padding-top:22px}
 /* report list */
 .reports{display:grid;gap:10px}
 .report{display:grid;grid-template-columns:44px 1fr auto;align-items:center;gap:16px;
