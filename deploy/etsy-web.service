@@ -1,0 +1,23 @@
+# systemd unit — Etsy Product Manager web dashboard
+# Install:  sudo cp deploy/etsy-web.service /etc/systemd/system/
+#           sudo systemctl daemon-reload && sudo systemctl enable --now etsy-web
+# Adjust User / paths below if you didn't use the `etsy` user + ~/etsy-agent.
+[Unit]
+Description=Etsy Product Manager web dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=etsy
+WorkingDirectory=/home/etsy/etsy-agent
+# The app reads secrets from .env (via python-dotenv) in WorkingDirectory,
+# so WEB_PASSWORD / YTRENDS_API_TOKEN / etc. must live there. Binds 127.0.0.1:8000.
+ExecStart=/home/etsy/etsy-agent/.venv/bin/python main.py web
+Restart=always
+RestartSec=5
+# Light hardening
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
