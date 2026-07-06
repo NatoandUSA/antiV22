@@ -43,6 +43,15 @@ COMMANDS = {
                      "Health check — no network needed.", False),
 }
 
+# Commands that ONLY work with a live YTrends fetch (no offline fallback).
+# Hidden + blocked when WEB_OFFLINE_ONLY is set (e.g. a server whose IP YTrends
+# blocks). Run these on a machine that can fetch — your laptop.
+FETCH_ONLY = {"discover", "discover_pod", "discover_emb", "ideas", "grow"}
+
+
+def _offline_only():
+    return bool(os.getenv("WEB_OFFLINE_ONLY", "").strip())
+
 # In-memory job store. Fine for a small team on one instance.
 JOBS = {}
 JOBS_LOCK = threading.Lock()
@@ -115,23 +124,31 @@ def build_app(password, secret):
     @login_required
     def index():
         cards = []
+        offline = _offline_only()
         for cid, (label, _argv, help_, live) in COMMANDS.items():
+            if offline and cid in FETCH_ONLY:
+                continue
             tag = ('<span class="tag live">live data</span>' if live
                    else '<span class="tag">offline</span>')
             cards.append(
                 f'<button class="cmd" data-job="{cid}">'
                 f'<span class="cl">{label}</span>{tag}'
                 f'<span class="ch">{help_}</span></button>')
+        note = ('<p class="muted" style="margin:12px 2px 0">Data-fetching '
+                "(discover / ideas / grow) runs on the operator's laptop and "
+                'syncs here, so those buttons are hidden on this server.</p>'
+                if offline else "")
         reports = _report_rows()
         return page("Dashboard", DASH
                     .replace("{{CARDS}}", "".join(cards))
+                    .replace("{{NOTE}}", note)
                     .replace("{{REPORTS}}", reports))
 
     # ---- run a command (background) ----
     @app.route("/run/<job>", methods=["POST"])
     @login_required
     def run(job):
-        if job not in COMMANDS:
+        if job not in COMMANDS or (_offline_only() and job in FETCH_ONLY):
             abort(404)
         job_id = uuid.uuid4().hex
         argv = COMMANDS[job][1]
@@ -347,6 +364,7 @@ DASH = """
   <section>
     <div class="eyebrow"><b>Run a command</b> · results appear below</div>
     <div class="grid">{{CARDS}}</div>
+    {{NOTE}}
     <div class="panel" id="panel" style="display:none">
       <div class="bar"><span class="dot" id="dot"></span>
         <span id="jobcmd">—</span><span id="jobstate" style="margin-left:auto"></span></div>
