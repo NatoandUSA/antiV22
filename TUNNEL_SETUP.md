@@ -1,5 +1,11 @@
 # Team dashboard online — permanent URL setup
 
+> **For always-on hosting, use [DEPLOY_VPS.md](DEPLOY_VPS.md) instead** — it runs
+> the dashboard 24/7 on a server (no computer left on). This guide is the
+> run-it-from-your-own-Mac/PC method, kept for local testing. It uses a tunnel
+> named `etsy-agent`; the VPS uses `etsy-vps` (Cloudflare tunnel names are
+> unique per account, so the two don't collide).
+
 Goal: your team opens **https://etsy.theglobalserviceteam.site** and gets the
 web dashboard (`python main.py web`) running on your Mac — always the same URL,
 gated by your `WEB_PASSWORD`.

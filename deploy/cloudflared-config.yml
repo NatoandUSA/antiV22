@@ -1,19 +1,16 @@
 # Cloudflare named tunnel — Etsy Product Manager web dashboard
 # Team URL:  https://etsy.theglobalserviceteam.site   ->   http://localhost:8000
 #
-# One-time setup (full walkthrough in ../TUNNEL_SETUP.md):
-#   cloudflared login
-#   cloudflared tunnel create etsy-agent
-#   cloudflared tunnel route dns etsy-agent etsy.theglobalserviceteam.site
+# Production runs on the VPS (full walkthrough in ../DEPLOY_VPS.md).
+# One-time setup on the server:
+#   cloudflared tunnel login
+#   cloudflared tunnel create etsy-vps
+#   cloudflared tunnel route dns --overwrite-dns etsy-vps etsy.theglobalserviceteam.site
 #
-# cloudflared auto-finds the credentials that `tunnel create` wrote:
-#   macOS/Linux : ~/.cloudflared/<TUNNEL-ID>.json
-#   Windows     : C:\Users\<you>\.cloudflared\<TUNNEL-ID>.json
-# so no path is hardcoded here (works on both your Mac and Windows).
-# If you ever see "tunnel credentials file not found", uncomment and set:
-#   credentials-file: C:/Users/Admin/.cloudflared/<TUNNEL-ID>.json
+# cloudflared auto-finds the credentials `tunnel create` wrote to
+# ~/.cloudflared/<TUNNEL-ID>.json, so no path is hardcoded here.
 
-tunnel: etsy-agent
+tunnel: etsy-vps
 
 ingress:
   # Everything for this hostname goes to the local web dashboard.

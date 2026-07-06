@@ -2,15 +2,16 @@
 # Install:  sudo cp deploy/etsy-tunnel.service /etc/systemd/system/
 #           sudo systemctl daemon-reload && sudo systemctl enable --now etsy-tunnel
 # Requires the tunnel credentials in /home/etsy/.cloudflared/ (cert.pem +
-# <TUNNEL-ID>.json) — see DEPLOY_VPS.md step 7.
+# <TUNNEL-ID>.json), created by `cloudflared tunnel login` + `create etsy-vps`
+# — see DEPLOY_VPS.md step 7.
 [Unit]
-Description=Cloudflare tunnel (etsy-agent) for the Etsy dashboard
+Description=Cloudflare tunnel (etsy-vps) for the Etsy dashboard
 After=network-online.target etsy-web.service
 Wants=network-online.target
 
 [Service]
 User=etsy
-ExecStart=/usr/bin/cloudflared tunnel --config /home/etsy/etsy-agent/deploy/cloudflared-config.yml run etsy-agent
+ExecStart=/usr/bin/cloudflared tunnel --config /home/etsy/etsy-agent/deploy/cloudflared-config.yml run etsy-vps
 Restart=always
 RestartSec=5
 NoNewPrivileges=true

@@ -92,40 +92,45 @@ WEB_SECRET=any-long-random-string
 Save (Ctrl+O, Enter) and exit (Ctrl+X). `.env` is git-ignored — it never leaves
 this box.
 
-## 7. Move the Cloudflare tunnel to the server
-You already created the `etsy-agent` tunnel on your Mac. Copy its two credential
-files to the server so the same tunnel runs here.
+## 7. Create the Cloudflare tunnel on the server
+Do this entirely on the VPS — no other machine needed. It creates a tunnel named
+`etsy-vps`, which the config and service files already expect.
 
-**On your Mac**, find the tunnel ID and copy the files:
+> **Paste tip:** some SSH terminals scramble multi-line pastes (you'll see
+> `^[[200~` junk). If that happens, type `bind 'set enable-bracketed-paste off'`
+> once, then paste **one command per line**.
+
+Authorize the server with your Cloudflare account:
 ```bash
-cloudflared tunnel list                       # note the ID for "etsy-agent"
-scp ~/.cloudflared/cert.pem ~/.cloudflared/<TUNNEL-ID>.json etsy@YOUR_SERVER_IP:~/.cloudflared/
+cloudflared tunnel login
 ```
-(If `~/.cloudflared` doesn't exist on the server yet: `ssh etsy@YOUR_SERVER_IP 'mkdir -p ~/.cloudflared'` first.)
+It prints a URL — open it in any browser, pick **theglobalserviceteam.site**,
+click **Authorize**. The cert saves to `~/.cloudflared/cert.pem`.
 
-Quick test **on the server**:
+Create the tunnel and point your domain at it (run each line on its own):
 ```bash
-cloudflared tunnel --config ~/etsy-agent/deploy/cloudflared-config.yml run etsy-agent
+cloudflared tunnel create etsy-vps
+cloudflared tunnel route dns --overwrite-dns etsy-vps etsy.theglobalserviceteam.site
 ```
-Leave it running, open **https://etsy.theglobalserviceteam.site** — you should
-get the login page served from the VPS. Then Ctrl+C (step 8 makes it permanent).
+`--overwrite-dns` replaces any earlier record for the hostname (e.g. from an
+old test tunnel). The credentials land in `~/.cloudflared/<TUNNEL-ID>.json`; the
+config auto-finds them, so nothing else to edit.
 
-> Don't run the tunnel on the Mac **and** the VPS long-term — once the VPS works,
-> stop the Mac's `cloudflared` and `python main.py web`.
+> Already ran a tunnel from your Mac/PC earlier? It's now orphaned (DNS points at
+> the VPS). Ignore it, or delete it later with `cloudflared tunnel delete <name>`.
 
 ## 8. Run both as auto-restarting services
+Run this as a **single line** (chained with `&&`) so a scrambled multi-line
+paste can't reorder it. It asks for your `etsy` password once:
 ```bash
-sudo cp ~/etsy-agent/deploy/etsy-web.service    /etc/systemd/system/
-sudo cp ~/etsy-agent/deploy/etsy-tunnel.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now etsy-web
-sudo systemctl enable --now etsy-tunnel
-
-# check they're happy
-systemctl status etsy-web --no-pager
-systemctl status etsy-tunnel --no-pager
+sudo cp ~/etsy-agent/deploy/etsy-web.service /etc/systemd/system/ && sudo cp ~/etsy-agent/deploy/etsy-tunnel.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now etsy-web && sudo systemctl enable --now etsy-tunnel && echo ALL_DONE
 ```
-They now start on boot and restart on crash. Visit the URL — done. 🎉
+`ALL_DONE` at the end means it worked. Then confirm both are healthy:
+```bash
+systemctl status etsy-web --no-pager ; systemctl status etsy-tunnel --no-pager
+```
+Look for **`Active: active (running)`** on each. They now start on boot and
+restart on crash. Visit **https://etsy.theglobalserviceteam.site** — done. 🎉
 
 ---
 
