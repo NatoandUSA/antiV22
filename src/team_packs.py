@@ -103,6 +103,120 @@ def write_design_prompts(briefs, audit, packages, mode_label="", edges=None):
     return path
 
 
+# ChatGPT image generators (GPT-4o / DALL-E) return ONE image per message and
+# cannot output transparent PNGs or 300 DPI print files. So each design
+# variation is written as its own single-image prompt to send one at a time.
+CG_TYPO_STYLES = [
+    ("Typography A - modern minimal sans",
+     "a clean, evenly-spaced modern sans-serif"),
+    ("Typography B - elegant script",
+     "an elegant flowing hand-script / signature style"),
+    ("Typography C - bold serif monogram",
+     "a bold serif monogram using strong capital initials"),
+]
+CG_ICON_STYLES = [
+    ("Icon A - thin line motif + name",
+     "one simple original thin line-art motif that fits the product theme, "
+     "placed above the name"),
+    ("Icon B - filled emblem + name",
+     "a small solid-shape emblem or badge that frames the name, balanced "
+     "and symmetrical"),
+]
+
+
+def _cg_flat_prompt(b, is_emb, style_desc, icon_desc=None):
+    prod_kind = "embroidery" if is_emb else "print-on-demand"
+    lines = [
+        "Generate ONE original design image, square 1:1 (1024x1024), on a "
+        "plain solid off-white background.",
+        f"Context: an Etsy {prod_kind} {b['product']} for {b['target_buyer']}.",
+        f"Hero element: the personalization name \"Emma\" set in {style_desc}.",
+    ]
+    if icon_desc:
+        lines.append(f"Add {icon_desc}.")
+    lines += [
+        f"Design direction: {b['design_direction']}.",
+        f"Colors: {b['color_direction']}.",
+        "Keep ONE clear focal point that stays readable at Etsy thumbnail "
+        "size; high contrast, crisp edges, no photographic textures.",
+    ]
+    if is_emb:
+        lines.append("Embroidery limits: flat solid fills only, max 6 thread "
+                     "colors, NO gradients, bold shapes that survive stitching.")
+    lines += [
+        f"Strictly avoid brands, logos, cartoon characters, celebrities, and: "
+        f"{b['avoid']}.",
+        "The only text is the sample name \"Emma\" - no other words.",
+    ]
+    return "\n".join(lines)
+
+
+def _cg_mockup_prompt(b):
+    return "\n".join([
+        "Generate ONE photorealistic lifestyle mockup image, portrait 2:3 "
+        "(1024x1536).",
+        f"Scene: {b['mockup_direction']}.",
+        f"The product is a {b['product']} showing the name \"Emma\". Bright, "
+        "clean, premium styling; the product is the clear focal point.",
+        f"No brand logos, no readable third-party text, and no: {b['avoid']}.",
+    ])
+
+
+def write_chatgpt_prompts(briefs, audit, packages, mode_label="", edges=None):
+    """Single-image prompts tuned for ChatGPT's image generator.
+
+    One prompt per message: 3 typography + 2 icon design concepts and 1
+    lifestyle mockup per product.
+    """
+    from src.report_paths import rdir
+    path = rdir(TODAY, "design") / f"chatgpt_prompts_{TODAY}.md"
+    edge_line = (edges or
+                 ["First image must read clearly at thumbnail size"])[0]
+
+    L = [f"# ChatGPT Image Prompts{mode_label} - {TODAY}",
+         "",
+         "How to use: open ChatGPT in image mode and send each numbered prompt "
+         "below as its OWN message - one image comes back per message. Do them "
+         "in order, then pick the strongest per product.",
+         "",
+         "Note: ChatGPT cannot output transparent PNGs or 300 DPI print files. "
+         "Treat these as concept images; your designer rebuilds the winner as "
+         "the final 4500x5400 transparent PNG for the supplier.", ""]
+
+    for i, b in enumerate(briefs, 1):
+        is_emb = b.get("production_type") in ("EMBROIDERY", "CHENILLE_PATCH")
+        L += [f"## PRODUCT #{i}: {b['product']}",
+              "",
+              f"Buyers: {b['target_buyer']} - they buy for {b['buyer_intent']}.",
+              f"Edge to express: {edge_line}",
+              f"Primary Etsy keyword: {b['primary_keyword']}", ""]
+        n, total = 0, len(CG_TYPO_STYLES) + len(CG_ICON_STYLES) + 1
+        for label, style_desc in CG_TYPO_STYLES:
+            n += 1
+            L += [f"### {n} of {total} - {label}", "",
+                  "``````",
+                  _cg_flat_prompt(b, is_emb, style_desc),
+                  "``````", ""]
+        for label, icon_desc in CG_ICON_STYLES:
+            n += 1
+            L += [f"### {n} of {total} - {label}", "",
+                  "``````",
+                  _cg_flat_prompt(b, is_emb,
+                                  "a simple clean typographic treatment",
+                                  icon_desc=icon_desc),
+                  "``````", ""]
+        n += 1
+        L += [f"### {n} of {total} - Lifestyle mockup", "",
+              "``````",
+              _cg_mockup_prompt(b),
+              "``````", ""]
+
+    path.write_text("\n".join(L), encoding="utf-8")
+    from src.lang import finalize_pack
+    finalize_pack(path)
+    return path
+
+
 def _customer_copy_allowed(p):
     """Customer-facing copy may be shown only when no placeholders remain."""
     gates = p.get("publish_gates") or {}

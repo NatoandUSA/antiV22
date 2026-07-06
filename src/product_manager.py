@@ -447,6 +447,45 @@ PACKAGES = {
         "category": "Bags & Purses > Cosmetic & Toiletry Storage",
         "video": "8s: unzip, pack 6 items inside, zip, rotate to monogram",
     },
+    "Personalized Transparent Travel Pouch": {
+        "primary": "transparent bag",
+        "title": ("Personalized Transparent Travel Pouch with Name - Clear "
+                  "TSA Toiletry Bag for Travel"),
+        "tags": ["transparent bag", "travel pouch", "clear pouch", "tsa pouch",
+                 "personalized pouch", "toiletry pouch", "makeup pouch",
+                 "cosmetic bag", "clear travel bag", "custom pouch",
+                 "packing pouch", "name pouch", "travel gift"],
+        "use_cases": "travel, TSA carry-on, toiletries, cosmetics, gifts",
+        "variations": "size (S/M), print color, font style (script/block)",
+        "category": "Bags & Purses > Cosmetic & Toiletry Storage",
+        "video": "6s: pack passport+charger+bottles into clear pouch, spin to name",
+    },
+    "Personalized Bridesmaid Makeup Pouch": {
+        "primary": "bridesmaid bag",
+        "title": ("Personalized Bridesmaid Makeup Pouch with Name - Custom "
+                  "Bridal Party Gift Cosmetic Bag"),
+        "tags": ["bridesmaid bag", "makeup pouch", "makeup bag", "cosmetic bag",
+                 "cosmetic pouch", "bridesmaid gift", "personalized pouch",
+                 "custom makeup bag", "bridal party gift", "name pouch",
+                 "wedding pouch", "bridesmaid pouch", "bridal gift"],
+        "use_cases": "bridesmaid proposals, bridal party gifts, weddings, makeup, gifts",
+        "variations": "pouch color (blush/sage/dusty blue), font style, set size",
+        "category": "Bags & Purses > Cosmetic & Toiletry Storage",
+        "video": "7s: flat-lay of 5 blush pouches with different names into proposal box",
+    },
+    "Premium Summer Travel Pouch": {
+        "primary": "summer pouch",
+        "title": ("Personalized Summer Travel Pouch with Name - Custom "
+                  "Cosmetic Beach Pouch Vacation Gift"),
+        "tags": ["summer pouch", "travel pouch", "cosmetic pouch", "beach pouch",
+                 "personalized pouch", "makeup pouch", "name pouch",
+                 "custom pouch", "beach bag insert", "poolside pouch",
+                 "vacation pouch", "cosmetic bag", "teacher gift"],
+        "use_cases": "beach, pool, vacation, summer travel, teacher gifts",
+        "variations": "print color (citrus/aqua/coral), font style, size",
+        "category": "Bags & Purses > Cosmetic & Toiletry Storage",
+        "video": "6s: slide sunscreen+sunglasses into pouch, drop into beach bag, spin to name",
+    },
 }
 
 
@@ -756,14 +795,17 @@ def run_manager(mode=None, data_ok=None):
     write_json(clusters, best, briefs, packages, audit, rejected, tm_queue, qa)
     write_tasks(best, briefs, packages, tm_queue)
     if briefs:
-        from src.team_packs import write_design_prompts, write_seller_pack
+        from src.team_packs import (write_design_prompts, write_seller_pack,
+                                     write_chatgpt_prompts)
         pub_ready = bool(packages) and all(
             p["publish_status"] == "PUBLISH_READY" for p in packages)
         from src.edge import build_edge_plan, top_edges_for_prompts
         edges = top_edges_for_prompts(build_edge_plan(audit, packages, best))
         dp = write_design_prompts(briefs, audit, packages, mode_label, edges)
+        cg = write_chatgpt_prompts(briefs, audit, packages, mode_label, edges)
         sp2 = write_seller_pack(packages, pub_ready, mode_label)
         print(f"  Designer prompts: {dp} (+PDF)")
+        print(f"  ChatGPT prompts:  {cg} (+PDF)")
         print(f"  Seller pack:      {sp2} (+PDF)")
 
     design_ready = bool(briefs) and all(
@@ -1198,9 +1240,10 @@ def write_manager_report(clusters, best, briefs, packages, audit,
         L.append("")
 
     L.append("## 10. Listing Packages")
-    L.append("_Only the first 2 listing packages are generated for initial "
-             "validation (Day 1 test listings). Packages for designs #2, #4, "
-             "#5 are generated after the first two prove indexable._")
+    L.append("_Full listing packages are generated for all 5 designs. Publish "
+             "one or two as Day 1 test listings first; the rest stay in draft "
+             "(NOT_PUBLISH_READY) until suppliers are confirmed and the first "
+             "listings prove indexable._")
     for p in packages:
         L += [f"### {p['product_name']}  "
               f"[{p['status']} | {p['listing_status']}]",

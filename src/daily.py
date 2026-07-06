@@ -469,6 +469,17 @@ def build_designer(mgr, data_ok, day):
                  "this run. Blocked or flagged products never receive "
                  "design tasks.")
     L.append("")
+    L += ["## Section 3b - Design Briefs (copy-paste prompts for ChatGPT image "
+          "generator)"]
+    if allowed_any:
+        cg = _read(Path("reports") / day / "design" /
+                   f"chatgpt_prompts_{day}.md")
+        L.append(cg.split("\n", 2)[-1] if cg else "Not generated this run.")
+    else:
+        L.append("No design prompts issued: no product is design-allowed "
+                 "this run. Blocked or flagged products never receive "
+                 "design tasks.")
+    L.append("")
     L += ["## Section 4 - Originality / IP Warning",
           "Use market demand as inspiration only.",
           "Do not copy competitor artwork, layouts, logos, slogans, "

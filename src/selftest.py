@@ -51,7 +51,7 @@ def run_selftest():
         sus = [k for k in d["keywords"] if k["keyword"] == "weird data bag"]
         check("suspicious data flagged",
               not sus or sus[0]["data_check"] is True)
-        check("2 listing packages", len(d["listing_package"]) == 2)
+        check("5 listing packages", len(d["listing_package"]) == 5)
         check("packages have 13 tags",
               all(len(p["tags"]) == 13 for p in d["listing_package"]))
         check("packages DESIGN_PREP_READY",
