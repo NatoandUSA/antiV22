@@ -6,12 +6,14 @@
 #   cloudflared tunnel create etsy-agent
 #   cloudflared tunnel route dns etsy-agent etsy.theglobalserviceteam.site
 #
-# `cloudflared tunnel create` prints a Tunnel ID and writes a credentials file
-# to  ~/.cloudflared/<TUNNEL-ID>.json  — put the FULL path below (no "~").
-# That JSON is a secret: never commit it.
+# cloudflared auto-finds the credentials that `tunnel create` wrote:
+#   macOS/Linux : ~/.cloudflared/<TUNNEL-ID>.json
+#   Windows     : C:\Users\<you>\.cloudflared\<TUNNEL-ID>.json
+# so no path is hardcoded here (works on both your Mac and Windows).
+# If you ever see "tunnel credentials file not found", uncomment and set:
+#   credentials-file: C:/Users/Admin/.cloudflared/<TUNNEL-ID>.json
 
 tunnel: etsy-agent
-credentials-file: /Users/CHANGE_ME/.cloudflared/CHANGE_ME-TUNNEL-ID.json
 
 ingress:
   # Everything for this hostname goes to the local web dashboard.
