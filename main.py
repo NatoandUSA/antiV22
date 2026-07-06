@@ -13,7 +13,7 @@ Commands:
   py main.py daily [pod|embroidery]  -> THE team command: 5 clean reports
   py main.py images                  -> list AI design prompts (no API calls)
   py main.py images --all            -> generate design PNGs via OpenAI (needs OPENAI_API_KEY, costs money)
-  py main.py web                     -> team web dashboard (run commands + read reports in a browser; needs WEB_PASSWORD)
+  py main.py web                     -> team report portal (read the reports in a browser; needs WEB_PASSWORD)
   py main.py rawreports [pod|embroidery] -> detailed/debug report set
   py main.py listreports         -> paths of every latest operational report
   py main.py tasks               -> daily team tasks report (9 roles)

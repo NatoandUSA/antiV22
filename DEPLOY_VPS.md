@@ -159,12 +159,11 @@ weekly run is enough — the dashboard serves valid reports in between, and a
 no-data day never wipes the last good ones. Want a different window? add
 `YTRENDS_FRESH_DAYS=14` to `.env`.
 
-### Two one-time niceties (optional)
-- **Hide the fetch buttons on the VPS** (so the team isn't shown buttons that
-  can't work here): add `WEB_OFFLINE_ONLY=1` to the VPS `.env`, then
-  `sudo systemctl restart etsy-web`. The discover/ideas/grow buttons disappear;
-  *Build daily reports* + the report viewer stay.
-- **Passwordless sync:** append your laptop's SSH public key
+The dashboard is a **read-only report portal** — the team just reads the
+reports (no command buttons), so nothing on the server can try to fetch.
+
+### Passwordless sync (optional)
+- Append your laptop's SSH public key
   (`~/.ssh/id_ed25519.pub`) to the server's `~etsy/.ssh/authorized_keys`, and the
   sync script stops asking for the `etsy` password:
   ```bash
