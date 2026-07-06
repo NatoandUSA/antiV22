@@ -10,3 +10,10 @@ supplier_products.csv
 social_signals.csv
 *.har
 *.zip
+
+# Cloudflare tunnel secrets — never commit these
+*.pem
+.cloudflared/
+deploy/*.json
+deploy/*credentials*
+
