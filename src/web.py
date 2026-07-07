@@ -230,21 +230,20 @@ def build_app(password, secret):
             '<span>Post-launch: keep / change / kill / scale</span></a>'
             '<a class="toolcard" href="/grade"><b>📝 Grade my listing</b>'
             '<span>Paste a title + 13 tags + description → 0–100 + fixes</span></a>'
+            '<a class="toolcard" href="/cheatsheet"><b>📖 Cheat Sheet</b>'
+            '<span>Every command + workflow, in plain English</span></a>'
             '</div>')
 
-        # --- Archive: saved runs + the operator's daily reports (secondary) ---
-        reports = ('<h2 class="grouph">📁 Archive — reports &amp; exports</h2>'
-                   '<p class="lead">The <b>Command Center</b> above is the main '
-                   'workflow. Saved runs and the daily reports live here for '
-                   'reference &amp; export.</p>' + tabs)
-        if daily:
-            reports += '<div class="reports">' + "".join(daily) + "</div>"
-        if detail:
-            reports += ('<h2 class="grouph">All reports</h2><div class="reports">'
-                        + "".join(detail) + "</div>")
-        if not daily and not detail:
-            reports += '<p class="empty">This set has no reports yet.</p>'
-        body = tools + reports
+        # Operator's daily reports kept reachable, but tucked away — the
+        # Command Center above is the main workflow (no big Archive card).
+        arch = ""
+        if daily or detail:
+            arch = ('<details class="archive"><summary>Operator daily reports '
+                    '&amp; saved runs</summary>' + tabs
+                    + ('<div class="reports">' + "".join(daily) + "</div>" if daily else "")
+                    + ('<div class="reports">' + "".join(detail) + "</div>" if detail else "")
+                    + '</details>')
+        body = tools + arch
         upd = _last_updated(mdir)
         updated = f'<span class="updated">Updated {upd}</span>' if upd else ""
         return page("Reports", PORTAL
@@ -378,7 +377,7 @@ def build_app(password, secret):
     @login_required
     def run_export(role):
         import html as _html
-        if role not in ("manager", "seller", "designer"):
+        if role not in ("manager", "seller", "designer", "researcher"):
             abort(404)
         q, opts = _run_inputs()
         from src import workspace
@@ -743,33 +742,46 @@ def build_app(password, secret):
         from src import feedback as fb
         form = ('<form class="savedform" method="post" action="/feedback/add">'
                 '<input name="listing_url" placeholder="Listing URL" required>'
-                '<input name="publish_date" placeholder="Publish date">'
+                '<input name="keyword" placeholder="Main keyword (links the saved run)">'
+                '<input name="publish_date" placeholder="Publish date (YYYY-MM-DD)">'
                 '<input name="product_mode" placeholder="Mode (pod/embroidery)">'
                 '<input name="supplier" placeholder="Supplier">'
-                '<input name="price" placeholder="Price">'
+                '<input name="product_cost" type="number" step="any" placeholder="Product cost">'
+                '<input name="shipping_cost" type="number" step="any" placeholder="Shipping cost">'
+                '<input name="price" type="number" step="any" placeholder="Price">'
                 '<input name="title" placeholder="Title">'
-                '<input name="impressions" type="number" placeholder="Impressions">'
-                '<input name="views" type="number" placeholder="Views">'
+                '<input name="main_image_version" placeholder="Main image version (e.g. v2)">'
+                '<input name="mockup_style" placeholder="Mockup style (flat / lifestyle / gift)">'
+                '<input name="personalization_offer" placeholder="Personalization offered">'
+                '<input name="bundle_offer" placeholder="Bundle offered">'
+                '<input name="day_1_impressions" type="number" placeholder="Day 1 impressions">'
+                '<input name="day_3_views" type="number" placeholder="Day 3 views">'
+                '<input name="day_7_views" type="number" placeholder="Day 7 views">'
                 '<input name="favorites" type="number" placeholder="Favorites">'
                 '<input name="carts" type="number" placeholder="Carts">'
                 '<input name="orders" type="number" placeholder="Orders">'
-                '<input name="revenue" type="number" placeholder="Revenue">'
-                '<input name="profit" type="number" placeholder="Profit">'
+                '<input name="revenue" type="number" step="any" placeholder="Revenue">'
+                '<input name="profit" type="number" step="any" placeholder="Profit">'
+                '<input name="refund_or_issue" placeholder="Refund / issue (or none)">'
                 '<textarea name="notes" placeholder="Notes"></textarea>'
-                '<button class="primary" type="submit">Log + get recommendation</button>'
+                '<button class="primary" type="submit">Log + get Day-3/7 recommendation</button>'
                 '</form>')
         items = ""
         for r in reversed(fb.load()):
+            a7 = r.get("day7_action") or r.get("recommendation", "")
+            v = r.get("day_7_views") or r.get("views", 0)
             items += ('<div class="saveditem"><div class="sihead">'
                       f'<b>{_h.escape((r.get("title") or r.get("listing_url") or "")[:58])}</b> '
-                      f'<span class="pill">{_h.escape(r.get("recommendation",""))}</span> '
+                      f'<span class="pill apill">{_h.escape(a7)}</span> '
                       f'<a class="cbtn" href="/feedback/del/{r["id"]}">delete</a></div>'
                       f'<div class="note">{_h.escape(r.get("product_mode",""))} · '
-                      f'{r.get("views",0)} views · {r.get("favorites",0)} favs · '
+                      f'{v} views · {r.get("favorites",0)} favs · '
                       f'{r.get("carts",0)} carts · {r.get("orders",0)} orders · '
                       f'logged {r.get("added_at","")}</div>'
-                      f'<p><b>Day 3/7 → {_h.escape(r.get("recommendation",""))}:</b> '
-                      f'{_h.escape(r.get("rec_reason",""))}</p></div>')
+                      f'<p><b>Day 3 → {_h.escape(r.get("day3_action",""))}:</b> '
+                      f'{_h.escape(r.get("day3_reason",""))}</p>'
+                      f'<p><b>Day 7 → {_h.escape(a7)}:</b> '
+                      f'{_h.escape(r.get("day7_reason") or r.get("rec_reason",""))}</p></div>')
         bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
         return page("Sales feedback", bar + '<article class="md"><h1>Sales feedback '
                     'loop</h1><p>After you MANUALLY publish, log the listing\'s real '
@@ -1074,6 +1086,11 @@ border-radius:20px;padding:3px 10px;color:var(--ink);font-variant-numeric:tabula
 .pill.apill{background:var(--accent);color:var(--paper)}
 .lrow{display:flex;gap:12px;align-items:flex-start;margin-top:6px}
 .lthumb{width:84px;height:84px;object-fit:cover;border-radius:10px;border:1px solid var(--line);flex:none}
+.learnbox{background:var(--accent-bg);border:1px solid var(--accent);border-radius:10px;
+padding:10px 14px;margin:10px 0}
+.learnbox b{color:var(--accent)}.learnbox ul{margin:6px 0 0;padding-left:18px}
+.archive{margin-top:22px;border-top:1px solid var(--line);padding-top:12px}
+.archive summary{cursor:pointer;font-weight:700;color:var(--ink-soft);font-size:.9rem}
 /* workspace */
 .ws{background:var(--surface);border:1px solid var(--line);border-radius:14px;
 padding:18px 20px;margin:14px 0;box-shadow:var(--shadow)}

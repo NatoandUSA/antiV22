@@ -619,7 +619,7 @@ def run_selftest():
           and "import-csv" in _main_src and '"workspace"' in _main_src)
     check("supplier library + CSV upload + Sales Feedback loop wired",
           callable(getattr(_fbk, "add", None)) and callable(_fbk.recommend)
-          and _fbk.recommend({"orders": 1})[0] == "SCALE PRODUCT LINE"
+          and _fbk.recommend({"orders": 1})[0] == "SCALE_PRODUCT_LINE"
           and all(x in _web_src for x in ("/suppliers", "/suppliers/upload",
                                           "/feedback", "/feedback/add")))
 
@@ -689,6 +689,59 @@ def run_selftest():
           and all(e.get("keywords") and e.get("product") for e in _hols)
           and len(_se.HOLIDAYS) >= 10
           and "interactive.calendar(mode)" in _web_src)
+
+    # ---- V23.0: sales-execution system — offer gate, feedback loop, learning, ops ----
+    _oh, _osc, _of = _ws.offer_builder("chenille name bag",
+                                       {"personalization": "name", "occasion": "wedding",
+                                        "niche": "bridesmaid"}, "embroidery")
+    _sv_ok = _ws.strict_verdict(
+        "x", [{"name": "Overall Product", "score": 90},
+              {"name": "Competition", "score": 80}], {}, "OK", [],
+        cww=90, lr=90, fib=90, offer=90)["verdict"]
+    _sv_no = _ws.strict_verdict(
+        "x", [{"name": "Overall Product", "score": 90},
+              {"name": "Competition", "score": 80}], {}, "OK", [],
+        cww=90, lr=90, fib=60, offer=90)["verdict"]   # weak first image blocks
+    check("Offer Strength score gates SELL NOW (needs offer>=70 AND fib>=75)",
+          isinstance(_osc, int) and 0 <= _osc <= 100 and len(_of) == 7
+          and "Offer Strength score" in _oh
+          and _sv_ok == "SELL NOW" and _sv_no != "SELL NOW"
+          and _ws.publish_gate("k", [], False, "OK", [], "design",
+                               lr=90, fib=90, offer=60)[0] is False)
+
+    check("Sales Feedback Loop: rich schema + Day-3/7 action set + data/performance",
+          len(_fbk.FIELDS) >= 20
+          and all(a in _fbk.ACTIONS for a in (
+              "KEEP", "CHANGE_MAIN_PHOTO", "CHANGE_TITLE", "CHANGE_TAGS",
+              "RAISE_PRICE", "LOWER_PRICE", "MAKE_VARIANTS", "KILL_LISTING",
+              "SCALE_PRODUCT_LINE"))
+          and _fbk.recommend({"day_7_views": 0}, day=7)[0] == "KILL_LISTING"
+          and _fbk.recommend({"carts": 3}, day=7)[0] == "LOWER_PRICE"
+          and "data/performance" in str(_fbk.STORE).replace("\\", "/"))
+
+    from src import learning as _lrn
+    _wp = _lrn.learning_note("chenille name bag", ["name bag"], "acme")
+    check("Private learning system: 5 pattern files + feeds can-we-win scoring",
+          len(_lrn.FILES) == 5
+          and callable(_lrn.record_feedback) and callable(_lrn.ensure_files)
+          and isinstance(_wp, tuple) and isinstance(_wp[1], int)
+          and "learning" in Path("src/workspace.py").read_text(encoding="utf-8")
+          and "learn_notes" in _ws_src)
+
+    from src import ops as _ops
+    check("Ops: daily-run + healthcheck + cron (no publish) + logging wired",
+          all(callable(getattr(_ops, f, None)) for f in (
+              "daily_run", "healthcheck", "cron_install", "cron_status", "get_logger"))
+          and all(c in _main_src2 for c in ("daily-run", "healthcheck", '"cron"'))
+          and "main.py daily-run" in _ops.cron_line("06:00")
+          and _ops.cron_line("06:00").split()[:2] == ["0", "6"])
+
+    check("Role tabs incl Researcher + Archive card removed from home",
+          "researcher" in _ws.ROLE_REPORTS
+          and "researcher" in _web_src                 # export route accepts it
+          and "export/researcher" in _ws_src           # PDF button in the workspace
+          and "Archive — reports" not in _web_src
+          and 'href="/cheatsheet"' in _web_src)
 
     print("\nSELF-TEST RESULTS")
     for name, cond in results:

@@ -375,6 +375,33 @@ def cmd_harvest(cmd, args):
     run_harvest(args)
 
 
+def cmd_daily_run(cmd, args):
+    from src import ops
+    ops.daily_run()
+
+
+def cmd_healthcheck(cmd, args):
+    from src import ops
+    checks = ops.healthcheck()
+    print("HEALTHCHECK")
+    ok_all = True
+    for name, ok, detail in checks:
+        ok_all = ok_all and ok
+        print(f"  {'PASS' if ok else 'WARN'}  {name}"
+              + (f"  — {detail}" if detail else ""))
+    print(f"\n{'ALL HEALTHY' if ok_all else 'SOME WARNINGS — see above'}")
+
+
+def cmd_cron(cmd, args):
+    from src import ops
+    sub = (args[0].lower() if args else "status")
+    kv, _ = _flags(args[1:] if args else [])
+    if sub == "install":
+        ops.cron_install(kv.get("time", "06:00"))
+    else:
+        ops.cron_status()
+
+
 def cmd_autopull(cmd, args):
     """Refresh the auto learning feeds (Saved Shops + Saved Listings) from the
     official YTrends MCP. Safe to run nightly on the VPS (no cookie needed)."""
@@ -443,6 +470,9 @@ COMMANDS = {
     "harvest": cmd_harvest,
     "workspace": cmd_workspace,
     "autopull": cmd_autopull,
+    "daily-run": cmd_daily_run,
+    "healthcheck": cmd_healthcheck,
+    "cron": cmd_cron,
 }
 
 # Commands that reach the live YTrends/Printify APIs. For YTrends-backed ones

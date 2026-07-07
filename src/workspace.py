@@ -153,14 +153,14 @@ def compute_scores(kw, stats, comp, mo, mode):
 
 # --------------------------- strict verdict --------------------------------
 
-def strict_verdict(kw, scores, comp, risk, data_flags, cww=0, lr=0):
+def strict_verdict(kw, scores, comp, risk, data_flags, cww=0, lr=0, fib=0, offer=0):
     by = {s["name"]: s["score"] for s in scores}
     overall, competition = by.get("Overall Product", 0), by.get("Competition", 0)
     if risk == "HIGH":
         v, cls = "BLOCKED", "avoid"
         reason = "trademark risk on this exact phrase is HIGH"
     elif (overall >= 75 and competition >= 55 and not data_flags
-          and cww >= 70 and lr >= 85):
+          and cww >= 70 and lr >= 85 and fib >= 75 and offer >= 70):
         v, cls = "SELL NOW", "design"
         reason = "strong demand, we can win, and it's launch-ready"
     elif overall >= 58:
@@ -273,13 +273,15 @@ def build_tags(kw, related, opts, mode):
 # --------------------------- publish-ready QA gate -------------------------
 
 def publish_gate(kw, tags, supplier_ok, risk, data_flags, verdict_cls,
-                 lr=0, fib=0):
+                 lr=0, fib=0, offer=0):
     """Strict gate. Returns (ready, failed_checks[])."""
     failed = []
     if lr < 85:
         failed.append(f"launch readiness {lr}/100 (need ≥ 85)")
     if fib and fib < 75:
         failed.append(f"first-image score {fib}/100 (need ≥ 75)")
+    if offer and offer < 70:
+        failed.append(f"offer strength {offer}/100 (need ≥ 70)")
     clean_safe = [t for t in tags if t["publish_safe"]]
     if verdict_cls in ("watch", "skip", "avoid"):
         failed.append(f"verdict is {verdict_cls.upper()} — not for publishing")
@@ -437,7 +439,8 @@ def first_image_battle(listings):
 # --------------------------- sales forecast --------------------------------
 
 def offer_builder(kw, opts, mode):
-    """Don't just build a product — build a better OFFER."""
+    """Don't just build a product — build a better OFFER. Returns
+    (html, offer_strength_score, factor_scores)."""
     pers = opts.get("personalization") or "name / date / monogram"
     cust = opts.get("target_customer") or "gift buyers"
     occ = opts.get("occasion") or "gift-giving"
@@ -456,8 +459,28 @@ def offer_builder(kw, opts, mode):
         ("Trust elements", "size chart, care guide, clear personalization + shipping"),
         ("Why buyers choose us", f"original design + real personalization for {cust}"),
     ]
-    return md_table(["| Element | Our offer |", "|---|---|"]
-                    + [f"| {a} | {_esc(b)} |" for a, b in rows])
+    # Offer Strength Score 0-100 from the 7 factors the spec lists.
+    factors = {
+        "Buyer emotion": 80 if (opts.get("occasion") or opts.get("target_customer")) else 66,
+        "Personalization": 88 if opts.get("personalization") else 74,
+        "Giftability": 84 if opts.get("occasion") else 72,
+        "Bundle potential": 76,
+        "Premium value": 74 if opts.get("personalization") else 66,
+        "Clarity": 80,
+        "Uniqueness": 82 if opts.get("niche") else 68,
+    }
+    score = _clamp(sum(factors.values()) / len(factors))
+    frows = ["| Offer strength factor | Score |", "|---|---|"]
+    frows += [f"| {k} | {v} |" for k, v in factors.items()]
+    html = (
+        f'<div class="gate {"g-ok" if score >= 70 else "g-no"}">Offer Strength '
+        f'score: {score}/100 — '
+        + ("a genuinely better offer than rivals" if score >= 70
+           else "offer too weak — do not SELL NOW") + '</div>'
+        + md_table(["| Element | Our offer |", "|---|---|"]
+                   + [f"| {a} | {_esc(b)} |" for a, b in rows])
+        + "<h3>Offer strength</h3>" + md_table(frows))
+    return html, score, factors
 
 
 def better_angles(kw, related, mode):
@@ -785,11 +808,20 @@ def _gather(kw, opts=None):
     L = _listing_data(kw, opts, stats, related, mode, tags)
     supplier_ok = False   # fresh run: supplier needs manual confirmation
     cww_score, cww_scores = can_we_win(kw, comp, listings, opts, mode, supplier_ok)
+    try:
+        from src import learning
+        learn_notes, learn_delta = learning.learning_note(
+            kw, [t["tag"] for t in tags], L.get("supplier"))
+        cww_score = _clamp(cww_score + learn_delta)
+    except Exception:  # noqa: BLE001 - private learning must never break a run
+        learn_notes, learn_delta = [], 0
     lr_score, lr_status, lr_reasons = launch_readiness(supplier_ok, tags, risk, L, opts)
     fib_score, fib_pattern, fib_plan = first_image_battle(listings)
-    vd = strict_verdict(kw, scores, comp, risk, data_flags, cww_score, lr_score)
+    offer_html, offer_score, offer_factors = offer_builder(kw, opts, mode)
+    vd = strict_verdict(kw, scores, comp, risk, data_flags, cww_score, lr_score,
+                        fib_score, offer_score)
     ready, failed = publish_gate(kw, tags, supplier_ok, risk, data_flags,
-                                 vd["cls"], lr_score, fib_score)
+                                 vd["cls"], lr_score, fib_score, offer_score)
     pod_prompt, emb_prompt, design_risks = design_prompts(kw, opts, mode)
     fc = sales_forecast(stats, L["rec_price"] or L["price_mid"], L["cost_total"],
                         conv, data_flags)
@@ -804,7 +836,9 @@ def _gather(kw, opts=None):
         audit_html=audit_html, audit_status=audit_status, timeline=timeline,
         cww_score=cww_score, cww_scores=cww_scores, lr_score=lr_score,
         lr_status=lr_status, lr_reasons=lr_reasons, fib_score=fib_score,
-        fib_pattern=fib_pattern, fib_plan=fib_plan,
+        fib_pattern=fib_pattern, fib_plan=fib_plan, offer_html=offer_html,
+        offer_score=offer_score, offer_factors=offer_factors, supplier_ok=supplier_ok,
+        learn_notes=learn_notes,
         suggestions=suggest_fields(kw, stats, related, mode, req_mode))
 
 
@@ -824,6 +858,7 @@ def build_workspace(kw, opts=None):
     cww_score, cww_scores = G["cww_score"], G["cww_scores"]
     lr_score, lr_status, lr_reasons = G["lr_score"], G["lr_status"], G["lr_reasons"]
     fib_score, fib_pattern, fib_plan = G["fib_score"], G["fib_pattern"], G["fib_plan"]
+    offer_score = G["offer_score"]
 
     def sec(anchor, icon, title, inner):
         return (f'<section class="ws" id="{anchor}"><h2>{icon} {title}</h2>'
@@ -967,11 +1002,14 @@ def build_workspace(kw, opts=None):
         '🖨️ Seller PDF</a>'
         f'<a class="cbtn" href="/run/export/designer?{_q}" target="_blank">'
         '🖨️ Designer PDF</a>'
+        f'<a class="cbtn" href="/run/export/researcher?{_q}" target="_blank">'
+        '🖨️ Researcher PDF</a>'
         + _copy_btn("ws-title", "Copy title") + _copy_btn("ws-tags", "Copy tags")
         + _copy_btn("ws-desc", "Copy description") + _copy_btn("ws-pod", "Copy POD")
         + _copy_btn("ws-emb", "Copy embroidery")
         + '</div><p class="note">Save writes workspace.json, listing_draft.json, '
-        'design_prompts.txt, competitor_audit.json, source_confidence.json under '
+        'design_prompts.txt, supplier_check.json, competitor_audit.json, '
+        'sales_forecast.json, publish_gate.json, feedback_tracking.json under '
         '<code>reports/latest/runs/</code>. Each PDF button opens a print-ready '
         'page — use your browser\'s <b>Print → Save as PDF</b>. Never '
         'auto-published.</p>')
@@ -980,12 +1018,17 @@ def build_workspace(kw, opts=None):
     cww_rows = ["| Advantage | Score | Play |", "|---|---|---|"]
     for _name, _play in CWW_FACTORS:
         cww_rows.append(f"| {_name} | {cww_scores.get(_name, '-')} | {_esc(_play)} |")
+    learn_html = ""
+    if G.get("learn_notes"):
+        learn_html = ('<div class="learnbox"><b>🔒 Our private sales data</b><ul>'
+                      + "".join(f"<li>{_esc(n)}</li>" for n in G["learn_notes"])
+                      + '</ul></div>')
     cww_html = (
         f'<div class="gate {"g-ok" if cww_score >= 70 else "g-no"}">Can We Win '
         f'score: {cww_score}/100 — '
         + ("yes, we can differentiate" if cww_score >= 70
            else "edge is thin — do not SELL NOW") + '</div>'
-        + md_table(cww_rows) + beat_competitors(kw, listings, opts, mode))
+        + learn_html + md_table(cww_rows) + beat_competitors(kw, listings, opts, mode))
 
     fib_html = (
         f'<div class="gate {"g-ok" if fib_score >= 75 else "g-no"}">First-image '
@@ -1003,7 +1046,7 @@ def build_workspace(kw, opts=None):
         + ("" if lr_score >= 85 else '<b>Not ready — blockers:</b>'
            f'<ul class="check">{lr_reason_html}</ul>'))
 
-    offer_html = offer_builder(kw, opts, mode)
+    offer_html = G["offer_html"]
     angle_html = better_angles(kw, related, mode)
 
     # 0. AI-suggested, editable run inputs (re-run with edits)
@@ -1103,10 +1146,19 @@ def build_workspace(kw, opts=None):
         "publish_ready": ready, "failed_publish_checks": failed,
         "scores": [{k: s[k] for k in ("name", "score", "label", "sources")}
                    for s in scores],
+        "gate_scores": {"can_we_win": cww_score, "launch_readiness": lr_score,
+                        "first_image": fib_score, "offer_strength": offer_score,
+                        "launch_status": lr_status},
         "tags": tags, "listing": {"title": L["title"], "desc": L["desc"],
                                   "supplier": L["supplier"], "cost": L["cost_total"],
                                   "rec_price": L["rec_price"]},
+        "supplier_check": {"supplier_ok": G["supplier_ok"], "supplier": L["supplier"],
+                           "status": ("SUPPLIER_CONFIRMED" if G["supplier_ok"]
+                                      else "NEED_SUPPLIER_DETAILS"),
+                           "cost_total": L["cost_total"], "mode": mode},
         "sales_forecast": fc, "competitor_audit_status": audit_status,
+        "product_line_expansion": product_line_expansion(kw, mode),
+        "publish_gate": {"publish_ready": ready, "failed_checks": failed},
         "source_confidence": {"overall": src_conf,
                               "sources": [dict(zip(("source", "status", "confidence"), r))
                                           for r in src_rows]},
@@ -1140,6 +1192,27 @@ def save_run(kw, opts, workspace_html):
         encoding="utf-8")
     (folder / "source_confidence.json").write_text(
         json.dumps(data.get("source_confidence", {}), indent=2), encoding="utf-8")
+    (folder / "supplier_check.json").write_text(
+        json.dumps(data.get("supplier_check", {}), indent=2), encoding="utf-8")
+    (folder / "sales_forecast.json").write_text(
+        json.dumps(data.get("sales_forecast", {}), indent=2), encoding="utf-8")
+    (folder / "product_line_expansion.json").write_text(
+        json.dumps({"html": data.get("product_line_expansion", "")}, indent=2),
+        encoding="utf-8")
+    (folder / "publish_gate.json").write_text(
+        json.dumps(data.get("publish_gate", {"publish_ready": False}), indent=2),
+        encoding="utf-8")
+    # Seed the Day-3/7 feedback tracker (empty until the team logs real numbers).
+    ft = folder / "feedback_tracking.json"
+    if not ft.exists():
+        ft.write_text(json.dumps({
+            "keyword": kw, "product_mode": data.get("product_mode"),
+            "publish_ready_at_save": data.get("publish_ready", False),
+            "listing_url": "", "publish_date": "",
+            "day_3": {"logged": False}, "day_7": {"logged": False},
+            "recommendation": "AWAITING_PUBLISH_AND_METRICS",
+            "note": "Log real numbers in the Sales Feedback tool after manual publish."
+        }, indent=2), encoding="utf-8")
     return folder
 
 
@@ -1175,7 +1248,8 @@ def manager_report(G):
         f"{G['lr_score']}/100 ({G['lr_status']})</h2>"
         + (f"<p>Launch blockers: {_esc('; '.join(G['lr_reasons']))}</p>"
            if G['lr_reasons'] else "<p>Launch-ready.</p>")
-        + f"<p>First-image score: {G['fib_score']}/100.</p>"
+        + f"<p>First-image score: {G['fib_score']}/100 · "
+        f"Offer strength: {G['offer_score']}/100.</p>"
         + "<h2>Source confidence</h2><ul>" + src + "</ul>"
         + (f"<p class='warn'>DATA_CHECK_REQUIRED: "
            f"{'; '.join(_esc(f) for f in G['data_flags'])}</p>" if G['data_flags'] else "")
@@ -1242,5 +1316,37 @@ def designer_report(G):
         "we win with a bold original hero image and real personalization.</p>")
 
 
+def researcher_report(G):
+    """Data / trademark / supplier verification checklist for the Researcher."""
+    src = "".join(f"<li>{_esc(n)}: {_esc(st)} (conf {_esc(cf)})</li>"
+                  for n, st, cf in G["src_rows"])
+    tm_tags = [t for t in G["tags"]
+               if t["status"] not in ("OK", "TYPO_FIXED")]
+    tmq = ("".join(f"<li>{_esc(t['tag'])} — {t['status']}</li>" for t in tm_tags)
+           or "<li>All 13 tags clear of trademark flags.</li>")
+    flags = ("; ".join(_esc(f) for f in G["data_flags"]) if G["data_flags"]
+             else "none — data passed the plausibility check")
+    return (
+        f"<h1>Researcher checklist — {_esc(G['kw'])}</h1>"
+        f"<p class='meta'>Mode: {G['req_mode'].upper()} · Overall data confidence: "
+        f"{_esc(G['src_conf'])}</p>"
+        "<h2>Source confidence</h2><ul>" + src + "</ul>"
+        f"<h2>Data check</h2><p>DATA_CHECK_REQUIRED: {flags}</p>"
+        f"<h2>Trademark queue</h2><p>Primary keyword: <b>{G['risk']}</b> — "
+        f"{_esc(G['tm_reason'] or 'verify on USPTO before publish')}</p>"
+        f"<ul>{tmq}</ul>"
+        f"<h2>Competitor audit</h2>{G['audit_html']}"
+        "<h2>Supplier verification</h2><p><b>"
+        + ("SUPPLIER_CONFIRMED" if G["supplier_ok"] else "NEED_SUPPLIER_DETAILS")
+        + "</b> — confirm product URL, base + shipping cost, material, "
+        "processing time, and (mode-specific) print area / embroidery area "
+        "before PUBLISH_READY can be true.</p>"
+        "<h2>Verify before publish</h2><ul>"
+        "<li>Trademark cleared on USPTO or manager-approved.</li>"
+        "<li>Supplier fields complete for the product mode.</li>"
+        "<li>No DATA_CHECK_REQUIRED flags open.</li>"
+        "<li>Competitor audit manual fields filled.</li></ul>")
+
+
 ROLE_REPORTS = {"manager": manager_report, "seller": seller_report,
-                "designer": designer_report}
+                "designer": designer_report, "researcher": researcher_report}

@@ -1,6 +1,32 @@
-# Etsy Product Manager V22.0
+# Etsy Product Manager V23.0
 
-**New in V22.0 — auto-pulling learning feeds + a real seasonal planner.** Three
+**New in V23.0 — a sales-execution & private-learning system.** The tool now
+tracks results and learns which listings actually sell, so we beat competitors
+who only have the same public keyword data. No auto-publishing — a listing is
+only ever published manually when `PUBLISH_READY = true`.
+
+- **Offer Strength Score (0–100)** joins Can-We-Win, Launch-Readiness, and
+  First-Image as a hard gate: **SELL NOW now requires** overall ≥ 75, can-we-win
+  ≥ 70, launch-readiness ≥ 85, **first-image ≥ 75, offer-strength ≥ 70**, clean
+  supplier + trademark + 13 tags, and `PUBLISH_READY = true`. Anything short is
+  **DRAFT ONLY — DO NOT PUBLISH**, with the exact failed checks listed.
+- **Sales Feedback Loop** (`py` dashboard → 📉 Sales feedback): after a *manual*
+  publish, log the listing's real numbers (Day-1 impressions, Day-3/7 views,
+  favorites, carts, orders, revenue, cost, image/mockup/offer) and get one
+  **Day-3/7 action** — KEEP / CHANGE_MAIN_PHOTO / CHANGE_TITLE / CHANGE_TAGS /
+  RAISE_PRICE / LOWER_PRICE / MAKE_VARIANTS / KILL_LISTING / SCALE_PRODUCT_LINE.
+  Saved to `data/performance/` + mirrored into the run's `feedback_tracking.json`.
+- **Private learning system** (`data/learning/*.json`): every logged outcome
+  updates winner / failed / image / tag / supplier patterns, and future runs use
+  them — a keyword or tag that has sold for us **raises** its Can-We-Win score;
+  a supplier that caused refunds **lowers** it. This is our edge.
+- **Researcher** role report/PDF added (data + trademark + supplier checks).
+- **Hands-off automation:** `py main.py daily-run` (pull + refresh + summary, never
+  publishes), `py main.py healthcheck`, and `py main.py cron install --time "06:00"`
+  / `cron status`. Clean logs in `logs/`. Home page no longer shows the Archive
+  card. (English only.)
+
+**V22.0 — auto-pulling learning feeds + a real seasonal planner.** Three
 self-serve upgrades, all from the official YTrends MCP (never scraped):
 
 - **🏪 Saved shops → Auto-pull new shops already selling.** One click pulls the
