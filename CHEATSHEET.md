@@ -10,6 +10,27 @@ it off to include everything. Example: `py main.py daily pod`.
 
 ---
 
+## 🧑‍🤝‍🧑 For your team: the dashboard does it all (no commands)
+
+Your teammates never touch the terminal. The dashboard home page now leads with
+**live, self-serve tools** that work **24/7 with your PC off** — no waiting on you:
+
+| Tool | Teammate types / clicks | Gets back |
+|---|---|---|
+| **Analyze** | a keyword | demand, price, competition, what's winning, related keywords |
+| **Should I sell?** | a keyword | GO / CONDITIONAL / NO-GO verdict + reasons |
+| **Expand** | a keyword | related keywords to explore |
+| **Draft listing** | a keyword | title + 13 tags + price + description skeleton |
+| **Trending now** | click (per line) | rising keywords |
+| **Opportunities** | click (per line) | low-competition sweet spots |
+| **Seasonal calendar** | click | what to launch next, timed |
+
+Every result has the **trademark check** built in. This is what used to require
+the operator in the terminal — the whole team now self-serves in the browser.
+The read-only **daily reports** sit below the tools on the same page.
+
+---
+
 ## Where each thing runs (important)
 
 **You never type commands into the website.** There are three places things happen:

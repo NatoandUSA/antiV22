@@ -1,10 +1,16 @@
-# Etsy Product Manager V20.6
+# Etsy Product Manager V20.7
 
-**New in V20.6 — Self-serve analysis on the dashboard.** The team portal now has
-a **🔎 Analyze a keyword** box: any teammate types a keyword and gets a live
-market read (demand, price, competition, what's winning, related keywords, with
-the trademark check built in) or an **Expand** list — right in the browser, no
-terminal, no waiting on the operator. (Needs the server to reach the YTrends MCP.)
+**New in V20.7 — Self-serve Team Tools dashboard.** The portal home page now
+leads with live, self-serve tools any teammate can use anytime (no terminal, no
+waiting on the operator), all powered by the YTrends MCP and running on the VPS
+24/7:
+- **Analyze** a keyword (demand, price, competition, what's winning, related keywords)
+- **Should I sell?** — GO / CONDITIONAL / NO-GO verdict with reasons
+- **Expand** — related keywords · **Draft listing** — title + 13 tags + price + description
+- **Trending now** / **Opportunities** (per line) · **Seasonal calendar**
+
+Every tool has the trademark check built in. The read-only daily reports (built
+by the operator) sit below the tools. (Needs the server to reach the YTrends MCP.)
 
 **V20.5 — Keyword harvester.** `py main.py harvest` pulls a deep,
 data-driven keyword universe from the live YTrends index (top rankings +

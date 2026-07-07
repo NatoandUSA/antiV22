@@ -540,12 +540,17 @@ def run_selftest():
           "keyword_data.csv" in _idea_src
           and bool(DEMAND_FLOOR.get("embroidery")))
 
-    # ---- V20.6: interactive self-serve keyword analysis on the portal ----
+    # ---- V20.7: interactive self-serve team tools on the portal ----
     from src import interactive as _iv
     _web_src = Path("src/web.py").read_text(encoding="utf-8")
-    check("interactive keyword analysis wired (/analyze + engine)",
-          callable(_iv.analyze_keyword) and callable(_iv.expand_keyword)
-          and "/analyze" in _web_src and "interactive" in _web_src)
+    check("interactive self-serve tools wired (analyze/should-sell/trending/...)",
+          all(callable(getattr(_iv, f, None)) for f in (
+              "analyze_keyword", "expand_keyword", "should_sell", "trending",
+              "opportunities", "calendar", "draft_listing"))
+          and all(r in _web_src for r in (
+              "/analyze", "/should-sell", "/draft-listing", "/trending",
+              "/opportunities", "/calendar"))
+          and "toolbar" in _web_src)   # restructured home page tool bar
 
     print("\nSELF-TEST RESULTS")
     for name, cond in results:

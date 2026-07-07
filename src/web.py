@@ -169,18 +169,43 @@ def build_app(password, secret):
                  if (mdir / f).exists()]
         detail = [_card(sub, f, "&bull;", t, d) for f, t, d in DETAIL_REPORTS
                   if (mdir / f).exists()]
-        body = tabs
+        active_label = {m[0]: m[1] for m in modes}.get(active, active)
+        # --- interactive tools: live, self-serve, 24/7 (no operator needed) ---
+        tools = (
+            '<h2 class="grouph">🔎 Instant tools — live, anyone can use anytime</h2>'
+            '<p class="lead">Type a keyword for an instant read — no waiting on '
+            'the operator.</p>'
+            '<form class="toolbar" method="get" action="/analyze">'
+            '<input name="q" placeholder="Type a keyword, e.g. custom dad shirt" '
+            'aria-label="keyword">'
+            '<button class="primary" name="do" value="analyze">Analyze</button>'
+            '<button name="do" value="expand">Expand</button>'
+            '<button formaction="/should-sell">Should I sell?</button>'
+            '<button formaction="/draft-listing">Draft listing</button>'
+            '</form>'
+            '<div class="toolgrid">'
+            f'<a class="toolcard" href="/trending?mode={active}"><b>📈 Trending now'
+            f'</b><span>Rising keywords in {active_label}</span></a>'
+            f'<a class="toolcard" href="/opportunities?mode={active}"><b>💎 '
+            'Opportunities</b><span>Low-competition sweet spots</span></a>'
+            '<a class="toolcard" href="/calendar"><b>📅 Seasonal calendar</b>'
+            '<span>What to launch next, timed</span></a>'
+            '<a class="toolcard" href="/research"><b>🔬 Saved research</b>'
+            '<span>Past keyword lookups</span></a>'
+            '</div>')
+
+        # --- read-only reports, built by the operator ---
+        reports = '<h2 class="grouph">📊 Daily reports</h2>' + tabs
         if daily:
-            body += ('<p class="lead">The core reports — read in order from '
-                     '<b>00</b>.</p><div class="reports">'
-                     + "".join(daily) + "</div>")
+            reports += ('<p class="lead">The core reports — read in order from '
+                        '<b>00</b>.</p><div class="reports">'
+                        + "".join(daily) + "</div>")
         if detail:
-            body += ('<h2 class="grouph">All reports</h2>'
-                     '<p class="lead">Every report the tool produced this '
-                     'run.</p><div class="reports">'
-                     + "".join(detail) + "</div>")
+            reports += ('<h2 class="grouph">All reports</h2><div class="reports">'
+                        + "".join(detail) + "</div>")
         if not daily and not detail:
-            body += '<p class="empty">This set has no reports yet.</p>'
+            reports += '<p class="empty">This set has no reports yet.</p>'
+        body = tools + reports
         upd = _last_updated(mdir)
         updated = f'<span class="updated">Updated {upd}</span>' if upd else ""
         return page("Reports", PORTAL
@@ -254,6 +279,73 @@ def build_app(password, secret):
                            f'analyze "{val}": {_html.escape(str(exc)[:200])}'
                            '</p></article>')
         return page("Analyze a keyword", head + results)
+
+    # ---- other live self-serve tools (all MCP-backed, run on the VPS 24/7) ----
+    def _render_tool(title, txt):
+        html = md.markdown(txt, extensions=["tables", "fenced_code",
+                                            "sane_lists"])
+        bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
+        return page(title, bar + f'<article class="md">{html}</article>' + COPY_JS)
+
+    def _tool_error(title, exc):
+        import html as _html
+        bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
+        return page(title, bar + f'<article class="md"><h1>{title}</h1>'
+                    f'<p class="empty">The live data source is unavailable right '
+                    f'now: {_html.escape(str(exc)[:200])}</p></article>')
+
+    def _kw_tool(fn, title):
+        import html as _html
+        raw = (request.args.get("q") or "").strip()[:80]
+        q = "".join(c for c in raw if c.isalnum() or c in " '&-.").strip()
+        if not q:
+            bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
+            return page(title, bar + f'<article class="md"><h1>{title}</h1>'
+                        '<p class="empty">Type a keyword in the search box on the '
+                        '<a href="/">home page</a>, then pick this tool.</p></article>')
+        from src import interactive
+        try:
+            return _render_tool(f"{title}: {q}", fn(interactive, q))
+        except Exception as exc:  # noqa: BLE001
+            return _tool_error(title, exc)
+
+    def _mode_tool(fn, title):
+        m = request.args.get("mode")
+        mode = m if m in ("pod", "embroidery") else None
+        from src import interactive
+        try:
+            return _render_tool(title, fn(interactive, mode))
+        except Exception as exc:  # noqa: BLE001
+            return _tool_error(title, exc)
+
+    @app.route("/should-sell")
+    @login_required
+    def should_sell():
+        return _kw_tool(lambda iv, q: iv.should_sell(q), "Should I sell")
+
+    @app.route("/draft-listing")
+    @login_required
+    def draft_listing():
+        return _kw_tool(lambda iv, q: iv.draft_listing(q), "Listing draft")
+
+    @app.route("/trending")
+    @login_required
+    def trending():
+        return _mode_tool(lambda iv, m: iv.trending(m), "Trending now")
+
+    @app.route("/opportunities")
+    @login_required
+    def opportunities():
+        return _mode_tool(lambda iv, m: iv.opportunities(m), "Opportunities")
+
+    @app.route("/calendar")
+    @login_required
+    def calendar():
+        from src import interactive
+        try:
+            return _render_tool("Seasonal calendar", interactive.calendar())
+        except Exception as exc:  # noqa: BLE001
+            return _tool_error("Seasonal calendar", exc)
 
     # ---- keyword research (from `py main.py expand`, synced in reports/latest) ----
     @app.route("/research")
@@ -363,6 +455,19 @@ border-top:1px solid var(--line);padding-top:22px}
 color:var(--ink-soft);border-bottom:2px solid transparent;margin-bottom:-1px}
 .tab.on{color:var(--accent);border-bottom-color:var(--accent)}
 .tab:hover{color:var(--ink)}
+/* interactive tools */
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 16px}
+.toolbar input{flex:1;min-width:240px;padding:11px 13px;border:1px solid var(--line-strong);
+border-radius:10px;background:var(--surface);color:var(--ink);font-size:1rem;font-family:var(--sans)}
+.toolbar button{padding:11px 14px;border:1px solid var(--accent);border-radius:10px;
+background:var(--surface);color:var(--accent);font-weight:700;font-size:.86rem;cursor:pointer;font-family:var(--sans)}
+.toolbar button.primary{background:var(--accent);color:var(--paper)}
+.toolbar button:hover{filter:brightness(1.06)}
+.toolgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:10px}
+.toolcard{display:flex;flex-direction:column;gap:3px;padding:14px 15px;border:1px solid var(--line);
+border-radius:12px;background:var(--surface);box-shadow:var(--shadow);transition:border-color .12s,transform .12s}
+.toolcard:hover{border-color:var(--accent);transform:translateY(-1px)}
+.toolcard b{font-size:.95rem}.toolcard span{font-size:.79rem;color:var(--ink-soft)}
 /* report list */
 .reports{display:grid;gap:10px}
 .report{display:grid;grid-template-columns:44px 1fr auto;align-items:center;gap:16px;
@@ -446,7 +551,7 @@ PORTAL = """
       <div class="kicker">Etsy Product Manager</div>
       <h1>Team Reports</h1>
     </div>
-    <div class="hright">{{UPDATED}}<a class="logout" href="/analyze">🔎 Analyze a keyword</a><a class="logout" href="/research">Keyword Research</a><a class="logout" href="/cheatsheet">Cheat Sheet</a><a class="logout" href="/logout">Sign out</a></div>
+    <div class="hright">{{UPDATED}}<a class="logout" href="/cheatsheet">Cheat Sheet</a><a class="logout" href="/logout">Sign out</a></div>
   </header>
   {{BODY}}
   <footer>Reports are prepared on the research machine and synced here.</footer>
