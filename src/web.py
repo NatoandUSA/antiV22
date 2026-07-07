@@ -207,12 +207,15 @@ def build_app(password, secret):
             '<button formaction="/analyze" name="do" value="expand">Expand</button>'
             '<button formaction="/should-sell">Should I sell?</button>'
             '<button formaction="/draft-listing">Build listing</button>'
+            '<button formaction="/spy">🕵️ Spy</button>'
             '</div></form>'
             '<div class="toolgrid">'
             f'<a class="toolcard" href="/trending?mode={active}"><b>📈 Trending now'
             f'</b><span>Rising keywords in {active_label}</span></a>'
             f'<a class="toolcard" href="/opportunities?mode={active}"><b>💎 '
             'Opportunities</b><span>Low-competition sweet spots</span></a>'
+            '<a class="toolcard" href="/spy"><b>🕵️ Spy</b>'
+            '<span>Who wins + who dominates a niche</span></a>'
             '<a class="toolcard" href="/calendar"><b>📅 Seasonal calendar</b>'
             '<span>What to launch next, timed</span></a>'
             '<a class="toolcard" href="/research"><b>🔬 Saved research</b>'
@@ -611,6 +614,11 @@ def build_app(password, secret):
             return _render_tool("Seasonal calendar", interactive.calendar())
         except Exception as exc:  # noqa: BLE001
             return _tool_error("Seasonal calendar", exc)
+
+    @app.route("/spy")
+    @login_required
+    def spy():
+        return _kw_tool(lambda iv, q: iv.spy(q), "Spy")
 
     # ---- keyword research (from `py main.py expand`, synced in reports/latest) ----
     @app.route("/research")

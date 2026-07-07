@@ -348,6 +348,87 @@ def calendar():
     return "\n".join(L)
 
 
+def spy(kw, mode=None):
+    """Competitor intelligence for a keyword — who wins, who dominates, who just
+    launched, and the gaps. Learning only: study structure, never copy."""
+    kw = kw.strip()
+    L = [f"# 🕵️ Spy — {kw}", "",
+         "_Competitor intelligence for **learning only**. Study structure + the "
+         "gaps — never copy artwork, titles, descriptions, or photos._", ""]
+
+    try:
+        comp = mcp.call("ytrends_analyze_competition", seed=kw, seed_type="keyword")
+        comp = comp.get("data", comp) if isinstance(comp, dict) else {}
+    except Exception:  # noqa: BLE001
+        comp = {}
+    shops = comp.get("top_shops") or []
+    L += ["## Who dominates this niche (top shops)", ""]
+    if shops:
+        L += ["| Shop | Listings | Revenue | Avg price | Country |",
+              "|---|---|---|---|---|"]
+        for s in shops[:8]:
+            L.append(f"| {s.get('shop_id','?')} | {_int(s.get('listings'))} "
+                     f"| {_money(s.get('total_revenue_usd'))} "
+                     f"| {_money(s.get('avg_price_usd'))} "
+                     f"| {_clean(s.get('shop_country'))} |")
+    else:
+        L.append("_No shop-level data returned._")
+    sat = (comp.get("saturation") or "").lower()
+    read = ("crowded — you need strong differentiation" if sat == "high"
+            else "open — room for a well-optimized new listing" if sat == "low"
+            else "mixed")
+    L += ["", f"- Saturation: **{sat or 'unknown'}** · new sellers entering: "
+          f"**{_pct(comp.get('new_entrant_rate'))}** · {read}", ""]
+
+    try:
+        rk = mcp.research_keyword(kw)
+        listings = (rk.get("top_listings") if isinstance(rk, dict) else None) or []
+    except Exception:  # noqa: BLE001
+        listings = []
+    L += ["## What's winning right now (do NOT copy)", ""]
+    if listings:
+        L += ["| Listing | Price | Sold 24h | Total sold | Conv | Favs | Sample tags |",
+              "|---|---|---|---|---|---|---|"]
+        for r in listings[:8]:
+            tags = ", ".join(_clean(t) for t in (r.get("tags") or [])[:4])
+            L.append(f"| {_clean(r.get('title'))[:46]} | {_money(r.get('price'))} "
+                     f"| {_int(r.get('sold_24h'))} | {_int(r.get('total_sold'))} "
+                     f"| {_pct(r.get('conversion_rate'))} | {_int(r.get('favorites'))} "
+                     f"| {tags} |")
+    else:
+        L.append("_No winning listings returned for this keyword._")
+
+    L += ["", "## Who just launched (new entrants — what's fresh)", ""]
+    try:
+        ne = mcp.call("ytrends_browse_new_listings", search=kw, limit=8,
+                      listing_age_days_max=45, response_format="concise")
+        ne = (ne.get("data", {}) or {}).get("listings", []) if isinstance(ne, dict) else []
+    except Exception:  # noqa: BLE001
+        ne = []
+    if ne:
+        L += ["| New listing | Price | Age | Sold 24h |", "|---|---|---|---|"]
+        for r in ne[:8]:
+            L.append(f"| {_clean(r.get('title'))[:52]} | {_money(r.get('price'))} "
+                     f"| {_int(r.get('listing_age_days'))}d | {_int(r.get('sold_24h'))} |")
+    else:
+        L.append("_No recent new listings for this keyword._")
+
+    L += ["", "## Gaps to exploit (learn, then out-execute)", ""]
+    gaps = []
+    if sat == "low":
+        gaps.append("Low saturation — a well-optimized listing can rank.")
+    low_titles = " ".join(str(r.get("title") or "").lower() for r in listings)
+    if not any(w in low_titles for w in ("name", "custom", "personal", "monogram")):
+        gaps.append("Few winners personalize — offer name / date / monogram they lack.")
+    gaps.append("Beat their first image — bolder, clearer, gift-in-use hero shot.")
+    gaps.append("Front-load a specific long-tail; most of their titles are broad.")
+    gaps.append("Consider a bundle / set the top shops don't offer.")
+    L += ["- " + g for g in gaps]
+    L += ["", "_Original designs + your own copy only. This is to understand the "
+          "market structure and find gaps — not to copy any seller's work._"]
+    return "\n".join(L)
+
+
 def draft_listing(kw):
     """A first-draft listing pack (title, 13 tags, price, description) built from
     live keyword data. DRAFT ONLY — the team reviews + personalizes before use."""

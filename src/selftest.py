@@ -580,6 +580,10 @@ def run_selftest():
               "suggest_fields")) and isinstance(_ws.ROLE_REPORTS, dict)
           and all(x in _web_src for x in ("/run/export/", "runedit", "PRINT_BASE")))
 
+    check("competitor Spy tool wired (/spy + shop-level intel)",
+          callable(getattr(_iv, "spy", None))
+          and all(x in _web_src for x in ('href="/spy"', 'formaction="/spy"')))
+
     from src import saved as _sv
     check("saved shops + listings learning library wired",
           all(callable(getattr(_sv, f, None)) for f in (

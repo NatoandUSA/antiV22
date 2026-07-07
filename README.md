@@ -1,6 +1,13 @@
-# Etsy Product Manager V21.4
+# Etsy Product Manager V21.5
 
-**New in V21.4 — clearer workspace + Manager audit fix.** The `/run` page is
+**New in V21.5 — 🕵️ Spy tool.** A dedicated competitor-intelligence view: type a
+keyword → **who dominates the niche** (top shops with listings/revenue/avg price/
+country + saturation + new-entrant rate), **what's winning right now** (do NOT
+copy), **who just launched**, and the **gaps to exploit**. Same official YTrends
+MCP data (no scraping of the login-gated /spy page) — learning only. On the home
+grid (🕵️ Spy) and as a Command Center button.
+
+**V21.4 — clearer workspace + Manager audit fix.** The `/run` page is
 reorganized so it's easy to follow: a **hero** (verdict + at-a-glance chips:
 overall score, mode, publish-ready, trademark, next action), a **sticky jump
 nav**, and five labelled groups (① Decision · ② Listing & supplier · ③ Design ·
