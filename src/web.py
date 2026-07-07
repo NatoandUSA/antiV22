@@ -182,6 +182,13 @@ def build_app(password, secret):
             '<b>verdict, scores, listing, design & action plan</b> — on one page. '
             'No waiting on the operator.</p>'
             '<form class="cmdbar" method="get" action="/run">'
+            '<div class="modetoggle"><span>Product mode</span>'
+            '<label><input type="radio" name="supplier_type" value="pod" checked>'
+            ' Print on Demand</label>'
+            '<label><input type="radio" name="supplier_type" value="embroidery">'
+            ' Embroidery</label>'
+            '<label><input type="radio" name="supplier_type" value="both">'
+            ' Both</label></div>'
             '<div class="kwrow">'
             '<input name="q" aria-label="keyword" '
             'placeholder="Main keyword, e.g. usa raccoon shirt">'
@@ -194,11 +201,6 @@ def build_app(password, secret):
             '<input name="occasion" placeholder="Occasion">'
             '<input name="style" placeholder="Style">'
             '<input name="personalization" placeholder="Personalization">'
-            '<select name="supplier_type"><option value="">Supplier type…</option>'
-            '<option value="pod">Print on Demand</option>'
-            '<option value="embroidery">Embroidery</option>'
-            '<option value="digital">Digital</option>'
-            '<option value="other">Other</option></select>'
             '</div>'
             '<div class="cmdbtns">'
             '<button formaction="/analyze" name="do" value="analyze">Analyze</button>'
@@ -217,12 +219,13 @@ def build_app(password, secret):
             '<span>Past keyword lookups</span></a>'
             '</div>')
 
-        # --- read-only reports, built by the operator ---
-        reports = '<h2 class="grouph">📊 Daily reports</h2>' + tabs
+        # --- Archive: saved runs + the operator's daily reports (secondary) ---
+        reports = ('<h2 class="grouph">📁 Archive — reports &amp; exports</h2>'
+                   '<p class="lead">The <b>Command Center</b> above is the main '
+                   'workflow. Saved runs and the daily reports live here for '
+                   'reference &amp; export.</p>' + tabs)
         if daily:
-            reports += ('<p class="lead">The core reports — read in order from '
-                        '<b>00</b>.</p><div class="reports">'
-                        + "".join(daily) + "</div>")
+            reports += '<div class="reports">' + "".join(daily) + "</div>"
         if detail:
             reports += ('<h2 class="grouph">All reports</h2><div class="reports">'
                         + "".join(detail) + "</div>")
@@ -600,6 +603,14 @@ padding:4px 9px;cursor:pointer;text-decoration:none;display:inline-block}
 .cbtn:hover{border-color:var(--accent)}
 .facts,.check{margin:0;padding-left:18px;font-size:.87rem}.facts li,.check li{margin:4px 0}
 .expbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.modetoggle{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;font-size:.85rem}
+.modetoggle span{font-weight:700;color:var(--ink-soft);text-transform:uppercase;font-size:.66rem;letter-spacing:.08em}
+.modetoggle label{border:1px solid var(--line-strong);border-radius:20px;padding:5px 12px;cursor:pointer;background:var(--paper)}
+.modetoggle input{margin-right:4px}
+.gate{border-radius:8px;padding:9px 12px;font-weight:800;font-size:.9rem;margin-bottom:8px}
+.g-ok{background:var(--ok);color:#fff}.g-no{background:var(--stop);color:#fff}
+.warn{background:var(--accent-bg);border:1px solid var(--line-strong);border-radius:8px;padding:8px 12px;font-size:.83rem;margin-bottom:8px}
+.warn ul{margin:4px 0 0;padding-left:18px}
 /* internal product preview */
 .pv{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:16px;
 border:1px solid var(--line-strong);border-radius:12px;padding:14px;background:var(--paper)}

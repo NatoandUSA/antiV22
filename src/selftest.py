@@ -558,12 +558,21 @@ def run_selftest():
           "_mcp()" in _yc_src and "trending_keywords" in _yc_src
           and Path("deploy/vps-build.sh").exists())
 
-    # ---- V21.0: Keyword Run Workspace (one keyword -> full command center) ----
+    # ---- V21.x: Keyword Run Workspace — command center + strict QA gate ----
     from src import workspace as _ws
-    check("keyword run workspace wired (/run + command center + scoring)",
-          callable(_ws.build_workspace) and callable(_ws.compute_scores)
-          and callable(_ws.save_run) and "/run" in _web_src
-          and "cmdbar" in _web_src and "Command Center" in _web_src)
+    check("workspace: command center + product mode + strict gate + 13-tag builder",
+          all(callable(getattr(_ws, f, None)) for f in (
+              "build_workspace", "compute_scores", "save_run", "publish_gate",
+              "build_tags", "strict_verdict", "sales_forecast",
+              "beat_competitors", "product_line_expansion"))
+          and all(x in _web_src for x in ("/run", "cmdbar", "modetoggle",
+                                          "Command Center")))
+    # exactly-13-tag builder must always return 13 (offline, no network)
+    _t = _ws.build_tags("funny racoon shiirt",
+                        [{"tag": "raccoon gift"}, {"tag": "patriotic"}],
+                        {}, "pod")
+    check("tag builder returns exactly 13 tags + fixes typos",
+          len(_t) == 13 and any(x["status"] == "TYPO_FIXED" for x in _t))
 
     print("\nSELF-TEST RESULTS")
     for name, cond in results:

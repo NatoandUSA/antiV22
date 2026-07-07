@@ -1,6 +1,18 @@
-# Etsy Product Manager V21.0
+# Etsy Product Manager V21.1
 
-**New in V21.0 — Instant Product Command Center.** The dashboard home page is now
+**New in V21.1 — Action-center workspace.** The Command Center now has a
+**Product Mode toggle (POD / Embroidery / Both)** at the top that controls the
+whole run (Both shows a side-by-side POD-vs-Embroidery recommendation). Each run
+adds: a **strict verdict** (SELL NOW / VALIDATE / WATCH / SKIP / BLOCKED) that
+gates the UI (WATCH/SKIP/BLOCKED never say "publish"), a **strict Publish-Ready
+QA gate** with `FAILED_PUBLISH_CHECKS`, a **fixed 13-tag builder** (always 13,
+typo auto-fix, trademark-caution blocked, per-tag type + status), **How We Beat
+Competitors**, **Competitor Audit**, **7-day Sales Forecast**, **Product-Line
+Expansion**, **Source Confidence + data-check**, and **mode-specific Design Risk
+warnings**. Daily reports moved under **Archive**. Save writes JSON files under
+`reports/latest/runs/`. Bilingual Manager/Seller/Designer PDF export is next.
+
+**V21.0 — Instant Product Command Center.** The dashboard home page is now
 a command center: type one keyword (plus optional niche / occasion / customer /
 style / personalization / supplier type) and **Build full workspace** →
 `/run` renders one interactive page with a **product verdict**, **9 opportunity
