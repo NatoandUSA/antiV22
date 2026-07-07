@@ -1,6 +1,17 @@
-# Etsy Product Manager V20.8
+# Etsy Product Manager V21.0
 
-**New in V20.8 — hands-off builds + richer listing drafts.** The data layer is
+**New in V21.0 — Instant Product Command Center.** The dashboard home page is now
+a command center: type one keyword (plus optional niche / occasion / customer /
+style / personalization / supplier type) and **Build full workspace** →
+`/run` renders one interactive page with a **product verdict**, **9 opportunity
+scores (0–100)**, market & keyword opportunity, niche angles, an **automatic
+listing builder** (title + 13 tags + description + real cost/margin), an
+**internal product preview** (marketplace-style, no Etsy branding), **design
+prompts** (POD + stitch-safe embroidery), a **seller checklist**, a **designer
+brief**, and copy/save/export — never auto-published. The Instant Tools
+(Analyze / Expand / Should I sell? / Build listing) and reports are unchanged.
+
+**V20.8 — hands-off builds + richer listing drafts.** The data layer is
 now **MCP-first**, so the whole report pipeline can build **on the VPS itself**
 (the MCP is reachable there; no cookie, no laptop). Point cron at
 `deploy/vps-build.sh` and the dashboard refreshes 24/7 with your PC off. The

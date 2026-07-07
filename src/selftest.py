@@ -558,6 +558,13 @@ def run_selftest():
           "_mcp()" in _yc_src and "trending_keywords" in _yc_src
           and Path("deploy/vps-build.sh").exists())
 
+    # ---- V21.0: Keyword Run Workspace (one keyword -> full command center) ----
+    from src import workspace as _ws
+    check("keyword run workspace wired (/run + command center + scoring)",
+          callable(_ws.build_workspace) and callable(_ws.compute_scores)
+          and callable(_ws.save_run) and "/run" in _web_src
+          and "cmdbar" in _web_src and "Command Center" in _web_src)
+
     print("\nSELF-TEST RESULTS")
     for name, cond in results:
         print(f"  {'PASS' if cond else 'FAIL'}  {name}")

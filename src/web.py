@@ -175,19 +175,37 @@ def build_app(password, secret):
         detail = [_card(sub, f, "&bull;", t, d) for f, t, d in DETAIL_REPORTS
                   if (mdir / f).exists()]
         active_label = {m[0]: m[1] for m in modes}.get(active, active)
-        # --- interactive tools: live, self-serve, 24/7 (no operator needed) ---
+        # --- Instant Product Command Center: one keyword -> full workspace ---
         tools = (
-            '<h2 class="grouph">🔎 Instant tools — live, anyone can use anytime</h2>'
-            '<p class="lead">Type a keyword for an instant read — no waiting on '
-            'the operator.</p>'
-            '<form class="toolbar" method="get" action="/analyze">'
-            '<input name="q" placeholder="Type a keyword, e.g. custom dad shirt" '
-            'aria-label="keyword">'
-            '<button class="primary" name="do" value="analyze">Analyze</button>'
-            '<button name="do" value="expand">Expand</button>'
+            '<h2 class="grouph">⚡ Instant Product Command Center</h2>'
+            '<p class="lead">Type one keyword and build the whole opportunity — '
+            '<b>verdict, scores, listing, design & action plan</b> — on one page. '
+            'No waiting on the operator.</p>'
+            '<form class="cmdbar" method="get" action="/run">'
+            '<div class="kwrow">'
+            '<input name="q" aria-label="keyword" '
+            'placeholder="Main keyword, e.g. usa raccoon shirt">'
+            '<button class="primary" type="submit">Build full workspace →</button>'
+            '</div>'
+            '<div class="cmdopts">'
+            '<input name="product_type" placeholder="Product type (optional)">'
+            '<input name="niche" placeholder="Niche">'
+            '<input name="target_customer" placeholder="Target customer">'
+            '<input name="occasion" placeholder="Occasion">'
+            '<input name="style" placeholder="Style">'
+            '<input name="personalization" placeholder="Personalization">'
+            '<select name="supplier_type"><option value="">Supplier type…</option>'
+            '<option value="pod">Print on Demand</option>'
+            '<option value="embroidery">Embroidery</option>'
+            '<option value="digital">Digital</option>'
+            '<option value="other">Other</option></select>'
+            '</div>'
+            '<div class="cmdbtns">'
+            '<button formaction="/analyze" name="do" value="analyze">Analyze</button>'
+            '<button formaction="/analyze" name="do" value="expand">Expand</button>'
             '<button formaction="/should-sell">Should I sell?</button>'
-            '<button formaction="/draft-listing">Draft listing</button>'
-            '</form>'
+            '<button formaction="/draft-listing">Build listing</button>'
+            '</div></form>'
             '<div class="toolgrid">'
             f'<a class="toolcard" href="/trending?mode={active}"><b>📈 Trending now'
             f'</b><span>Rising keywords in {active_label}</span></a>'
@@ -284,6 +302,61 @@ def build_app(password, secret):
                            f'analyze "{val}": {_html.escape(str(exc)[:200])}'
                            '</p></article>')
         return page("Analyze a keyword", head + results)
+
+    # ---- KEYWORD RUN WORKSPACE: one keyword -> the whole opportunity ----
+    _OPT_FIELDS = ("product_type", "niche", "target_customer", "occasion",
+                   "style", "personalization", "supplier_type")
+
+    def _run_inputs():
+        raw = (request.args.get("q") or "").strip()[:80]
+        q = "".join(c for c in raw if c.isalnum() or c in " '&-.").strip()
+        opts = {k: (request.args.get(k) or "").strip()[:60] for k in _OPT_FIELDS}
+        return q, opts
+
+    @app.route("/run")
+    @login_required
+    def run():
+        import html as _html
+        q, opts = _run_inputs()
+        bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
+        if not q:
+            return page("Keyword Run", bar + '<article class="md"><h1>Keyword Run '
+                        'Workspace</h1><p class="empty">Type a keyword in the '
+                        'Command Center on the <a href="/">home page</a>.</p>'
+                        '</article>')
+        from src import workspace
+        try:
+            ws = workspace.build_workspace(q, opts)
+        except SystemExit as exc:
+            return page("Keyword Run", bar + '<article class="md"><p class="empty">'
+                        f'Live data unavailable: {_html.escape(str(exc)[:200])}'
+                        '</p></article>')
+        except Exception as exc:  # noqa: BLE001
+            return page("Keyword Run", bar + '<article class="md"><p class="empty">'
+                        f'Could not build the workspace for "{_html.escape(q)}": '
+                        f'{_html.escape(str(exc)[:200])}</p></article>')
+        head = (bar + f'<h1 style="margin:.1em 0 0">Keyword run — '
+                f'{_html.escape(q)}</h1>')
+        return page(f"Run: {q}", head + ws + WORKSPACE_JS)
+
+    @app.route("/run/save")
+    @login_required
+    def run_save():
+        import html as _html
+        q, opts = _run_inputs()
+        from src import workspace
+        back = "/run?" + workspace.save_qs(q, opts) if q else "/"
+        try:
+            ws = workspace.build_workspace(q, opts)
+            folder = workspace.save_run(q, opts, ws)
+            msg = (f'Saved to <code>{_html.escape(str(folder))}</code>. It will '
+                   'sync/appear under Reports.')
+        except Exception as exc:  # noqa: BLE001
+            msg = f'Could not save: {_html.escape(str(exc)[:200])}'
+        return page("Run saved",
+                    f'<div class="rbar"><a class="back" href="{back}">&larr; Back '
+                    f'to run</a></div><article class="md"><h1>Run saved</h1>'
+                    f'<p>{msg}</p></article>')
 
     # ---- other live self-serve tools (all MCP-backed, run on the VPS 24/7) ----
     def _render_tool(title, txt):
@@ -473,6 +546,81 @@ background:var(--surface);color:var(--accent);font-weight:700;font-size:.86rem;c
 border-radius:12px;background:var(--surface);box-shadow:var(--shadow);transition:border-color .12s,transform .12s}
 .toolcard:hover{border-color:var(--accent);transform:translateY(-1px)}
 .toolcard b{font-size:.95rem}.toolcard span{font-size:.79rem;color:var(--ink-soft)}
+/* command center */
+.cmdbar{background:var(--surface);border:1px solid var(--line-strong);
+border-radius:14px;padding:16px;box-shadow:var(--shadow);margin:12px 0 18px}
+.cmdbar .kwrow{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.cmdbar .kwrow input{flex:1;min-width:240px;padding:12px 14px;font-size:1.05rem;
+border:1px solid var(--line-strong);border-radius:10px;background:var(--paper);color:var(--ink)}
+.cmdopts{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
+gap:8px;margin-bottom:10px}
+.cmdopts input,.cmdopts select{padding:9px 10px;border:1px solid var(--line);
+border-radius:8px;background:var(--paper);color:var(--ink);font-size:.85rem}
+.cmdbtns{display:flex;gap:8px;flex-wrap:wrap}
+.cmdbtns button{padding:11px 15px;border:1px solid var(--accent);border-radius:10px;
+background:var(--surface);color:var(--accent);font-weight:700;font-size:.88rem;cursor:pointer}
+.cmdbtns button.primary{background:var(--accent);color:var(--paper)}
+.cmdbtns button:hover{filter:brightness(1.06)}
+/* workspace */
+.ws{background:var(--surface);border:1px solid var(--line);border-radius:14px;
+padding:18px 20px;margin:14px 0;box-shadow:var(--shadow)}
+.ws h2{font-size:1.15rem;margin:0 0 12px;border-bottom:1px solid var(--line);padding-bottom:8px}
+.ws h3{font-size:.98rem;margin:16px 0 6px}
+.verdict{border-radius:12px;padding:16px 18px;color:#fff}
+.verdict .vbig{font-size:1.7rem;font-weight:800;letter-spacing:-.02em}
+.verdict .vwhy{opacity:.92;margin:2px 0 12px}
+.verdict .vgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
+gap:10px;font-size:.85rem}
+.verdict .vgrid b{display:block;text-transform:uppercase;font-size:.66rem;
+letter-spacing:.08em;opacity:.8;margin-bottom:2px}
+.v-design{background:#1E6B54}.v-validate{background:#B45309}.v-watch{background:#3B6E8F}
+.v-skip{background:#6E6455}.v-avoid{background:#99271F}
+.scoregrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:10px}
+.score{border:1px solid var(--line);border-radius:10px;padding:11px 12px;background:var(--paper)}
+.sname{font-size:.8rem;font-weight:700;color:var(--ink-soft)}
+.est{font-size:.6rem;background:var(--accent-bg);color:var(--accent);padding:1px 4px;
+border-radius:4px;font-weight:700;vertical-align:middle}
+.snum{font-size:1.5rem;font-weight:800;font-variant-numeric:tabular-nums}
+.snum i{font-size:.7rem;font-style:normal;color:var(--ink-faint)}
+.sbar{height:6px;background:var(--line);border-radius:4px;overflow:hidden;margin:5px 0}
+.sbar span{display:block;height:100%;background:var(--accent)}
+.score.s4 .sbar span,.score.s5 .sbar span{background:var(--ok)}
+.score.s0 .sbar span,.score.s1 .sbar span{background:var(--stop)}
+.slabel{font-size:.72rem;font-weight:700;color:var(--ink-soft)}
+.swhy{font-size:.76rem;color:var(--ink-soft);margin-top:4px}
+.simp{font-size:.72rem;color:var(--ink-faint);margin-top:3px}
+.lb .lbrow{display:flex;align-items:center;gap:10px;margin:12px 0 4px;font-size:.85rem}
+.lb .lbrow b{font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-soft)}
+.lbval{background:var(--paper);border:1px solid var(--line);border-radius:8px;
+padding:9px 12px;font-size:.9rem;white-space:pre-wrap}
+.note{font-size:.75rem;color:var(--ink-faint);margin:6px 0 0}
+.cbtn{font-family:var(--mono);font-size:.68rem;font-weight:700;color:var(--accent);
+background:var(--surface);border:1px solid var(--line-strong);border-radius:6px;
+padding:4px 9px;cursor:pointer;text-decoration:none;display:inline-block}
+.cbtn:hover{border-color:var(--accent)}
+.facts,.check{margin:0;padding-left:18px;font-size:.87rem}.facts li,.check li{margin:4px 0}
+.expbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+/* internal product preview */
+.pv{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:16px;
+border:1px solid var(--line-strong);border-radius:12px;padding:14px;background:var(--paper)}
+.pvmain{aspect-ratio:1;background:repeating-linear-gradient(45deg,var(--line),var(--line) 10px,var(--surface) 10px,var(--surface) 20px);
+border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--ink-faint);font-size:.8rem}
+.pvthumbs{display:flex;gap:6px;margin-top:6px}.pvthumbs i{width:38px;height:38px;background:var(--line);border-radius:6px}
+.pvshop{font-size:.78rem;color:var(--ink-soft)}
+.pvtitle{font-size:1.02rem;font-weight:600;margin:4px 0}
+.pvprice{font-size:1.35rem;font-weight:800;margin:6px 0}.pvprice small{font-size:.68rem;font-weight:400;color:var(--ink-faint)}
+.pvpers{display:block;font-size:.75rem;color:var(--ink-soft);margin:8px 0}
+.pvpers textarea{display:block;width:100%;min-height:42px;margin-top:3px;border:1px solid var(--line-strong);
+border-radius:8px;padding:6px;background:var(--surface);color:var(--ink)}
+.pvqty{font-size:.8rem;margin:6px 0}.pvqty select{margin-left:6px;padding:3px 6px;border-radius:6px}
+.pvcart{width:100%;padding:11px;background:var(--accent);color:var(--paper);border:none;
+border-radius:24px;font-weight:700;cursor:pointer;margin:8px 0}
+.pvacc{border-top:1px solid var(--line);padding:6px 0;font-size:.82rem}
+.pvacc summary{cursor:pointer;font-weight:600}
+.pvtags{margin-top:8px;font-size:.68rem;color:var(--ink-faint)}
+.pvtags span{display:inline-block;background:var(--accent-bg);color:var(--accent);
+padding:1px 6px;border-radius:10px;margin:2px 3px 0 0}
+@media(max-width:640px){.pv{grid-template-columns:1fr}}
 /* report list */
 .reports{display:grid;gap:10px}
 .report{display:grid;grid-template-columns:44px 1fr auto;align-items:center;gap:16px;
@@ -626,6 +774,19 @@ document.querySelectorAll('.md pre').forEach(pre=>{
       b.textContent='Copied';setTimeout(()=>b.textContent='Copy',1200);});
   });
   pre.appendChild(b);
+});
+</script>
+"""
+
+WORKSPACE_JS = """
+<script>
+document.querySelectorAll('.cbtn[data-copy]').forEach(b=>{
+  b.addEventListener('click',()=>{
+    const el=document.getElementById(b.dataset.copy); if(!el) return;
+    navigator.clipboard.writeText(el.innerText).then(()=>{
+      const t=b.textContent; b.textContent='Copied \\u2713';
+      setTimeout(()=>{b.textContent=t;},1200);});
+  });
 });
 </script>
 """
