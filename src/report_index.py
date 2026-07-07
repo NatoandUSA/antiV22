@@ -70,7 +70,7 @@ def latest_day_dir(include_selftest=False):
 
 
 def scan_latest(include_selftest=False):
-    """{label: {"md": path|None, "pdf": path|None}} for the newest day."""
+    """{label: {"md": path|None}} for the newest day."""
     day = latest_day_dir(include_selftest)
     out = {}
     if not day:
@@ -82,9 +82,7 @@ def scan_latest(include_selftest=False):
         hits = sorted(folder.glob(pattern), key=lambda p: p.stat().st_mtime)
         if not hits:
             continue
-        md = hits[-1]
-        pdf = md.with_suffix(".pdf")
-        out[label] = {"md": md, "pdf": pdf if pdf.exists() else None}
+        out[label] = {"md": hits[-1]}
     return out
 
 
@@ -96,9 +94,6 @@ def list_reports(include_selftest=False, latest_dir="reports/latest"):
     if start.exists():
         print("\nREAD FIRST:")
         print(f"{start}")
-        pdf = start.with_suffix(".pdf")
-        if pdf.exists():
-            print(f"{pdf}")
         print("\nMAIN REPORTS:")
         for i, name in enumerate(
                 ("01_MANAGER_ACTION_REPORT",
@@ -106,10 +101,7 @@ def list_reports(include_selftest=False, latest_dir="reports/latest"):
                  "03_SELLER_EXECUTION_REPORT",
                  "04_DESIGNER_BRIEF_REPORT"), 1):
             md = latest / f"{name}.md"
-            pd = latest / f"{name}.pdf"
-            print(f"{i}. {md}" + (f"  (+ PDF)" if pd.exists()
-                                  else "  (PDF missing - run: python "
-                                  "main.py pdfcheck)"))
+            print(f"{i}. {md}")
         info = latest / "_run_info.txt"
         if info.exists():
             lines = info.read_text(encoding="utf-8").splitlines()
@@ -144,7 +136,6 @@ def list_reports_detailed(include_selftest=False):
             print("     (not generated this run - see manifest)")
             continue
         print(f"     MD:  {paths['md']}")
-        print(f"     PDF: {paths['pdf'] or 'MISSING - run: python main.py pdfcheck'}")
     print("\n================ EXTRA DETAIL REPORTS ==============")
     for label, cat, pat in EXTRA_LABELS:
         paths = found.get(label)
@@ -163,7 +154,6 @@ def list_reports_detailed(include_selftest=False):
     print("First time on a PC:  python main.py selftest   (verify install)")
     print("Generate everything: python main.py allreports (end of day)")
     print("Find the files:      python main.py listreports (any time)")
-    print("PDF problems:        python main.py pdfcheck")
     print()
     return found
 
@@ -201,7 +191,7 @@ def open_reports(really_open=True):
 
 
 def update_latest(_manifest_path=None):
-    """Rebuild reports/latest/ + latest_report_manifest.* from the newest
+    """Rebuild reports/latest/ + latest_report_manifest.md from the newest
     OPERATIONAL (date-named) folder. selftest never lands here."""
     day = latest_day_dir()
     if day is None:
@@ -213,11 +203,10 @@ def update_latest(_manifest_path=None):
         old.unlink()
     for label, paths in found.items():
         canon = LATEST_CANONICAL.get(label)
-        for kind, suffix in (("md", ".md"), ("pdf", ".pdf")):
-            p = paths.get(kind)
-            if p:
-                name = (canon + suffix) if canon else p.name
-                shutil.copy(p, latest / name)
+        p = paths.get("md")
+        if p:
+            name = (canon + ".md") if canon else p.name
+            shutil.copy(p, latest / name)
         if label == "Product Status Board":
             csvp = paths["md"].with_suffix(".csv")
             if csvp.exists():
@@ -225,6 +214,4 @@ def update_latest(_manifest_path=None):
     man = found.get("Manifest", {})
     if man.get("md"):
         shutil.copy(man["md"], "reports/latest_report_manifest.md")
-    if man.get("pdf"):
-        shutil.copy(man["pdf"], "reports/latest_report_manifest.pdf")
     return day

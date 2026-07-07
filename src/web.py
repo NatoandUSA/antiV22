@@ -38,6 +38,9 @@ REPORTS = [
 # Detailed reports each `daily` run also produces, mirrored to reports/latest
 # under canonical names. Shown when present.
 DETAIL_REPORTS = [
+    ("market_pulse.md", "Market Pulse (live)",
+     "What's hot RIGHT NOW from the live YTrends index — trending keywords, "
+     "hidden gems, winning listings, seasonal calendar, cross-checked vs Google."),
     ("research_report.md", "Research Report",
      "Everything for this line in one place: ideas + analysis + discover + performance."),
     ("manager_report.md", "Manager Report (full)",
@@ -90,7 +93,7 @@ def _available_modes():
 
 def build_app(password, secret):
     from flask import (Flask, session, request, redirect, url_for,
-                       abort, send_from_directory, Response)
+                       abort, Response)
     import markdown as md
 
     app = Flask(__name__)
@@ -132,14 +135,11 @@ def build_app(password, secret):
         return redirect(url_for("login"))
 
     def _card(sub, fname, badge, title, desc):
-        pdf = (LATEST / sub / fname).with_suffix(".pdf")
-        pdf_btn = (f'<span class="btn ghost" data-href="/pdf/{sub}{pdf.name}">'
-                   f'PDF</span>' if pdf.exists() else "")
         return (f'<a class="report" href="/report/{sub}{fname}">'
                 f'<span class="rid">{badge}</span>'
                 f'<span class="rmeta"><span class="rt">{title}</span>'
                 f'<span class="rd">{desc}</span></span>'
-                f'<span class="ractions">{pdf_btn}'
+                f'<span class="ractions">'
                 f'<span class="btn">Read &rarr;</span></span></a>')
 
     # ---- report list ----
@@ -201,22 +201,10 @@ def build_app(password, secret):
         titles = {f: t for _, f, t, _ in REPORTS}
         titles.update({f: t for f, t, _ in DETAIL_REPORTS})
         title = titles.get(base, base)
-        pdf = p.with_suffix(".pdf")
-        pdf_btn = (f'<a class="btn ghost" href="/pdf/{sub}{pdf.name}" '
-                   f'target="_blank" rel="noopener">Download PDF</a>'
-                   if pdf.exists() else "")
         back = f'/?mode={sub.rstrip("/") or "all"}'
         bar = (f'<div class="rbar"><a class="back" href="{back}">&larr; All '
-               f'reports</a>{pdf_btn}</div>')
+               f'reports</a></div>')
         return page(title, bar + f'<article class="md">{html}</article>' + COPY_JS)
-
-    @app.route("/pdf/<path:name>")
-    @login_required
-    def pdf(name):
-        p = _safe_report(name)
-        if not p or p.suffix != ".pdf":
-            abort(404)
-        return send_from_directory(str(p.parent), p.name)
 
     return app
 
@@ -381,12 +369,6 @@ PORTAL = """
   {{BODY}}
   <footer>Reports are prepared on the research machine and synced here.</footer>
 </div>
-<script>
-document.querySelectorAll('.btn.ghost[data-href]').forEach(b=>{
-  b.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();
-    window.open(b.dataset.href,'_blank');});
-});
-</script>
 """
 
 COPY_JS = """

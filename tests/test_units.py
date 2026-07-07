@@ -205,23 +205,3 @@ def test_partner_status_four_states(required, disclosed, expected):
         "production_partner_required": required,
         "production_partner_disclosed": disclosed,
     }) == expected
-
-
-# --------------------------------------------------------------------------
-# PDF export: ragged markdown tables must not crash (regression for the fix)
-# --------------------------------------------------------------------------
-
-def test_ragged_table_renders_without_crashing(tmp_path):
-    from src.pdf_export import md_to_pdf
-    md = tmp_path / "ragged.md"
-    md.write_text(
-        "# Ragged\n\n"
-        "| Name | Price | Sold |\n|---|---|---|\n"
-        "| Bag | 32 | 210 |\n"       # exact
-        "| ShortRow | 29 |\n"        # too few cells
-        "| Long | 27 | 60 | X | Y |\n"  # too many cells
-        "| Normal | 34 | 90 |\n",
-        encoding="utf-8")
-    out = md_to_pdf(md)
-    assert out is not None and out.exists()
-    assert out.stat().st_size > 0

@@ -1,4 +1,13 @@
-# Etsy Product Manager V20.3
+# Etsy Product Manager V20.4
+
+**New in V20.4 — Live Market Pulse.** Every `daily` run now builds a **Market
+Pulse** report (per mode: Print on Demand + Embroidery) straight from the
+official **YTrends MCP** live index — trending keywords, hidden gems, winning
+listings (market intel, never copy), and the seasonal calendar — each
+cross-checked against **Google Trends** (Pinterest and X switch on when you add
+their tokens to `.env`). It's the first card on the team dashboard. PDF export
+was removed; reports are Markdown-only. See [SUPPLIERS.md](SUPPLIERS.md) for
+data sources.
 
 ## Run it on a new computer (Mac M1 / Windows / Linux)
 
@@ -41,14 +50,14 @@ changes on any machine later: `git pull`.
 ## What to read (in this order)
 
     reports/latest/
-      00_START_HERE.pdf                        <- navigation + today's status
-      01_MANAGER_ACTION_REPORT.pdf             <- Manager: decisions, blockers,
-                                                  publish permission
-      02_MARKET_KEYWORD_OPPORTUNITY_REPORT.pdf <- Researcher: keyword ranking,
-                                                  ideas, discover, performance
-      03_SELLER_EXECUTION_REPORT.pdf           <- Seller: drafts, title/tags,
-                                                  QA (drafts only!)
-      04_DESIGNER_BRIEF_REPORT.pdf             <- Designer: briefs + prompts
+      00_START_HERE.md                        <- navigation + today's status
+      01_MANAGER_ACTION_REPORT.md             <- Manager: decisions, blockers,
+                                                 publish permission
+      02_MARKET_KEYWORD_OPPORTUNITY_REPORT.md <- Researcher: keyword ranking,
+                                                 ideas, discover, performance
+      03_SELLER_EXECUTION_REPORT.md           <- Seller: drafts, title/tags,
+                                                 QA (drafts only!)
+      04_DESIGNER_BRIEF_REPORT.md             <- Designer: briefs + prompts
 
 Every run is also archived with exact time in reports/runs/, including
 raw_data/ and archive_debug_reports/ (the detailed reports live there).
@@ -63,7 +72,6 @@ raw_data/ and archive_debug_reports/ (the detailed reports live there).
   statusboard / finalqa / performance / grow / discover / supplier /
   printify / expand / listing: advanced or debug - normal team members
   do not need these.
-- pdfcheck: only if PDFs are missing.
 
 ## Publishing safety rule
 
@@ -197,7 +205,7 @@ Team inputs the agent depends on:
 Tao goi listing DRAFT: TITLE + 13 TAGS + DESCRIPTION (tieng Anh,
 dan thang vao Etsy), gia ban kem loi nhuan uoc tinh, link 3 doi thu manh
 nhat, checklist 10 anh/mockup, va 14 buoc dang tren Shop Manager - tat ca
-huong dan bang tieng Viet, xuat kem PDF. Tu khoa dinh thuong hieu HIGH se
+huong dan bang tieng Viet. Tu khoa dinh thuong hieu HIGH se
 bi chan; CAUTION se co canh bao kiem tra USPTO truoc.
 
 ## Printify integration (real costs)
@@ -219,7 +227,7 @@ WATCHLIST / SKIP / BLOCKED / WAIT FOR TM CHECK), cluster tot nhat + diem
 /100, 5 brief cho designer, mo hinh loi nhuan day du, audit doi thu (loc
 relevance >= 0.75), 2 goi listing da kiem tra (dung 13 tag), bang tu khoa
 bi loai + cach cuu, hang doi trademark, ke hoach 7 ngay, va QA validator
-15 muc (READY / NEEDS_FIX). Xuat: .md + PDF (song ngu), .json (may doc),
+15 muc (READY / NEEDS_FIX). Xuat: .md (song ngu), .json (may doc),
 tasks_*.md (viec cho designer/seller/researcher/trademark).
 
 Legacy notes - BAN HANG TOT HON DOI THU (sales execution):
@@ -256,8 +264,7 @@ Moi lan chay manager tao them 2 file cho team:
 - design_prompts_*.md: prompt san sang COPY-DAN vao Claude/Claude Design
   cho tung thiet ke (kem du lieu best seller Etsy + spec san xuat POD/theu)
 - seller_pack_*.md: chi tiet listing theo DUNG thu tu dan vao Etsy
-Bao cao manager gio co du 2 ban: tieng Anh (goc) + _VI.md tieng Viet, moi
-ban kem PDF.
+Bao cao manager gio co du 2 ban: tieng Anh (goc) + _VI.md tieng Viet.
 
 V14 - LENH SUPPLIER (2 lenh moi):
    py main.py supplier pod "clear concert bag"
@@ -291,15 +298,13 @@ Loc ket qua theo dong san pham. Khong ghi mode = tat ca.
 Embroidery = tu khoa chua: embroider/chenille/monogram/applique/
 stitch/patch/crochet/knit. POD = phan con lai.
 
-## PDF + song ngu (bilingual)
+## Song ngu (bilingual)
 
-Moi bao cao xuat 4 file: report.md + report.pdf (tieng Viet) va
-report_EN.md + report_EN.pdf (tieng Anh) - cung noi dung, cung so lieu.
+Moi bao cao xuat 2 file: report.md (tieng Viet) va report_EN.md
+(tieng Anh) - cung noi dung, cung so lieu.
 
-Moi bao cao (.md) tu dong xuat them ban PDF cung thu muc reports/.
 Noi dung huong dan trong bao cao viet bang tieng Viet; tu khoa va so
 lieu giu tieng Anh vi Etsy la thi truong tieng Anh.
-Yeu cau: pip install reportlab (da co trong requirements.txt).
 
 ## Next upgrades (do these in Claude Code)
 

@@ -323,16 +323,9 @@ def run_selftest():
     check("blocker report grouped by severity with critical no-data",
           "## Critical" in blk and "DATA_UNAVAILABLE" in blk)
     sb = day_root / "status_board"
-    check("status board csv+md+pdf exist",
+    check("status board csv+md exist",
           (sb / "product_status_board.csv").exists()
-          and (sb / "product_status_board.md").exists()
-          and (sb / "product_status_board.pdf").exists())
-    check("final_qa md has pdf sibling",
-          (day_root / "final_qa" / f"final_qa_summary_{test_day}.pdf"
-           ).exists())
-    check("performance md has pdf sibling",
-          (day_root / "performance" /
-           f"performance_report_{test_day}.pdf").exists())
+          and (sb / "product_status_board.md").exists())
     fqa = (day_root / "final_qa" / f"final_qa_summary_{test_day}.md"
            ).read_text(encoding="utf-8")
     check("final QA says none in QA / none publish-ready",
@@ -342,26 +335,16 @@ def run_selftest():
           ri.latest_day_dir() is not None
           and ri.latest_day_dir().name == test_day)
     pass
-    check("research report exists (combined, with PDF)",
+    check("research report exists (combined)",
           (day_root / "research" / f"research_report_{test_day}.md"
-           ).exists()
-          and (day_root / "research" /
-               f"research_report_{test_day}.pdf").exists())
+           ).exists())
     rr = (day_root / "research" / f"research_report_{test_day}.md"
           ).read_text(encoding="utf-8")
     check("research report has 3 parts",
           "PART 1" in rr and "PART 2" in rr and "PART 3" in rr)
     pass
-    check("manifest records per-file PDF status column",
-          "| File | Report type | PDF |" in mtxt)
-    core_ok = True
-    for f in day_root.rglob("*.md"):
-        if f.name.startswith("manifest"):
-            continue
-        if not f.with_suffix(".pdf").exists() and "MISSING" not in mtxt:
-            core_ok = False
-    check("every operational report has PDF or visible failure note",
-          core_ok)
+    check("manifest lists files generated this run",
+          "| File | Report type |" in mtxt)
     # manager command does not hang without data
     pm.TODAY = "2026-01-02"
     t2 = __import__("time").time()
@@ -383,14 +366,13 @@ def run_selftest():
     check("requirements.txt exists with core deps",
           Path("requirements.txt").exists() and all(
               d in Path("requirements.txt").read_text()
-              for d in ("requests", "reportlab", "python-dotenv")))
+              for d in ("requests", "python-dotenv")))
     check("live-API commands have hang guard in main",
           "LIVE_API_CMDS" in main_src and "probe" in main_src)
     check("bare command guards missing pytrends",
           "pip install pytrends" in main_src)
-    check("user guide exists with PDF",
-          Path("USER_GUIDE.md").exists()
-          and Path("USER_GUIDE.pdf").exists())
+    check("user guide exists",
+          Path("USER_GUIDE.md").exists())
     pass
     # cleanup simulated operational runs (never the real reports/latest)
     for d in ("2026-01-01", "2026-01-02"):
@@ -415,10 +397,9 @@ def run_selftest():
     run_dir = dl.run_daily(data_ok=False,
                            runs_root="reports/selftest_runs",
                            latest_dir="reports/selftest_latest")
-    ten = [run_dir / f"{n}{e}" for n in dl.MAIN_FILES
-           for e in (".md", ".pdf")]
-    check("daily creates exactly 5 md + 5 pdf in a run folder",
-          all(f.exists() for f in ten))
+    five = [run_dir / f"{n}.md" for n in dl.MAIN_FILES]
+    check("daily creates exactly 5 md in a run folder",
+          all(f.exists() for f in five))
     check("run folder name has date+time+version",
           "2026-" in run_dir.name and VERSION in run_dir.name
           and len(run_dir.name.split("_")[1]) == 6)
@@ -448,9 +429,9 @@ def run_selftest():
           all("DATA_UNAVAILABLE" in (run_dir / f"{n}.md"
               ).read_text(encoding="utf-8")
               for n in dl.MAIN_FILES))
-    check("latest mirror has the 5 report pairs + run info",
-          all((Path("reports/selftest_latest") / f"{n}{e}").exists()
-              for n in dl.MAIN_FILES for e in (".md", ".pdf"))
+    check("latest mirror has the 5 reports + run info",
+          all((Path("reports/selftest_latest") / f"{n}.md").exists()
+              for n in dl.MAIN_FILES)
           and (Path("reports/selftest_latest") / "_run_info.txt").exists())
     check("selftest did NOT touch real reports/latest",
           _snapshot("reports/latest") == _real_latest_before)
@@ -515,6 +496,36 @@ def run_selftest():
     from src.team_packs import EMB_SPEC
     check("design prompts carry real embroidery areas",
           "250mm" in EMB_SPEC and "120mm" in EMB_SPEC and "56-58cm" in EMB_SPEC)
+
+    # ---- V20.4: live YTrends MCP + Market Pulse + cross-check (offline) ----
+    from src import ytrends_mcp as _mcp
+    check("YTrends MCP client wired (required tools + typed helpers)",
+          {"ytrends_find_trending_keywords", "ytrends_find_hidden_gems"}
+          <= _mcp.REQUIRED_TOOLS
+          and callable(_mcp.trending_keywords)
+          and callable(_mcp.market_snapshot))
+
+    from src import crosscheck as _cc
+    check("cross-check sources present (Google Trends + Pinterest + X)",
+          set(_cc.status()) == {"Google Trends", "Pinterest", "X / Twitter"}
+          and callable(_cc.confirm))
+
+    from src import market_pulse as _mp
+    check("Market Pulse builder is mode-aware (POD + Embroidery)",
+          callable(_mp.build_market_pulse)
+          and _mp.MODE_LABEL.get("pod") == "Print on Demand"
+          and _mp.MODE_LABEL.get("embroidery") == "Embroidery")
+
+    _daily_src = Path("src/daily.py").read_text(encoding="utf-8")
+    _web_src = Path("src/web.py").read_text(encoding="utf-8")
+    check("Market Pulse wired into daily build + team portal",
+          "build_market_pulse" in _daily_src
+          and '"market_pulse"' in _daily_src
+          and "market_pulse.md" in _web_src)
+
+    _env_ex = Path(".env.example").read_text(encoding="utf-8")
+    check("cross-check tokens documented in .env.example",
+          "PINTEREST_ACCESS_TOKEN" in _env_ex and "X_BEARER_TOKEN" in _env_ex)
 
     print("\nSELF-TEST RESULTS")
     for name, cond in results:

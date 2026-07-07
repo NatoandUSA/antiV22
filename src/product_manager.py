@@ -805,9 +805,9 @@ def run_manager(mode=None, data_ok=None):
         dp = write_design_prompts(briefs, audit, packages, mode_label, edges)
         cg = write_chatgpt_prompts(briefs, audit, packages, mode_label, edges)
         sp2 = write_seller_pack(packages, pub_ready, mode_label)
-        print(f"  Designer prompts: {dp} (+PDF)")
-        print(f"  ChatGPT prompts:  {cg} (+PDF)")
-        print(f"  Seller pack:      {sp2} (+PDF)")
+        print(f"  Designer prompts: {dp}")
+        print(f"  ChatGPT prompts:  {cg}")
+        print(f"  Seller pack:      {sp2}")
 
     design_ready = bool(briefs) and all(
         p["status"] == "DESIGN_PREP_READY" for p in packages)
@@ -824,7 +824,7 @@ def run_manager(mode=None, data_ok=None):
     for c in clusters[:5]:
         print(f"  {c['verdict']:<24} {c['name']:<22} score={c['score']}/100 "
               f"confidence={c['confidence']}")
-    print(f"\nReports: {md} (+ _EN, + PDFs), manager_{TODAY}.json, "
+    print(f"\nReports: {md} (+ _EN), manager_{TODAY}.json, "
           f"tasks_{TODAY}.md")
 
 

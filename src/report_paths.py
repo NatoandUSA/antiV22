@@ -2,7 +2,7 @@
 
 reports/YYYY-MM-DD/{manager,design,seller,discover,ideas,listing,tasks,
 final_qa,performance,index}/  plus reports/latest/ mirrors and
-reports/latest_report_manifest.{md,pdf}.
+reports/latest_report_manifest.md.
 """
 from pathlib import Path
 

@@ -1,6 +1,6 @@
 """`python main.py daily` - THE team command (V20.1-FINAL).
 
-Generates exactly 5 clean files (md+pdf each), grouped per run:
+Generates exactly 5 clean Markdown files, grouped per run:
 
   reports/runs/YYYY-MM-DD_HHMMSS_<VERSION>/
     00_START_HERE
@@ -17,7 +17,7 @@ without live data (DATA_UNAVAILABLE format).
 import shutil
 from pathlib import Path
 
-from src.ops_reports import _pdf, _strip_stamp, load_mgr_json
+from src.ops_reports import _strip_stamp, load_mgr_json
 from src.timestamp import get_report_timestamp, stamp_file
 from src.version import VERSION
 
@@ -30,6 +30,7 @@ MAIN_FILES = ["00_START_HERE", "01_MANAGER_ACTION_REPORT",
 # so the team portal + the sync surface them, not just the clean 5.
 # (category folder, filename prefix, canonical name in reports/latest)
 EXTRA_LATEST = [
+    ("market_pulse", "market_pulse_", "market_pulse"),
     ("research", "research_report_", "research_report"),
     ("manager", "manager_", "manager_report"),
     ("ideas", "ideas_", "ideas_report"),
@@ -75,7 +76,6 @@ def _emit(run_dir, name, report_type, lines):
     p = run_dir / f"{name}.md"
     p.write_text("\n".join(lines), encoding="utf-8")
     stamp_file(p, report_type)
-    _pdf(p)
     return p
 
 
@@ -127,8 +127,8 @@ def build_start_here(mgr, data_ok, run_dir):
          "# Command Order", "",
          "## First-time setup or after every update",
          "1. `python main.py selftest`",
-         "Why: checks the tool, report generation, PDF export, and safety "
-         "gates are healthy before the team uses it.", "",
+         "Why: checks the tool, report generation, and safety gates are "
+         "healthy before the team uses it.", "",
          "## Daily report generation",
          "2. `python main.py daily`",
          "Why: generates the 4 clean operational reports and this "
@@ -540,6 +540,17 @@ def run_daily(mode=None, data_ok=None,
     print(f"Daily report run {VERSION} - {ts['display']}")
     # 1) generate the detailed layer (never hangs; no-data safe)
     ar.run_allreports(mode, data_ok=data_ok)
+    # 1b) Market Pulse: live "what's hot now" from the YTrends MCP index +
+    #     Google/Pinterest/X cross-checks. Its own live source, so it runs even
+    #     if the legacy keyword fetch failed; it self-reports if MCP is down.
+    #     Skipped when data_ok is explicitly False (selftest / known no-data
+    #     runs) so those stay fast and fully offline.
+    if data_ok is not False:
+        try:
+            from src.market_pulse import build_market_pulse
+            build_market_pulse(mode, day)
+        except Exception as exc:  # never let it break the daily run
+            print(f"  Market Pulse skipped: {exc}")
     if data_ok is None:
         data_ok, _ = ar.data_available()
     mgr = load_mgr_json(day)
@@ -594,10 +605,9 @@ def run_daily(mode=None, data_ok=None,
                 old.unlink()
         # 1) the 5 clean daily reports
         for name in MAIN_FILES:
-            for ext in (".md", ".pdf"):
-                src = run_dir / f"{name}{ext}"
-                if src.exists():
-                    shutil.copy(src, mtarget / f"{name}{ext}")
+            src = run_dir / f"{name}.md"
+            if src.exists():
+                shutil.copy(src, mtarget / f"{name}.md")
         # 2) every detailed report this run produced (newest of each type),
         #    under canonical names so the team portal + sync can show them.
         daydir = arch / day
@@ -606,9 +616,6 @@ def run_daily(mode=None, data_ok=None,
             if not md:
                 continue
             shutil.copy(md, mtarget / f"{canon}.md")
-            pdf = md.with_suffix(".pdf")
-            if pdf.exists():
-                shutil.copy(pdf, mtarget / f"{canon}.pdf")
         # 3) chatgpt prompt DATA (date-named json) for the `images` command
         cj = daydir / "design" / f"chatgpt_prompts_{day}.json"
         if cj.exists():

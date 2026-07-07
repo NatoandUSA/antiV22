@@ -1,7 +1,7 @@
 """End-to-end pipeline test, isolated in a temp-cwd sandbox.
 
 This reuses the existing, battle-tested `run_selftest()` (100+ assertions
-covering the manager pipeline, publish gates, bilingual reports, PDF export,
+covering the manager pipeline, publish gates, bilingual reports,
 timestamps, and the operational report set) but runs it inside a throwaway
 copy of the project. That makes it order-independent and stops it from
 mutating the real reports/ tree -- the two defects that made the bespoke
@@ -25,5 +25,5 @@ def test_main_is_importable_and_dispatch_matches_known(sandbox):
     assert callable(main.main)
     assert all(callable(h) for h in main.COMMANDS.values())
     assert main.LIVE_API_CMDS <= set(main.COMMANDS)
-    for name in ("daily", "selftest", "pdfcheck", "listing", "manager"):
+    for name in ("daily", "selftest", "listing", "manager"):
         assert name in main.COMMANDS

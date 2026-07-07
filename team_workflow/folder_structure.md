@@ -13,4 +13,4 @@ Etsy_Team_Workspace/
   10_Archive/ (killed_products/, old_versions/)
 
 File naming: YYYY-MM-DD_role_report_product-name.md
-Generated: YYYY-MM-DD_manager_report_V19_EN.pdf etc.
+Generated: YYYY-MM-DD_manager_report_V19_EN.md etc.

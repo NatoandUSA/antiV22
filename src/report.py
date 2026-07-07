@@ -31,9 +31,4 @@ def write_report(rows):
     path.write_text("\n".join(lines), encoding="utf-8")
     from src.timestamp import stamp_file
     stamp_file(path, "Google Trends Validation")
-    try:
-        from src.pdf_export import md_to_pdf
-        md_to_pdf(path)
-    except Exception:
-        pass
     return path

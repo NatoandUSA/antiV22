@@ -42,13 +42,13 @@ py main.py listreports
 ```
 (or just open the folder / hoac chi can mo thu muc: reports/latest/)
 Only 5 files / Chi 5 file:
-0. `00_START_HERE.pdf` - navigation + today status / dieu huong + trang thai
-1. `01_MANAGER_ACTION_REPORT.pdf` - READ FIRST / DOC TRUOC: quyet dinh,
+0. `00_START_HERE.md` - navigation + today status / dieu huong + trang thai
+1. `01_MANAGER_ACTION_REPORT.md` - READ FIRST / DOC TRUOC: quyet dinh,
    diem chan, quyen dang bai (gom ca blockers, tasks, status, final QA)
-2. `02_MARKET_KEYWORD_OPPORTUNITY_REPORT.pdf` - xep hang tu khoa 1-2-3,
+2. `02_MARKET_KEYWORD_OPPORTUNITY_REPORT.md` - xep hang tu khoa 1-2-3,
    y tuong, co hoi, discover, performance - TAT CA trong 1 file
-3. `03_SELLER_EXECUTION_REPORT.pdf` - Seller: ban nhap, title/tags, QA
-4. `04_DESIGNER_BRIEF_REPORT.pdf` - Designer: brief + prompt
+3. `03_SELLER_EXECUTION_REPORT.md` - Seller: ban nhap, title/tags, QA
+4. `04_DESIGNER_BRIEF_REPORT.md` - Designer: brief + prompt
 Chi tiet debug nam trong reports/runs/<run>/archive_debug_reports/.
 
 **During the day / Trong ngay:** each owner clears their blockers.
@@ -61,7 +61,7 @@ py main.py daily
 py main.py listreports
 ```
 Send the manager this path / Gui manager duong dan:
-`reports/latest/00_START_HERE.pdf`
+`reports/latest/00_START_HERE.md`
 
 ## 4. All commands / Tat ca lenh
 
@@ -69,12 +69,12 @@ Send the manager this path / Gui manager duong dan:
 | Command | What it does / Tac dung |
 |---|---|
 | `py main.py daily [pod\|embroidery]` | THE team command: 5 clean reports into reports/latest/ + a timestamped run folder. Works even with no data. / Lenh chinh cua team: 5 bao cao sach. |
-| `py main.py listreports` | Show every latest report path (md+pdf+csv). / Xem duong dan moi bao cao moi nhat. |
+| `py main.py listreports` | Show every latest report path (md+csv). / Xem duong dan moi bao cao moi nhat. |
 | `py main.py openreports` | Open the latest report folder. / Mo thu muc bao cao moi nhat. |
 | `py main.py manager [pod\|embroidery]` | Full manager analysis only. Never hangs. / Chi chay phan tich manager. |
 | `py main.py tasks` | Daily tasks report (9 roles). / Bao cao viec theo 9 vai tro. |
 | `py main.py blockers` | Blockers grouped by severity. / Bao cao diem chan theo muc do. |
-| `py main.py statusboard` | Product status board (csv+md+pdf). / Bang trang thai san pham. |
+| `py main.py statusboard` | Product status board (csv+md). / Bang trang thai san pham. |
 | `py main.py finalqa` | Final QA summary. / Tom tat QA cuoi. |
 | `py main.py performance` | Decisions from shop_performance.csv (SCALE/REVISE/KILL/WATCH). / Quyet dinh tu so lieu shop. |
 | `py main.py selftest` | Verify install, 90+ checks, no internet needed. / Kiem tra cai dat. |
@@ -125,7 +125,6 @@ Send the manager this path / Gui manager duong dan:
 |---|---|
 | 401 / "unreachable" on research commands | Cookie expired. Redo step 2.4 (F12 -> copy cookie -> .env). / Cookie het han, lay lai. |
 | Reports say DATA_UNAVAILABLE | Same as above, or restore fresh keyword_data.csv. No product moves forward that day; no publishing. |
-| PDF missing | Run `py main.py pdfcheck` - it names the exact Python and the exact install command, and creates a test PDF. / Chay pdfcheck de biet chinh xac cach sua. |
 | `pytrends` error on bare `py main.py` | `py -m pip install pytrends` (only affects Google Trends check). |
 | "Unknown command" | Check spelling; run `py main.py` help text. The tool never guesses. |
 | Where are my reports? | `py main.py listreports` - or bookmark `reports/latest/`. Selftest reports live in `reports/selftest/` and are never "latest". |

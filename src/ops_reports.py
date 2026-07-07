@@ -2,8 +2,8 @@
 
 Every report category exists EVERY run. When data is unavailable, reports
 say DATA_UNAVAILABLE with reason, owner, required fix, and severity -
-they never pretend and they are never skipped. All writers stamp headers
-and attempt PDF export, reporting failures loudly.
+they never pretend and they are never skipped. All writers stamp headers.
+Reports are Markdown only.
 """
 import csv
 import json
@@ -23,25 +23,10 @@ ROLES = ["Manager", "Claude Operator", "Researcher", "Supplier Checker",
          "Performance Analyst"]
 
 
-def _pdf(path):
-    try:
-        from src.pdf_export import md_to_pdf
-        out = md_to_pdf(path)
-        if not out:
-            print(f"  PDF FAILED for {path} (reportlab missing?) - "
-                  "Markdown kept")
-            return None
-        return out
-    except Exception as exc:
-        print(f"  PDF FAILED for {path}: {exc} - Markdown kept")
-        return None
-
-
 def _write(day, category, filename, report_type, lines):
     p = rdir(day, category) / filename
     p.write_text("\n".join(lines), encoding="utf-8")
     stamp_file(p, report_type)
-    _pdf(p)
     return p
 
 
@@ -55,7 +40,7 @@ def load_mgr_json(day):
     return None
 
 
-# ---------------- no-data manager (EN + VI + PDFs) ----------------
+# ---------------- no-data manager (EN + VI) ----------------
 
 def write_nodata_manager(day, reason):
     p = rdir(day, "manager") / f"manager_{day}.md"
@@ -205,7 +190,7 @@ def write_blockers(day, mgr=None, reason=""):
                   "Blocker Report", L)
 
 
-# ---------------- product status board (csv + md + pdf) ----------------
+# ---------------- product status board (csv + md) ----------------
 
 BOARD_FIELDS = ["date", "product", "primary_keyword", "current_status",
                 "data_quality", "supplier_status", "tm_ip_status",

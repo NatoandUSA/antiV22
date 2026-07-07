@@ -1,4 +1,4 @@
-"""Bilingual reports: every VI report also gets an _EN sibling + PDFs."""
+"""Bilingual reports: every VI report also gets an _EN sibling (Markdown)."""
 from pathlib import Path
 
 VI2EN = [
@@ -143,7 +143,7 @@ def translate(text):
 
 
 def finalize_report(path):
-    """Write EN sibling and export PDFs for both languages."""
+    """Write the EN sibling of a VI report (Markdown)."""
     from src.timestamp import stamp_file, report_type_for
     path = Path(path)
     base_type = report_type_for(path)
@@ -153,14 +153,6 @@ def finalize_report(path):
     en_text = en_text.replace(f"Report type: {base_type} VI",
                               f"Report type: {base_type} EN", 1)
     en_path.write_text(en_text, encoding="utf-8")
-    try:
-        from src.pdf_export import md_to_pdf
-        for p in (path, en_path):
-            pdf = md_to_pdf(p)
-            if pdf:
-                print(f"  PDF: {pdf}")
-    except Exception as exc:
-        print(f"  (PDF export failed: {exc})")
     return en_path
 
 
@@ -272,7 +264,7 @@ EN2VI_MANAGER = [
 
 
 def finalize_manager(path):
-    """Manager report: EN original + _VI sibling + PDFs for both."""
+    """Manager report: EN original + _VI sibling (Markdown)."""
     from src.timestamp import stamp_file, report_type_for
     path = Path(path)
     base_type = report_type_for(path)
@@ -285,14 +277,6 @@ def finalize_manager(path):
                     f"Report type: {base_type} VI", 1)
     vi_path = path.with_name(path.stem + "_VI" + path.suffix)
     vi_path.write_text(vi, encoding="utf-8")
-    try:
-        from src.pdf_export import md_to_pdf
-        for p in (path, vi_path):
-            pdf = md_to_pdf(p)
-            if pdf:
-                print(f"  PDF: {pdf}")
-    except Exception as exc:
-        print(f"  (PDF export failed: {exc})")
     return vi_path
 
 
@@ -326,7 +310,7 @@ EN2VI_PACKS = EN2VI_MANAGER + [
 
 
 def finalize_pack(path):
-    """Team pack: EN original + _VI sibling + PDFs for both."""
+    """Team pack: EN original + _VI sibling (Markdown)."""
     from src.timestamp import stamp_file, report_type_for
     path = Path(path)
     base_type = report_type_for(path)
@@ -339,10 +323,4 @@ def finalize_pack(path):
                     f"Report type: {base_type} VI", 1)
     vi_path = path.with_name(path.stem + "_VI" + path.suffix)
     vi_path.write_text(vi, encoding="utf-8")
-    try:
-        from src.pdf_export import md_to_pdf
-        for p in (path, vi_path):
-            md_to_pdf(p)
-    except Exception:
-        pass
     return vi_path

@@ -18,7 +18,7 @@ Commands:
   py main.py listreports         -> paths of every latest operational report
   py main.py tasks               -> daily team tasks report (9 roles)
   py main.py blockers            -> blocker report grouped by severity
-  py main.py statusboard         -> product status board (csv+md+pdf)
+  py main.py statusboard         -> product status board (csv+md)
   py main.py finalqa             -> final QA summary
   py main.py performance         -> performance report from shop_performance.csv
   py main.py openreports         -> open the latest report folder
@@ -27,7 +27,6 @@ Commands:
   py main.py manager embroidery  -> manager for embroidery keywords only
   py main.py supplier pod "clear concert bag"        -> PULL_SUPPLIER_DETAILS_POD
   py main.py supplier embroidery "chenille name bag" -> PULL_SUPPLIER_DETAILS_EMBROIDERY
-  py main.py pdfcheck            -> diagnose why PDF export fails on this PC
   py main.py selftest            -> verify the install works (no APIs needed)
   py main.py ideas               -> Best Etsy Idea Report (product clusters)
   py main.py listing "keyword"   -> complete listing draft pack (not publish-ready until QA)
@@ -131,38 +130,6 @@ def _usage_exit(message):
     """Print a one-line usage hint and exit with code 2 (bad invocation)."""
     print(message)
     sys.exit(2)
-
-
-def cmd_pdfcheck(cmd, args):
-    print(f"Python in use: {sys.executable}")
-    try:
-        import reportlab
-        print(f"reportlab OK (version {reportlab.Version})")
-    except ImportError:
-        print("reportlab NOT installed for this Python.")
-        print(f"Fix: \"{sys.executable}\" -m pip install reportlab")
-        sys.exit(1)
-    from pathlib import Path as _P
-    # Write the probe outside reports/ so it never pollutes the report
-    # tree that `selftest` scans for the timestamp header.
-    _P("data").mkdir(exist_ok=True)
-    test_md = _P("data/pdf_test.md")
-    test_md.write_text("# PDF Test\n\nXin chao team! Vietnamese "
-                       "text test.\n\n| A | B |\n|---|---|\n"
-                       "| 1 | 2 |\n", encoding="utf-8")
-    try:
-        from src.pdf_export import md_to_pdf
-        out = md_to_pdf(test_md)
-        if out:
-            print(f"SUCCESS: test PDF created at {out}")
-            print("PDF export works. Rerun: python main.py allreports")
-        else:
-            print("md_to_pdf returned None - see message above.")
-    except Exception:
-        import traceback
-        print("PDF generation crashed with this exact error:")
-        traceback.print_exc()
-        print("\nSend this error to Claude Code to fix.")
 
 
 def cmd_listreports(cmd, args):
@@ -317,7 +284,6 @@ def cmd_expand(cmd, args):
 
 # Single source of truth for command routing: name -> handler(cmd, args).
 COMMANDS = {
-    "pdfcheck": cmd_pdfcheck,
     "listreports": cmd_listreports,
     "tasks": cmd_ops, "blockers": cmd_ops, "statusboard": cmd_ops,
     "finalqa": cmd_ops, "performance": cmd_ops,

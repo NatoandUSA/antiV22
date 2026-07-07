@@ -93,11 +93,11 @@ no guarantees of sales. It reduces bad decisions; humans make the calls.
 ## V19.3 additions
 - Report visibility: allreports generates every report type into
   reports/YYYY-MM-DD/<type>/ folders, mirrors the newest set into
-  reports/latest/, and maintains reports/latest_report_manifest.md|.pdf.
+  reports/latest/, and maintains reports/latest_report_manifest.md.
 - allreports never hangs: a preflight probe (single 8s request) decides
   data availability; without data it skips data steps with a recorded
-  reason and STILL writes the manifest. PDF failures are visible in the
-  manifest, never silent. listreports/openreports expose every path.
+  reason and STILL writes the manifest.
+  listreports/openreports expose every path.
 
 ## V19.4 additions (operational workflow)
 - selftest outputs are a sandbox: reports/selftest/ is NEVER the latest
@@ -108,15 +108,15 @@ no guarantees of sales. It reduces bad decisions; humans make the calls.
   and never pretend.
 - New operational reports: Daily Team Tasks (9 roles, 'No tasks today.'
   fallback), Blocker Report (Critical/High/Medium/Low/Cleared),
-  Product Status Board (csv+md+pdf, 16 fields), Final QA Summary
+  Product Status Board (csv+md, 16 fields), Final QA Summary
   ('No products are in FINAL_QA today.' when empty), Performance Report
   (WATCH / REVISE_TITLE_TAGS / REVISE_MAIN_IMAGE /
   REVISE_PRICE_SHIPPING / SCALE / KILL).
 - Commands: tasks, blockers, statusboard, finalqa, performance - each
   works with or without data. manager never hangs: preflight probe ->
   no-data manager report.
-- reports/latest/ holds canonical-named copies (manager_report_EN.pdf,
-  daily_tasks.pdf, blocker_report.pdf, product_status_board.csv, ...)
+- reports/latest/ holds canonical-named copies (manager_report_EN.md,
+  daily_tasks.md, blocker_report.md, product_status_board.csv, ...)
   from the newest OPERATIONAL run only.
 - openreports never claims success it cannot verify; it always prints
   the absolute path.

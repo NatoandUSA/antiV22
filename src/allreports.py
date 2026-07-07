@@ -132,7 +132,7 @@ def run_allreports(mode=None, data_ok=None):
     step("blocker report",
          lambda: ops.write_blockers(TODAY, mgr, nodata_reason),
          needs_data=False)
-    step("product status board (csv+md+pdf)",
+    step("product status board (csv+md)",
          lambda: ops.write_statusboard(TODAY, mgr), needs_data=False)
     step("final QA summary",
          lambda: ops.write_finalqa(TODAY, mgr, nodata_reason),
@@ -170,22 +170,14 @@ def run_allreports(mode=None, data_ok=None):
               "keyword_data.csv, then rerun `python main.py allreports`.",
               ""]
     L += ["## Files generated this run", "",
-          "| File | Report type | PDF |", "|---|---|---|"]
+          "| File | Report type |", "|---|---|"]
     for f in new_files:
         if f.suffix == ".md":
-            pdf = f.with_suffix(".pdf")
-            L.append(f"| {f} | {report_type_for(f)} | "
-                     f"{'yes' if pdf.exists() else '**MISSING - PDF export failed, keep the .md**'} |")
+            L.append(f"| {f} | {report_type_for(f)} |")
     if not any(f.suffix == ".md" for f in new_files):
-        L.append("| (no report files generated) | - | - |")
+        L.append("| (no report files generated) | - |")
     mpath.write_text("\n".join(L), encoding="utf-8")
     stamp_file(mpath, "Report Manifest", end_ts)
-    try:
-        from src.pdf_export import md_to_pdf
-        if not md_to_pdf(mpath):
-            print("  MANIFEST PDF FAILED - Markdown kept: install reportlab")
-    except Exception as exc:
-        print(f"  MANIFEST PDF FAILED ({exc}) - Markdown kept at {mpath}")
 
     print(f"\nMANIFEST: {mpath}")
     print(f"  start {start_ts['display']} -> end {end_ts['display']} "
