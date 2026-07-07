@@ -206,6 +206,20 @@ def build_app(password, secret):
                f'reports</a></div>')
         return page(title, bar + f'<article class="md">{html}</article>' + COPY_JS)
 
+    # ---- command cheat sheet (served from the repo's CHEATSHEET.md) ----
+    @app.route("/cheatsheet")
+    @login_required
+    def cheatsheet():
+        p = ROOT / "CHEATSHEET.md"
+        if not p.is_file():
+            abort(404)
+        html = md.markdown(p.read_text(encoding="utf-8"),
+                           extensions=["tables", "fenced_code", "sane_lists"])
+        bar = ('<div class="rbar"><a class="back" href="/">&larr; All '
+               'reports</a></div>')
+        return page("Cheat Sheet",
+                    bar + f'<article class="md">{html}</article>' + COPY_JS)
+
     return app
 
 
@@ -364,7 +378,7 @@ PORTAL = """
       <div class="kicker">Etsy Product Manager</div>
       <h1>Team Reports</h1>
     </div>
-    <div class="hright">{{UPDATED}}<a class="logout" href="/logout">Sign out</a></div>
+    <div class="hright">{{UPDATED}}<a class="logout" href="/cheatsheet">Cheat Sheet</a><a class="logout" href="/logout">Sign out</a></div>
   </header>
   {{BODY}}
   <footer>Reports are prepared on the research machine and synced here.</footer>
