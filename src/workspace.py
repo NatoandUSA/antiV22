@@ -233,11 +233,13 @@ def build_tags(kw, related, opts, mode):
         if opts.get(k):
             cands.append(opts[k])
     cands += [_g(r, "tag", "keyword", "title") for r in (related or [])]
-    # mode-appropriate fallbacks so we ALWAYS reach 13 clean tags
-    base = "embroidered" if mode == "embroidery" else "personalized"
-    cands += [f"{base} gift", "custom gift", "gift for her", "gift for him",
-              "unique gift idea", f"{kw} gift", "personalized present",
-              "custom name gift", "gift for mom", "handmade style gift"]
+    # mode-appropriate fallbacks (all <=20 chars, clean) so we ALWAYS hit 13
+    base = "embroidered" if mode == "embroidery" else "custom"
+    cands += [f"{base} gift", "custom gift", "personalized gift", "gift for her",
+              "gift for him", "gift for mom", "gift for dad", "unique gift idea",
+              "birthday gift", "handmade gift", "custom present", "name gift",
+              "custom name", "gift idea", "matching gift", "family gift",
+              "cute gift idea", "trendy gift", "personalized present"]
 
     out, seen = [], set()
     for raw in cands:
