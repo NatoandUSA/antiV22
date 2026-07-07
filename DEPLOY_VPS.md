@@ -171,6 +171,21 @@ reports (no command buttons), so nothing on the server can try to fetch.
     "mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo '<PASTE PUBLIC KEY>' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
   ```
 
+### Passwordless restart (optional)
+- Let `etsy` restart the services without a `sudo` password (scoped to just
+  those two services — nothing else). **On the VPS**, once:
+  ```bash
+  echo 'etsy ALL=(root) NOPASSWD: /usr/bin/systemctl restart etsy-web, /usr/bin/systemctl restart etsy-tunnel, /usr/bin/systemctl status etsy-web, /usr/bin/systemctl status etsy-tunnel' | sudo tee /etc/sudoers.d/etsy-web >/dev/null && sudo chmod 440 /etc/sudoers.d/etsy-web && sudo visudo -cf /etc/sudoers.d/etsy-web
+  ```
+  It should print `... parsed OK`. After this, `sudo systemctl restart etsy-web`
+  never prompts. Combined with the SSH key, updating from your laptop is fully
+  passwordless:
+  ```powershell
+  ssh -p 55317 etsy@51.79.200.65 "cd ~/etsy-agent && git pull && sudo systemctl restart etsy-web"
+  ```
+  (Run that from your **laptop**, not from the VPS itself — VPS→VPS SSH won't use
+  the key.)
+
 ## Running it day to day
 - **Update the tool:** `cd ~/etsy-agent && git pull && .venv/bin/python -m pip install -r requirements.txt && sudo systemctl restart etsy-web`
 - **See logs:** `journalctl -u etsy-web -f` (app) · `journalctl -u etsy-tunnel -f` (tunnel)
