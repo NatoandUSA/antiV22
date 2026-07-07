@@ -39,7 +39,7 @@ REPORTS = [
 # under canonical names. Shown when present.
 DETAIL_REPORTS = [
     ("research_report.md", "Research Report",
-     "All keywords in one place: ideas + analysis + discover + performance."),
+     "Everything for this line in one place: ideas + analysis + discover + performance."),
     ("manager_report.md", "Manager Report (full)",
      "The complete manager report — 12 sections, profit model, audit."),
     ("ideas_report.md", "Best Ideas",
@@ -76,11 +76,13 @@ def _last_updated(mdir):
 
 
 def _available_modes():
-    """Report sets present. (key, label, subpath) with 'all' (root) first."""
+    """Report sets the team sees: Print on Demand + Embroidery only.
+
+    The 'all keywords' root set is intentionally NOT surfaced — All and POD were
+    near-identical, so the tab only added noise. Each production line gets its own
+    focused, data-driven set."""
     modes = []
-    if (LATEST / "00_START_HERE.md").exists():
-        modes.append(("all", "All keywords", ""))
-    for key, label in (("pod", "POD"), ("embroidery", "Embroidery")):
+    for key, label in (("pod", "Print on Demand"), ("embroidery", "Embroidery")):
         if (LATEST / key / "00_START_HERE.md").exists():
             modes.append((key, label, key + "/"))
     return modes

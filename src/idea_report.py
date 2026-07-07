@@ -80,12 +80,19 @@ LISTING_FEE = 0.20
 ADS_RESERVE = 0.10  # save 10% of price for Etsy Ads / offsite ads exposure
 
 
-def load_costs(path="costs.csv"):
-    """Cheapest supplier per cluster -> {cluster: (base, ship, supplier)}."""
-    costs = {}
+def load_costs(path="costs.csv", mode=None):
+    """Cheapest supplier per cluster -> {cluster: (base, ship, supplier)}.
+
+    Mode-aware so POD and Embroidery price off different, real supplier data:
+    - 'pod'  -> print-on-demand suppliers only (embroidery rows excluded).
+    - 'embroidery' -> the real embroidery-partner price wherever we have it
+      (apparel, headwear), falling back to the POD baseline for clusters we have
+      no embroidery quote for, so the report stays populated.
+    - None -> POD baseline (same as 'pod')."""
     p = Path(path)
     if not p.exists():
-        return costs
+        return {}
+    pod, emb = {}, {}
     with p.open(newline="", encoding="utf-8") as f:
         for row in csv.DictReader(f):
             try:
@@ -95,9 +102,16 @@ def load_costs(path="costs.csv"):
                 supplier = (row.get("supplier") or "?").strip()
             except (KeyError, ValueError):
                 continue
-            if cl not in costs or base + ship < costs[cl][0] + costs[cl][1]:
-                costs[cl] = (base, ship, supplier)
-    return costs
+            is_emb = ("embroider" in supplier.lower()
+                      or "chenille" in supplier.lower())
+            target = emb if is_emb else pod
+            if cl not in target or base + ship < target[cl][0] + target[cl][1]:
+                target[cl] = (base, ship, supplier)
+    if mode == "embroidery":
+        merged = dict(pod)   # POD baseline for clusters with no embroidery quote
+        merged.update(emb)   # real embroidery price wins where we have it
+        return merged
+    return pod  # 'pod' / None: print-on-demand costs only
 
 
 def load_tm_verified(path="tm_verified.csv"):
@@ -288,7 +302,7 @@ def action_plan(c):
 
 
 def run_ideas(mode=None):
-    costs = load_costs()
+    costs = load_costs(mode=mode)
     tm_ok, tm_blocked = load_tm_verified()
     if not costs:
         print("NOTE: costs.csv missing/empty -> profit checks limited. "
@@ -298,7 +312,7 @@ def run_ideas(mode=None):
     rows = gather_rows(mode)
     accepted, rejected = evaluate(rows, costs, tm_ok, tm_blocked)
     clusters = score_clusters(accepted, costs)
-    path = write_ideas_report(clusters, rejected, costs, mode_label)
+    path = write_ideas_report(clusters, rejected, costs, mode_label, mode)
     print(f"\n{len(rows)} keywords -> {len(accepted)} accepted, "
           f"{len(rejected)} rejected -> {len(clusters)} clusters")
     for c in clusters[:5]:
@@ -307,10 +321,45 @@ def run_ideas(mode=None):
     print(f"\nReport: {path}")
 
 
-def write_ideas_report(clusters, rejected, costs, mode_label=""):
+def _cost_basis_intro(mode, clusters, rejected):
+    """A short, data-driven cost-basis banner so each mode's report is
+    distinct and self-explaining even when few keywords pass. Numbers are the
+    real supplier prices loaded for this mode (see costs.csv / supplier data)."""
+    n_kw = sum(c.get("n", 0) for c in clusters) if clusters else 0
+    if mode == "embroidery":
+        return [
+            "> **Embroidery line — real supplier cost basis "
+            "(shipping INCLUDED, US ePacket 7–12 business days):**",
+            ">",
+            "> - Embroidered T-shirt **$16.99** · Sweatshirt **$23.23** · "
+            "Hoodie **$26.38** · Wash cap **$13.40** (size M / one size).",
+            "> - Design to the CONFIRMED areas: chest max **250mm** wide · "
+            "sleeve **70mm × 250mm** (vertical only) · cap front **120mm × 60mm** "
+            "(fits 56–58cm head) · max 6 thread colours, flat fills.",
+            "> - Every margin below uses these real embroidery numbers "
+            "(POD estimates are only used as a fallback for product lines we "
+            "have no embroidery quote for yet).",
+            f"> - Embroidery-mappable keywords this run: **{n_kw} accepted**, "
+            f"{len(rejected)} rejected — embroidery niches are rarer than POD, "
+            "so this list is intentionally shorter and higher-signal.",
+            "",
+        ]
+    if mode == "pod":
+        return [
+            "> **Print-on-Demand line — cost basis:** cheapest POD supplier per "
+            "product line (Printify · Printway · BurgerPrints · PGprint · "
+            "ShineOn jewelry). Every margin below uses these real per-cluster "
+            "costs — no embroidery pricing is mixed in.",
+            "",
+        ]
+    return []
+
+
+def write_ideas_report(clusters, rejected, costs, mode_label="", mode=None):
     from src.report_paths import rdir
     path = rdir(date.today(), "ideas") / f"ideas_{date.today()}.md"
     L = [f"# Báo cáo Ý tưởng Etsy Tốt nhất{mode_label} - {date.today()}", ""]
+    L += _cost_basis_intro(mode, clusters, rejected)
 
     L.append("## Việc cần làm hôm nay")
     n = 0

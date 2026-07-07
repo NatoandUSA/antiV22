@@ -299,32 +299,39 @@ def write_discover_report(results, skipped, mode_label=""):
                          + ", ".join(x["tag"] for x in fresh)
                          + " - listing thang chi 1-2 tuan tuoi.")
             lines.append("")
+        lines += [
+            "| FOCUS keyword | # | Winning listing | Price | Sold | Revenue "
+            "| Age | Newcomer signal |",
+            "|---|---|---|---|---|---|---|---|"]
+        tag_notes = []
         for x in with_listings:
-            lines.append(f"### {x['tag']}")
             ap = x.get("age_profile") or {}
-            if ap.get("buckets"):
-                dist = ", ".join(f"{v}x {k}" for k, v in ap["buckets"].items())
-                lines.append(f"_Tuoi listing thang / winner ages: {dist} -> "
-                             f"**{ap['label']}**_")
+            signal = ap.get("label", "")
             for i, l in enumerate(x["top_listings"], 1):
+                title = (l.get("title") or "").replace("|", "/").replace(
+                    "[", "(").replace("]", ")")
+                kw = x["tag"] if i == 1 else ""
+                sig = signal if i == 1 else ""
+                price = f"${l['price']}" if l.get("price") is not None else "-"
+                sold = l["sold"] if l.get("sold") is not None else "-"
+                rev = f"${l['revenue']}" if l.get("revenue") is not None else "-"
+                age = f"{l['age_days']}d" if l.get("age_days") is not None else "?"
                 lines.append(
-                    f"{i}. [{l['title']}]({l['url']}) - ${l['price']} | "
-                    f"{l['sold']} sold | ${l['revenue']} revenue | "
-                    f"{l['age_days']} days old | {l['verdict'] or ''}"
-                )
+                    f"| {kw} | {i} | [{title}]({l['url']}) | {price} | {sold} "
+                    f"| {rev} | {age} | {sig} |")
             all_tags = [t for l in x["top_listings"] for t in l["tags"]]
-            if all_tags:
-                seen_t, common = set(), []
-                for t in all_tags:
-                    tl = t.lower()
-                    if all_tags.count(t) >= 2 and tl not in seen_t:
-                        seen_t.add(tl); common.append(t)
-                if common:
-                    lines.append(f"   Tags chung của các listing thắng: {', '.join(common[:13])}")
-            if x.get("rejected_top_listings"):
-                lines.append(f"   Rejected unrelated listings: {len(x['rejected_top_listings'])} "
-                             "(blocked from market-intel section by relevance filter)")
-            lines.append("")
+            seen_t, common = set(), []
+            for t in all_tags:
+                tl = t.lower()
+                if all_tags.count(t) >= 2 and tl not in seen_t:
+                    seen_t.add(tl); common.append(t)
+            if common:
+                tag_notes.append(f"- **{x['tag']}**: {', '.join(common[:13])}")
+        lines.append("")
+        if tag_notes:
+            lines += ["**Common tags among these winning listings** (reference "
+                      "for your own tags - do NOT copy the designs):", *tag_notes,
+                      ""]
 
     lines += ["", "## Ngách của bạn (theo dõi)", ""]
     lines += _table(mine) if mine else ["_No additional matches._"]
