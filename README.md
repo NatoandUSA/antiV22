@@ -16,6 +16,9 @@ against **Google Trends** (Pinterest and X switch on when you add their tokens
 to `.env`). It's the first card on the team dashboard. PDF export was removed;
 reports are Markdown-only. See [SUPPLIERS.md](SUPPLIERS.md) for data sources.
 
+> 📋 **New here? Read [CHEATSHEET.md](CHEATSHEET.md)** — every command in plain
+> language, grouped by what you want to do.
+
 ## Run it on a new computer (Mac M1 / Windows / Linux)
 
 The tool is pure Python and cross-platform. To set it up on another machine

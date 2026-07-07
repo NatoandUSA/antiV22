@@ -10,7 +10,9 @@ Commands:
   py main.py grow                -> auto-add viral/best-selling keywords + niches
   py main.py grow "niche keyword"       -> deep research one niche
   py main.py grow pod | grow embroidery -> auto-grow one product line
-  py main.py daily [pod|embroidery]  -> THE team command: 5 clean reports
+  py main.py daily [pod|embroidery]  -> THE team command: 5 clean reports + Market Pulse
+  py main.py harvest                 -> pull fresh keywords from the YTrends index into keyword_data.csv
+  py main.py harvest --dry           -> preview the harvest without writing anything
   py main.py images                  -> list AI design prompts (no API calls)
   py main.py images --all            -> generate design PNGs via OpenAI (needs OPENAI_API_KEY, costs money)
   py main.py web                     -> team report portal (read the reports in a browser; needs WEB_PASSWORD)
