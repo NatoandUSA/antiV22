@@ -92,9 +92,10 @@ def expand(tag):
     from src.ytrends_client import suggestions
     from src.trademark import check as tm_check
     rows = suggestions(tag)
+    top = sorted(rows, key=lambda r: -(r.get("relevance_score") or 0))[:20]
     print(f"\nRelated keywords for '{tag}':\n")
     print(f"{'keyword':<34}{'listings':<10}{'avg rev':<10}{'conv':<8}{'TM':<9}action")
-    for r in sorted(rows, key=lambda r: -(r.get("relevance_score") or 0))[:20]:
+    for r in top:
         risk, _ = tm_check(r.get("tag") or "")
         print(f"{(r.get('tag') or '')[:32]:<34}"
               f"{r.get('tag_listing_count') or '?':<10}"
@@ -102,6 +103,46 @@ def expand(tag):
               f"{(r.get('avg_conversion_rate') or 0)*100:.1f}%   "
               f"{risk:<9}"
               f"{(r.get('recommended_action') or '').split(':')[0]}")
+    path = _write_expand_report(tag, top)
+    print(f"\nSaved to the dashboard's Keyword Research page: {path}")
+    print("Publish it with:  .\\deploy\\push-to-vps.ps1   (or ./deploy/push-to-vps.sh on Mac)")
+
+
+def _write_expand_report(tag, top, keep=15):
+    """Save an 'expand' lookup as a Markdown 'Keyword Research' report that the
+    team portal shows online. Newest lookup on top; keeps the last `keep`."""
+    from pathlib import Path
+    from datetime import date
+    from src.trademark import check as tm_check
+
+    latest = Path("reports/latest")
+    latest.mkdir(parents=True, exist_ok=True)
+    out = latest / "expand_report.md"
+
+    sec = [f"## {tag} — {date.today()}", "",
+           "| Keyword | Listings | Avg revenue | Conv | Trademark | Action |",
+           "|---|---|---|---|---|---|"]
+    for r in top:
+        risk, _ = tm_check(r.get("tag") or "")
+        sec.append(
+            f"| {(r.get('tag') or '')[:40]} "
+            f"| {r.get('tag_listing_count') or '?'} "
+            f"| ${r.get('avg_revenue') or 0:.0f} "
+            f"| {(r.get('avg_conversion_rate') or 0) * 100:.1f}% "
+            f"| {risk} "
+            f"| {(r.get('recommended_action') or '').split(':')[0]} |")
+    section = "\n".join(sec)
+
+    header = ("# Keyword Research (expand)\n\n_Ad-hoc related-keyword lookups. "
+              "Market intel — always verify the trademark column before using a "
+              "keyword. CAUTION/HIGH = check USPTO first._\n")
+    old_sections = []
+    if out.exists():
+        prev = out.read_text(encoding="utf-8").split("\n## ")[1:]
+        old_sections = ["## " + s for s in prev]
+    body = "\n\n".join([section] + old_sections[:keep - 1])
+    out.write_text(header + "\n" + body + "\n", encoding="utf-8")
+    return out
 
 
 def show_categories():

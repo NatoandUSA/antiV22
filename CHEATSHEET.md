@@ -61,7 +61,7 @@ sudo systemctl restart etsy-web
 
 | Command | What it does | Notes |
 |---|---|---|
-| `py main.py expand "keyword"` | Shows related keywords for a niche you like. Example: `py main.py expand "chenille bag"`. | 🌐 |
+| `py main.py expand "keyword"` | Shows related keywords for a niche you like, **and saves them to the dashboard's "Keyword Research" page** (top-right link). Example: `py main.py expand "chenille bag"`. Publish with the sync. | 🌐 |
 | `py main.py categories` | Which Etsy categories pay best per seller. | 🌐 |
 | `py main.py grow [pod\|embroidery]` | Older keyword-grower (auto-adds viral/best-selling terms). `harvest` is the newer, bigger version. | 🌐 |
 | `py main.py grow "niche keyword"` | Deep-research one specific niche. | 🌐 |

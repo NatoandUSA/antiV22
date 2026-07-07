@@ -206,6 +206,25 @@ def build_app(password, secret):
                f'reports</a></div>')
         return page(title, bar + f'<article class="md">{html}</article>' + COPY_JS)
 
+    # ---- keyword research (from `py main.py expand`, synced in reports/latest) ----
+    @app.route("/research")
+    @login_required
+    def research():
+        p = LATEST / "expand_report.md"
+        if not p.is_file():
+            body = ('<div class="rbar"><a class="back" href="/">&larr; All '
+                    'reports</a></div><article class="md"><h1>Keyword Research'
+                    '</h1><p class="empty">No lookups yet. On the research '
+                    'machine run <code>py main.py expand "your keyword"</code>, '
+                    'then publish with the sync.</p></article>')
+            return page("Keyword Research", body)
+        html = md.markdown(p.read_text(encoding="utf-8"),
+                           extensions=["tables", "fenced_code", "sane_lists"])
+        bar = ('<div class="rbar"><a class="back" href="/">&larr; All '
+               'reports</a></div>')
+        return page("Keyword Research",
+                    bar + f'<article class="md">{html}</article>' + COPY_JS)
+
     # ---- command cheat sheet (served from the repo's CHEATSHEET.md) ----
     @app.route("/cheatsheet")
     @login_required
@@ -378,7 +397,7 @@ PORTAL = """
       <div class="kicker">Etsy Product Manager</div>
       <h1>Team Reports</h1>
     </div>
-    <div class="hright">{{UPDATED}}<a class="logout" href="/cheatsheet">Cheat Sheet</a><a class="logout" href="/logout">Sign out</a></div>
+    <div class="hright">{{UPDATED}}<a class="logout" href="/research">Keyword Research</a><a class="logout" href="/cheatsheet">Cheat Sheet</a><a class="logout" href="/logout">Sign out</a></div>
   </header>
   {{BODY}}
   <footer>Reports are prepared on the research machine and synced here.</footer>
