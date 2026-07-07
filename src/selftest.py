@@ -392,16 +392,20 @@ def run_selftest():
           Path("USER_GUIDE.md").exists()
           and Path("USER_GUIDE.pdf").exists())
     pass
-    # cleanup simulated operational runs; restore latest from real data
+    # cleanup simulated operational runs (never the real reports/latest)
     for d in ("2026-01-01", "2026-01-02"):
         _sh.rmtree(Path("reports") / d, ignore_errors=True)
-    if ri.latest_day_dir() is None:
-        _sh.rmtree(Path("reports/latest"), ignore_errors=True)
-        for f in ("reports/latest_report_manifest.md",
-                  "reports/latest_report_manifest.pdf"):
-            Path(f).unlink(missing_ok=True)
     Path("reports/adhoc").exists() and _sh.rmtree("reports/adhoc",
                                               ignore_errors=True)
+
+    def _snapshot(p):
+        """Names+mtimes of files under a folder (recursive), or None."""
+        p = Path(p)
+        if not p.exists():
+            return None
+        return sorted((str(f.relative_to(p)), f.stat().st_mtime_ns)
+                      for f in p.rglob("*") if f.is_file())
+    _real_latest_before = _snapshot("reports/latest")
 
     # ---- V20.1-FINAL: clean 5-report daily system ----
     import io as _io
@@ -449,7 +453,7 @@ def run_selftest():
               for n in dl.MAIN_FILES for e in (".md", ".pdf"))
           and (Path("reports/selftest_latest") / "_run_info.txt").exists())
     check("selftest did NOT touch real reports/latest",
-          not (Path("reports/latest") / "00_START_HERE.md").exists())
+          _snapshot("reports/latest") == _real_latest_before)
     # data-mode composition checks from the fixture manager json
     mgr_fix = json.loads(rp("manager", "manager_selftest.json"
                             ).read_text(encoding="utf-8"))

@@ -16,8 +16,10 @@ VPS_PATH=/home/etsy/etsy-agent
 cd "$(dirname "$0")/.."   # repo root
 PYTHON=${PYTHON:-$([ -x .venv/bin/python ] && echo .venv/bin/python || echo python)}
 
-echo "== 1/2  Fetching data + building reports locally =="
+echo "== 1/2  Building reports: all keywords + POD + embroidery =="
 "$PYTHON" main.py daily
+"$PYTHON" main.py daily pod
+"$PYTHON" main.py daily embroidery
 
 echo
 echo "== 2/2  Copying to the VPS (enter the etsy password when asked) =="

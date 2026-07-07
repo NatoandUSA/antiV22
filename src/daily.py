@@ -575,19 +575,21 @@ def run_daily(mode=None, data_ok=None,
     if day_dir.exists():
         shutil.move(str(day_dir), str(arch / day))
 
-    # 5) mirror latest
+    # 5) mirror latest. POD / Embroidery land in reports/latest/<mode>/ so both
+    # sets coexist; a plain `daily` (no mode) uses the reports/latest root.
+    latest = Path(latest_dir)
+    mtarget = latest / mode if mode in ("pod", "embroidery") else latest
     # Guard: on a no-data run, keep the last good reports instead of
     # overwriting them with DATA_UNAVAILABLE placeholders (e.g. a server that
     # can't fetch live data, or a stale-data day between syncs).
-    latest = Path(latest_dir)
     keep_existing = (update_latest and not data_ok
-                     and (latest / "01_MANAGER_ACTION_REPORT.md").exists())
+                     and (mtarget / "01_MANAGER_ACTION_REPORT.md").exists())
     if keep_existing:
-        print(f"Data unavailable - kept the last good reports in {latest_dir} "
+        print(f"Data unavailable - kept the last good reports in {mtarget} "
               "(not overwritten).")
     if update_latest and not keep_existing:
-        latest.mkdir(parents=True, exist_ok=True)
-        for old in latest.glob("*"):
+        mtarget.mkdir(parents=True, exist_ok=True)
+        for old in mtarget.glob("*"):
             if old.is_file():
                 old.unlink()
         # 1) the 5 clean daily reports
@@ -595,7 +597,7 @@ def run_daily(mode=None, data_ok=None,
             for ext in (".md", ".pdf"):
                 src = run_dir / f"{name}{ext}"
                 if src.exists():
-                    shutil.copy(src, latest / f"{name}{ext}")
+                    shutil.copy(src, mtarget / f"{name}{ext}")
         # 2) every detailed report this run produced (newest of each type),
         #    under canonical names so the team portal + sync can show them.
         daydir = arch / day
@@ -603,15 +605,15 @@ def run_daily(mode=None, data_ok=None,
             md = _pick_report(daydir / cat, prefix)
             if not md:
                 continue
-            shutil.copy(md, latest / f"{canon}.md")
+            shutil.copy(md, mtarget / f"{canon}.md")
             pdf = md.with_suffix(".pdf")
             if pdf.exists():
-                shutil.copy(pdf, latest / f"{canon}.pdf")
+                shutil.copy(pdf, mtarget / f"{canon}.pdf")
         # 3) chatgpt prompt DATA (date-named json) for the `images` command
         cj = daydir / "design" / f"chatgpt_prompts_{day}.json"
         if cj.exists():
-            shutil.copy(cj, latest / cj.name)
-        (latest / "_run_info.txt").write_text(
+            shutil.copy(cj, mtarget / cj.name)
+        (mtarget / "_run_info.txt").write_text(
             f"{run_dir}\n{ts['display']}\n", encoding="utf-8")
 
     # 6) print summary (spec format)

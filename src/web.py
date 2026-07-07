@@ -66,13 +66,24 @@ DETAIL_REPORTS = [
 ]
 
 
-def _last_updated():
-    info = LATEST / "_run_info.txt"
+def _last_updated(mdir):
+    info = Path(mdir) / "_run_info.txt"
     if info.exists():
         lines = info.read_text(encoding="utf-8").splitlines()
         if len(lines) >= 2 and lines[1].strip():
             return lines[1].strip()
     return None
+
+
+def _available_modes():
+    """Report sets present. (key, label, subpath) with 'all' (root) first."""
+    modes = []
+    if (LATEST / "00_START_HERE.md").exists():
+        modes.append(("all", "All keywords", ""))
+    for key, label in (("pod", "POD"), ("embroidery", "Embroidery")):
+        if (LATEST / key / "00_START_HERE.md").exists():
+            modes.append((key, label, key + "/"))
+    return modes
 
 
 def build_app(password, secret):
@@ -118,11 +129,11 @@ def build_app(password, secret):
         session.clear()
         return redirect(url_for("login"))
 
-    def _card(fname, badge, title, desc):
-        pdf = (LATEST / fname).with_suffix(".pdf")
-        pdf_btn = (f'<span class="btn ghost" data-href="/pdf/{pdf.name}">PDF</span>'
-                   if pdf.exists() else "")
-        return (f'<a class="report" href="/report/{fname}">'
+    def _card(sub, fname, badge, title, desc):
+        pdf = (LATEST / sub / fname).with_suffix(".pdf")
+        pdf_btn = (f'<span class="btn ghost" data-href="/pdf/{sub}{pdf.name}">'
+                   f'PDF</span>' if pdf.exists() else "")
+        return (f'<a class="report" href="/report/{sub}{fname}">'
                 f'<span class="rid">{badge}</span>'
                 f'<span class="rmeta"><span class="rt">{title}</span>'
                 f'<span class="rd">{desc}</span></span>'
@@ -133,32 +144,49 @@ def build_app(password, secret):
     @app.route("/")
     @login_required
     def index():
-        daily = [_card(f, rid, t, d) for rid, f, t, d in REPORTS
-                 if (LATEST / f).exists()]
-        detail = [_card(f, "&bull;", t, d) for f, t, d in DETAIL_REPORTS
-                  if (LATEST / f).exists()]
-        if not daily and not detail:
+        modes = _available_modes()
+        if not modes:
             body = ('<p class="empty">No reports published yet. The operator '
                     'syncs them from the research machine — check back soon.</p>')
-        else:
-            body = ""
-            if daily:
-                body += ('<p class="lead">The core reports — read in order '
-                         'from <b>00</b>.</p><div class="reports">'
-                         + "".join(daily) + "</div>")
-            if detail:
-                body += ('<h2 class="grouph">All reports</h2>'
-                         '<p class="lead">Every report the tool produced this '
-                         'run.</p><div class="reports">'
-                         + "".join(detail) + "</div>")
-        upd = _last_updated()
+            return page("Reports", PORTAL.replace("{{UPDATED}}", "")
+                        .replace("{{BODY}}", body))
+        keys = [m[0] for m in modes]
+        active = request.args.get("mode", "")
+        if active not in keys:
+            active = keys[0]
+        sub = {m[0]: m[2] for m in modes}[active]
+        mdir = LATEST / sub if sub else LATEST
+
+        tabs = ""
+        if len(modes) > 1:
+            tabs = '<div class="tabs">' + "".join(
+                f'<a class="tab{" on" if m[0] == active else ""}" '
+                f'href="/?mode={m[0]}">{m[1]}</a>' for m in modes) + "</div>"
+
+        daily = [_card(sub, f, rid, t, d) for rid, f, t, d in REPORTS
+                 if (mdir / f).exists()]
+        detail = [_card(sub, f, "&bull;", t, d) for f, t, d in DETAIL_REPORTS
+                  if (mdir / f).exists()]
+        body = tabs
+        if daily:
+            body += ('<p class="lead">The core reports — read in order from '
+                     '<b>00</b>.</p><div class="reports">'
+                     + "".join(daily) + "</div>")
+        if detail:
+            body += ('<h2 class="grouph">All reports</h2>'
+                     '<p class="lead">Every report the tool produced this '
+                     'run.</p><div class="reports">'
+                     + "".join(detail) + "</div>")
+        if not daily and not detail:
+            body += '<p class="empty">This set has no reports yet.</p>'
+        upd = _last_updated(mdir)
         updated = f'<span class="updated">Updated {upd}</span>' if upd else ""
         return page("Reports", PORTAL
                     .replace("{{UPDATED}}", updated)
                     .replace("{{BODY}}", body))
 
-    # ---- single report ----
-    @app.route("/report/<name>")
+    # ---- single report (name may include a pod/ or embroidery/ prefix) ----
+    @app.route("/report/<path:name>")
     @login_required
     def report(name):
         p = _safe_report(name)
@@ -166,24 +194,27 @@ def build_app(password, secret):
             abort(404)
         html = md.markdown(p.read_text(encoding="utf-8"),
                            extensions=["tables", "fenced_code", "sane_lists"])
+        base = name.rsplit("/", 1)[-1]
+        sub = name[:-len(base)]           # "" or "pod/" / "embroidery/"
         titles = {f: t for _, f, t, _ in REPORTS}
         titles.update({f: t for f, t, _ in DETAIL_REPORTS})
-        title = titles.get(name, name)
+        title = titles.get(base, base)
         pdf = p.with_suffix(".pdf")
-        pdf_btn = (f'<a class="btn ghost" href="/pdf/{pdf.name}" '
+        pdf_btn = (f'<a class="btn ghost" href="/pdf/{sub}{pdf.name}" '
                    f'target="_blank" rel="noopener">Download PDF</a>'
                    if pdf.exists() else "")
-        bar = (f'<div class="rbar"><a class="back" href="/">&larr; All reports'
-               f'</a>{pdf_btn}</div>')
+        back = f'/?mode={sub.rstrip("/") or "all"}'
+        bar = (f'<div class="rbar"><a class="back" href="{back}">&larr; All '
+               f'reports</a>{pdf_btn}</div>')
         return page(title, bar + f'<article class="md">{html}</article>' + COPY_JS)
 
-    @app.route("/pdf/<name>")
+    @app.route("/pdf/<path:name>")
     @login_required
     def pdf(name):
         p = _safe_report(name)
         if not p or p.suffix != ".pdf":
             abort(404)
-        return send_from_directory(str(LATEST), p.name)
+        return send_from_directory(str(p.parent), p.name)
 
     return app
 
@@ -255,6 +286,11 @@ h1{font-size:1.55rem;font-weight:800;letter-spacing:-.02em;margin:.15em 0 0}
 .grouph{font-size:.8rem;font-family:var(--mono);letter-spacing:.12em;
 text-transform:uppercase;color:var(--ink-faint);margin:30px 0 4px;
 border-top:1px solid var(--line);padding-top:22px}
+.tabs{display:flex;gap:2px;margin:0 0 20px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.tab{font-family:var(--mono);font-size:.76rem;font-weight:700;padding:8px 15px;
+color:var(--ink-soft);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tab.on{color:var(--accent);border-bottom-color:var(--accent)}
+.tab:hover{color:var(--ink)}
 /* report list */
 .reports{display:grid;gap:10px}
 .report{display:grid;grid-template-columns:44px 1fr auto;align-items:center;gap:16px;
