@@ -1,6 +1,15 @@
-# Etsy Product Manager V21.3
+# Etsy Product Manager V21.4
 
-**New in V21.3 — Saved Shops + Saved Listings.** A competitor-**learning**
+**New in V21.4 — clearer workspace + Manager audit fix.** The `/run` page is
+reorganized so it's easy to follow: a **hero** (verdict + at-a-glance chips:
+overall score, mode, publish-ready, trademark, next action), a **sticky jump
+nav**, and five labelled groups (① Decision · ② Listing & supplier · ③ Design ·
+④ Do next · ⑤ Export); the editable inputs are collapsed by default. **Manager
+fix:** slogan/phrase keywords (no product noun) now fall back to an apparel cost,
+so the supplier, margin, and sales-forecast profit are correct (previously the
+forecast used zero cost and overstated profit).
+
+**V21.3 — Saved Shops + Saved Listings.** A competitor-**learning**
 library on the dashboard: save Etsy shops/listings you want to learn from, record
 a structured analysis + your 0-100 scores, and (for listings with a main keyword)
 pull **live market context** + an **original-angle** suggestion. Market learning

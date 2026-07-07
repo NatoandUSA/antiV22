@@ -812,6 +812,18 @@ padding:4px 9px;cursor:pointer;text-decoration:none;display:inline-block}
 .sihead{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:.95rem}
 .pill{font-size:.64rem;font-weight:700;background:var(--accent-bg);color:var(--accent);padding:2px 8px;border-radius:10px;text-transform:uppercase}
 .saveditem details{margin-top:6px;font-size:.85rem}.saveditem summary{cursor:pointer;font-weight:600;color:var(--accent)}
+.hero{border:2px solid var(--accent)}
+.glance{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.chip{background:var(--paper);border:1px solid var(--line-strong);border-radius:16px;padding:5px 12px;font-size:.8rem;color:var(--ink-soft)}
+.chip b{color:var(--ink)}.chip.wide{flex:1;min-width:200px}
+.chip.cg-ok{border-color:var(--ok)}.chip.cg-ok b{color:var(--ok)}
+.chip.cg-no{border-color:var(--stop)}.chip.cg-no b{color:var(--stop)}
+.wsnav{position:sticky;top:0;z-index:5;display:flex;gap:6px;flex-wrap:wrap;background:var(--paper);padding:9px 0;margin:8px 0 4px;border-bottom:1px solid var(--line)}
+.wsnav a{font-family:var(--mono);font-size:.72rem;font-weight:700;color:var(--accent);border:1px solid var(--line-strong);border-radius:16px;padding:5px 11px;background:var(--surface)}
+.wsnav a:hover{border-color:var(--accent);background:var(--accent-bg)}
+.wsgroup{font-size:1.1rem;font-weight:800;margin:30px 0 2px;padding-top:12px;border-top:2px solid var(--accent);color:var(--ink);scroll-margin-top:56px}
+.ws{scroll-margin-top:56px}
+.inputsbox summary{cursor:pointer;font-weight:700;font-size:1rem;color:var(--accent)}
 /* internal product preview */
 .pv{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:16px;
 border:1px solid var(--line-strong);border-radius:12px;padding:14px;background:var(--paper)}

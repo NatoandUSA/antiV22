@@ -453,11 +453,14 @@ def _listing_data(kw, opts, stats, related, mode, tags):
     try:
         from src.idea_report import cluster_of, load_costs, margin_at
         cluster = cluster_of(kw.lower())
+        assumed = ""
+        if not cluster:   # slogan/phrase keyword -> assume it goes on apparel
+            cluster, assumed = "apparel", " · assumed apparel (pick your product for exact cost)"
         costs = load_costs(mode=mode if mode in ("pod", "embroidery") else "pod")
-        c = costs.get(cluster) if cluster else None
+        c = costs.get(cluster)
         if c:
             supplier, cost_total = c[2], c[0] + c[1]
-            cost_line = f"Supplier: {c[2]} — cost {_money(cost_total)} ({cluster})"
+            cost_line = f"Supplier: {c[2]} — cost {_money(cost_total)} ({cluster}{assumed})"
             p = 5.0
             while p < 200:
                 if (margin_at(p, cluster, costs) or -1) >= 8:
@@ -856,25 +859,57 @@ def build_workspace(kw, opts=None):
         + _fld("style", "Style") + _fld("personalization", "Personalization")
         + '<button class="primary" type="submit">Re-run with these ↻</button></form>')
 
-    out = sec("inputs", "📝", "Run inputs (AI-suggested, editable)", inputs_html)
-    out += sec("verdict", "🧭", "Product verdict", verdict_html)
+    # --- assemble: collapsed inputs -> hero (verdict + at-a-glance) -> sticky
+    #     nav -> 5 clearly-labelled groups. Easy to scan, easy to follow.
+    overall = next((s["score"] for s in scores if s["name"] == "Overall Product"), 0)
+    next_act = {"design": "Send to design + build the draft below.",
+                "validate": "Publish 2 test listings from the draft.",
+                "watch": "Save &amp; recheck in 2–4 weeks — do NOT publish.",
+                "skip": "Try a nearby, lower-competition keyword.",
+                "avoid": "Change the wording — blocked."}[vd["cls"]]
+    glance = (
+        '<div class="glance">'
+        f'<span class="chip">Overall <b>{overall}/100</b></span>'
+        f'<span class="chip">Mode <b>{req_mode.upper()}</b></span>'
+        f'<span class="chip {"cg-ok" if ready else "cg-no"}">Publish-ready '
+        f'<b>{"yes" if ready else "no"}</b></span>'
+        f'<span class="chip">Trademark <b>{risk}</b></span>'
+        f'<span class="chip wide">Next → <b>{next_act}</b></span></div>')
+    hero = f'<section class="ws hero" id="top">{verdict_html}{glance}</section>'
+    nav = ('<nav class="wsnav"><a href="#top">Verdict</a>'
+           '<a href="#g1">① Decision</a><a href="#g2">② Listing</a>'
+           '<a href="#g3">③ Design</a><a href="#g4">④ Do next</a>'
+           '<a href="#g5">⑤ Export</a></nav>')
+
+    def grp(gid, title):
+        return f'<h2 class="wsgroup" id="{gid}">{title}</h2>'
+
+    inputs_block = ('<details class="ws inputsbox" id="inputs"><summary>📝 Run '
+                    'inputs — AI-suggested &amp; editable (click to open)</summary>'
+                    f'{inputs_html}</details>')
+
+    out = inputs_block + hero + nav + grp("g1", "① Decision")
     if compare_html:
-        out += sec("compare", "⚖️", "POD vs Embroidery", compare_html)
+        out += sec("compare", "⚖️", "POD vs Embroidery — recommendation", compare_html)
     out += (
         sec("scores", "📊", "Opportunity scores (0–100)", _score_grid(scores))
-        + sec("sources", "🛰️", "Source confidence &amp; freshness", src_html)
+        + sec("sources", "🛰️", "Source confidence", src_html)
         + sec("beat", "🥊", "How we beat competitors", beat_competitors(kw, listings, opts, mode))
         + sec("market", "🔑", "Market &amp; keyword opportunity", market_html)
         + sec("niches", "💡", "Niche &amp; angle discovery", niche_html)
         + sec("forecast", "📈", "7-day sales forecast", fc_html)
+        + sec("competitors", "🔍", "Competitor audit", audit_html)
+        + grp("g2", "② Listing &amp; supplier")
         + sec("supplier", "🏭", "Supplier recommendation", sup_html)
         + sec("listing", "🛠️", "Listing builder + publish gate", listing_html)
         + sec("preview", "👁️", "Internal product preview", _preview_html(L, tags, vd["cls"]))
-        + sec("competitors", "🔍", "Competitor audit", audit_html)
+        + grp("g3", "③ Design")
         + sec("design", "🎨", "Design prompt generator", design_html)
-        + sec("seller", "✅", "Seller execution checklist", seller_html)
         + sec("designer", "✏️", "Designer brief", designer_html)
+        + grp("g4", "④ Do next")
+        + sec("seller", "✅", "Seller execution checklist", seller_html)
         + sec("expand", "🌱", "Product-line expansion", product_line_expansion(kw, mode))
+        + grp("g5", "⑤ Save &amp; export")
         + sec("export", "📤", "Save / export", export_html))
 
     # stash structured data for save_run
