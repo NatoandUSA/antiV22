@@ -1,6 +1,14 @@
-# Etsy Product Manager V21.2
+# Etsy Product Manager V21.3
 
-**New in V21.2 — PDF exports + AI-suggested editable fields.** Each run now opens
+**New in V21.3 — Saved Shops + Saved Listings.** A competitor-**learning**
+library on the dashboard: save Etsy shops/listings you want to learn from, record
+a structured analysis + your 0-100 scores, and (for listings with a main keyword)
+pull **live market context** + an **original-angle** suggestion. Market learning
+only — the tool never scrapes Etsy and repeats "study structure, never copy
+artwork/titles/photos/branding." Saved to `data/saved_*.json` (persist on the
+server). Home cards: 🏪 Saved shops · 📌 Saved listings.
+
+**V21.2 — PDF exports + AI-suggested editable fields.** Each run now opens
 with an **AI-filled, editable input panel** — every field (product type, niche,
 customer, occasion, style, personalization, mode) shows the **AI suggestion,
 source, and confidence**, and you can edit + re-run. And there are **Manager /

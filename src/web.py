@@ -217,6 +217,10 @@ def build_app(password, secret):
             '<span>What to launch next, timed</span></a>'
             '<a class="toolcard" href="/research"><b>🔬 Saved research</b>'
             '<span>Past keyword lookups</span></a>'
+            '<a class="toolcard" href="/shops"><b>🏪 Saved shops</b>'
+            '<span>Competitor-learning library</span></a>'
+            '<a class="toolcard" href="/listings"><b>📌 Saved listings</b>'
+            '<span>Listings to learn from</span></a>'
             '</div>')
 
         # --- Archive: saved runs + the operator's daily reports (secondary) ---
@@ -381,6 +385,165 @@ def build_app(password, secret):
         title = _html.escape(f"{role.title()} report — {q}")
         return Response(PRINT_BASE.replace("{{TITLE}}", title)
                         .replace("{{BODY}}", body), mimetype="text/html")
+
+    # ---- Saved Shops + Saved Listings: competitor LEARNING library ----
+    def _score_inputs(names):
+        return ('<div class="scores">' + "".join(
+            f'<label class="sc"><span>{n}</span><input type="number" min="0" '
+            f'max="100" name="score_{n}"></label>' for n in names) + '</div>')
+
+    def _parse_scores(names):
+        out = {}
+        for n in names:
+            v = (request.form.get(f"score_{n}") or "").strip()
+            if v.isdigit():
+                out[n] = max(0, min(100, int(v)))
+        return out
+
+    @app.route("/shops")
+    @login_required
+    def shops():
+        import html as _h
+        from src import saved
+        opts = "".join(f"<option>{s}</option>" for s in saved.SHOP_STATUS)
+        form = (
+            '<form class="savedform" method="post" action="/shops/add">'
+            '<input name="shop_name" placeholder="Shop name" required>'
+            '<input name="shop_url" placeholder="Shop URL (optional)">'
+            '<input name="category" placeholder="Category">'
+            '<input name="niche" placeholder="Niche">'
+            f'<select name="status">{opts}</select>'
+            '<textarea name="notes" placeholder="Notes — what to LEARN (never copy)">'
+            '</textarea>'
+            '<p class="note">Scores 0-100 (your read): '
+            + ", ".join(saved.SHOP_SCORES) + '</p>' + _score_inputs(saved.SHOP_SCORES)
+            + '<button class="primary" type="submit">Save shop</button></form>')
+        items = ""
+        for r in reversed(saved.load_shops()):
+            ov = saved.overall(r.get("scores"))
+            fw = "".join(f"<li>{_h.escape(f)}</li>" for f in saved.SHOP_FRAMEWORK)
+            url = _h.escape(r.get("shop_url") or "")
+            items += (
+                '<div class="saveditem"><div class="sihead">'
+                f'<b>{_h.escape(r.get("shop_name",""))}</b> '
+                f'<span class="pill">{_h.escape(r.get("status",""))}</span>'
+                + (f' · <a href="{url}" target="_blank" rel="noopener">open</a>' if url else "")
+                + f' <a class="cbtn" href="/shops/del/{r["id"]}">delete</a></div>'
+                f'<div class="note">{_h.escape(r.get("category",""))} · '
+                f'{_h.escape(r.get("niche",""))} · learning score '
+                f'{ov if ov is not None else "—"}/100 · saved {r.get("last_analyzed_at","")}</div>'
+                + (f'<p>{_h.escape(r.get("notes",""))}</p>' if r.get("notes") else "")
+                + '<details><summary>Analysis rubric — what to examine</summary>'
+                f'<ul class="facts">{fw}</ul><p class="note">{saved.DO_NOT_COPY}</p>'
+                '</details></div>')
+        bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
+        return page("Saved Shops", bar + '<article class="md"><h1>Saved Shops</h1>'
+                    f'<p>Competitor-learning library. {saved.DO_NOT_COPY}</p>'
+                    + form + (items or '<p class="empty">No saved shops yet.</p>')
+                    + '</article>')
+
+    @app.route("/shops/add", methods=["POST"])
+    @login_required
+    def shops_add():
+        from src import saved
+        saved.add_shop({
+            "shop_name": (request.form.get("shop_name") or "").strip()[:80],
+            "shop_url": (request.form.get("shop_url") or "").strip()[:300],
+            "category": (request.form.get("category") or "").strip()[:60],
+            "niche": (request.form.get("niche") or "").strip()[:60],
+            "status": request.form.get("status") or "watching",
+            "notes": (request.form.get("notes") or "").strip()[:2000],
+            "scores": _parse_scores(saved.SHOP_SCORES)})
+        return redirect(url_for("shops"))
+
+    @app.route("/shops/del/<int:sid>")
+    @login_required
+    def shops_del(sid):
+        from src import saved
+        saved.delete_shop(sid)
+        return redirect(url_for("shops"))
+
+    @app.route("/listings")
+    @login_required
+    def listings():
+        import html as _h
+        from src import saved
+        opts = "".join(f"<option>{s}</option>" for s in saved.LISTING_STATUS)
+        form = (
+            '<form class="savedform" method="post" action="/listings/add">'
+            '<input name="listing_title" placeholder="Listing title" required>'
+            '<input name="listing_url" placeholder="Listing URL (optional)">'
+            '<input name="shop_name" placeholder="Shop name">'
+            '<input name="main_keyword" placeholder="Main keyword (pulls live market data)">'
+            f'<select name="status">{opts}</select>'
+            '<textarea name="notes" placeholder="Notes — why it works / how to beat it">'
+            '</textarea>'
+            '<p class="note">Scores 0-100 (your read): '
+            + ", ".join(saved.LISTING_SCORES) + '</p>'
+            + _score_inputs(saved.LISTING_SCORES)
+            + '<button class="primary" type="submit">Save listing</button></form>')
+        items = ""
+        for r in reversed(saved.load_listings()):
+            ov = saved.overall(r.get("scores"))
+            fw = "".join(f"<li>{_h.escape(f)}</li>" for f in saved.LISTING_FRAMEWORK)
+            url = _h.escape(r.get("listing_url") or "")
+            ctx = r.get("context") or {}
+            ctx_html = ""
+            if ctx:
+                ctx_html = ('<div class="note">Live market for '
+                            f'"{_h.escape(r.get("main_keyword",""))}": '
+                            f'{ctx.get("listings","?")} listings · '
+                            f'avg ${ctx.get("avg_price","?")} · related: '
+                            f'{_h.escape(", ".join(ctx.get("related",[])[:4]))}</div>')
+                if ctx.get("original_idea"):
+                    ctx_html += f'<p><b>Original idea:</b> {_h.escape(ctx["original_idea"])}</p>'
+            items += (
+                '<div class="saveditem"><div class="sihead">'
+                f'<b>{_h.escape(r.get("listing_title","")[:70])}</b> '
+                f'<span class="pill">{_h.escape(r.get("status",""))}</span>'
+                + (f' · <a href="{url}" target="_blank" rel="noopener">open</a>' if url else "")
+                + f' <a class="cbtn" href="/listings/del/{r["id"]}">delete</a></div>'
+                f'<div class="note">{_h.escape(r.get("shop_name",""))} · listing score '
+                f'{ov if ov is not None else "—"}/100 · saved {r.get("last_analyzed_at","")}</div>'
+                + ctx_html
+                + (f'<p>{_h.escape(r.get("notes",""))}</p>' if r.get("notes") else "")
+                + '<details><summary>Analysis rubric + how to beat it</summary>'
+                f'<ul class="facts">{fw}</ul>'
+                '<p><b>Create a better original:</b> stronger first image, real '
+                'personalization, tighter long-tail SEO, a bundle/gift angle — '
+                f'your own design.</p><p class="note">{saved.DO_NOT_COPY}</p>'
+                '</details></div>')
+        bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
+        return page("Saved Listings", bar + '<article class="md"><h1>Saved Listings'
+                    f'</h1><p>Competitor-listing library. {saved.DO_NOT_COPY}</p>'
+                    + form + (items or '<p class="empty">No saved listings yet.</p>')
+                    + '</article>')
+
+    @app.route("/listings/add", methods=["POST"])
+    @login_required
+    def listings_add():
+        from src import saved
+        kw = (request.form.get("main_keyword") or "").strip()[:80]
+        try:
+            ctx = saved.listing_market_context(kw) if kw else {}
+        except Exception:  # noqa: BLE001
+            ctx = {}
+        saved.add_listing({
+            "listing_title": (request.form.get("listing_title") or "").strip()[:140],
+            "listing_url": (request.form.get("listing_url") or "").strip()[:300],
+            "shop_name": (request.form.get("shop_name") or "").strip()[:80],
+            "main_keyword": kw, "context": ctx,
+            "status": request.form.get("status") or "inspiration",
+            "notes": (request.form.get("notes") or "").strip()[:2000],
+            "scores": _parse_scores(saved.LISTING_SCORES)})
+        return redirect(url_for("listings"))
+
+    @app.route("/listings/del/<int:lid>")
+    @login_required
+    def listings_del(lid):
+        from src import saved
+        saved.delete_listing(lid)
+        return redirect(url_for("listings"))
 
     # ---- other live self-serve tools (all MCP-backed, run on the VPS 24/7) ----
     def _render_tool(title, txt):
@@ -638,6 +801,17 @@ padding:4px 9px;cursor:pointer;text-decoration:none;display:inline-block}
 .runedit input,.runedit select{padding:8px 10px;border:1px solid var(--line-strong);border-radius:8px;background:var(--paper);color:var(--ink);font-size:.88rem}
 .runedit .fmeta{font-size:.67rem;color:var(--ink-faint)}
 .runedit button{grid-column:1/-1;justify-self:start;padding:9px 16px;border:0;border-radius:9px;background:var(--accent);color:var(--paper);font-weight:700;cursor:pointer}
+.savedform{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px;margin:12px 0;padding:14px;border:1px solid var(--line-strong);border-radius:12px;background:var(--surface)}
+.savedform input,.savedform select,.savedform textarea{padding:8px 10px;border:1px solid var(--line-strong);border-radius:8px;background:var(--paper);color:var(--ink);font-size:.86rem;font-family:var(--sans)}
+.savedform textarea{grid-column:1/-1;min-height:46px}.savedform .note{grid-column:1/-1;margin:2px 0}
+.savedform button{grid-column:1/-1;justify-self:start;padding:9px 16px;border:0;border-radius:9px;background:var(--accent);color:var(--paper);font-weight:700;cursor:pointer}
+.scores{grid-column:1/-1;display:grid;grid-template-columns:repeat(auto-fill,minmax(135px,1fr));gap:6px}
+.sc{display:flex;flex-direction:column;font-size:.64rem;color:var(--ink-soft);gap:2px}
+.sc input{padding:5px 7px;border:1px solid var(--line);border-radius:6px;background:var(--paper);color:var(--ink)}
+.saveditem{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:10px 0;background:var(--surface)}
+.sihead{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:.95rem}
+.pill{font-size:.64rem;font-weight:700;background:var(--accent-bg);color:var(--accent);padding:2px 8px;border-radius:10px;text-transform:uppercase}
+.saveditem details{margin-top:6px;font-size:.85rem}.saveditem summary{cursor:pointer;font-weight:600;color:var(--accent)}
 /* internal product preview */
 .pv{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:16px;
 border:1px solid var(--line-strong);border-radius:12px;padding:14px;background:var(--paper)}

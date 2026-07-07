@@ -580,6 +580,14 @@ def run_selftest():
               "suggest_fields")) and isinstance(_ws.ROLE_REPORTS, dict)
           and all(x in _web_src for x in ("/run/export/", "runedit", "PRINT_BASE")))
 
+    from src import saved as _sv
+    check("saved shops + listings learning library wired",
+          all(callable(getattr(_sv, f, None)) for f in (
+              "load_shops", "add_shop", "delete_shop", "load_listings",
+              "add_listing", "listing_market_context"))
+          and all(x in _web_src for x in ("/shops", "/listings", "/shops/add",
+                                          "savedform")))
+
     print("\nSELF-TEST RESULTS")
     for name, cond in results:
         print(f"  {'PASS' if cond else 'FAIL'}  {name}")
