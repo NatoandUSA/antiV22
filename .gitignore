@@ -6,6 +6,7 @@ data/*
 !data/shineon_products.csv
 !data/embroidery_supplier_prices.csv
 !data/suppliers/
+data/suppliers/*
 !data/suppliers/supplier_sources.json
 reports/
 __pycache__/
