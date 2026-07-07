@@ -540,6 +540,13 @@ def run_selftest():
           "keyword_data.csv" in _idea_src
           and bool(DEMAND_FLOOR.get("embroidery")))
 
+    # ---- V20.6: interactive self-serve keyword analysis on the portal ----
+    from src import interactive as _iv
+    _web_src = Path("src/web.py").read_text(encoding="utf-8")
+    check("interactive keyword analysis wired (/analyze + engine)",
+          callable(_iv.analyze_keyword) and callable(_iv.expand_keyword)
+          and "/analyze" in _web_src and "interactive" in _web_src)
+
     print("\nSELF-TEST RESULTS")
     for name, cond in results:
         print(f"  {'PASS' if cond else 'FAIL'}  {name}")

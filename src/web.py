@@ -206,6 +206,55 @@ def build_app(password, secret):
                f'reports</a></div>')
         return page(title, bar + f'<article class="md">{html}</article>' + COPY_JS)
 
+    # ---- INTERACTIVE: a teammate types a keyword and gets a live answer ----
+    @app.route("/analyze")
+    @login_required
+    def analyze():
+        import html as _html
+        raw = (request.args.get("q") or "").strip()[:80]
+        do = "expand" if request.args.get("do") == "expand" else "analyze"
+        # keep it a plain keyword (defensive; MCP args are JSON, not shell)
+        q = "".join(c for c in raw if c.isalnum() or c in " '&-.").strip()
+        val = _html.escape(q)
+        form = (
+            '<form method="get" action="/analyze" '
+            'style="display:flex;gap:.5rem;flex-wrap:wrap;margin:1rem 0">'
+            f'<input name="q" value="{val}" autofocus '
+            'placeholder="Type a keyword, e.g. custom dad shirt" '
+            'style="flex:1;min-width:220px;padding:.6rem .8rem;'
+            'border:1px solid #d9c9a8;border-radius:8px;font-size:1rem">'
+            '<button name="do" value="analyze" style="padding:.6rem 1rem;'
+            'border:0;border-radius:8px;background:#b45309;color:#fff;'
+            'font-weight:600;cursor:pointer">Analyze</button>'
+            '<button name="do" value="expand" style="padding:.6rem 1rem;'
+            'border:1px solid #b45309;border-radius:8px;background:#fff;'
+            'color:#b45309;font-weight:600;cursor:pointer">Expand</button>'
+            '</form>')
+        head = ('<div class="rbar"><a class="back" href="/">&larr; All '
+                'reports</a></div><article class="md"><h1>Analyze a keyword</h1>'
+                '<p>Type any keyword for a live market read — demand, price, '
+                'competition, and related ideas. Anyone on the team can run '
+                'this; no waiting on the operator.</p>' + form + '</article>')
+        results = ""
+        if q:
+            from src import interactive
+            try:
+                txt = (interactive.expand_keyword(q) if do == "expand"
+                       else interactive.analyze_keyword(q))
+                results = ('<article class="md">'
+                           + md.markdown(txt, extensions=["tables",
+                                         "fenced_code", "sane_lists"])
+                           + '</article>' + COPY_JS)
+            except SystemExit as exc:
+                results = ('<article class="md"><p class="empty">The live data '
+                           f'source is unavailable right now: {_html.escape(str(exc)[:200])}'
+                           '</p></article>')
+            except Exception as exc:  # noqa: BLE001
+                results = ('<article class="md"><p class="empty">Could not '
+                           f'analyze "{val}": {_html.escape(str(exc)[:200])}'
+                           '</p></article>')
+        return page("Analyze a keyword", head + results)
+
     # ---- keyword research (from `py main.py expand`, synced in reports/latest) ----
     @app.route("/research")
     @login_required
@@ -397,7 +446,7 @@ PORTAL = """
       <div class="kicker">Etsy Product Manager</div>
       <h1>Team Reports</h1>
     </div>
-    <div class="hright">{{UPDATED}}<a class="logout" href="/research">Keyword Research</a><a class="logout" href="/cheatsheet">Cheat Sheet</a><a class="logout" href="/logout">Sign out</a></div>
+    <div class="hright">{{UPDATED}}<a class="logout" href="/analyze">🔎 Analyze a keyword</a><a class="logout" href="/research">Keyword Research</a><a class="logout" href="/cheatsheet">Cheat Sheet</a><a class="logout" href="/logout">Sign out</a></div>
   </header>
   {{BODY}}
   <footer>Reports are prepared on the research machine and synced here.</footer>

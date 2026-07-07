@@ -1,6 +1,12 @@
-# Etsy Product Manager V20.5
+# Etsy Product Manager V20.6
 
-**New in V20.5 — Keyword harvester.** `py main.py harvest` pulls a deep,
+**New in V20.6 — Self-serve analysis on the dashboard.** The team portal now has
+a **🔎 Analyze a keyword** box: any teammate types a keyword and gets a live
+market read (demand, price, competition, what's winning, related keywords, with
+the trademark check built in) or an **Expand** list — right in the browser, no
+terminal, no waiting on the operator. (Needs the server to reach the YTrends MCP.)
+
+**V20.5 — Keyword harvester.** `py main.py harvest` pulls a deep,
 data-driven keyword universe from the live YTrends index (top rankings +
 opportunities + trending + targeted POD/embroidery search), filters out digital
 / off-domain noise, and writes `keyword_data.csv` so the ideas + manager reports
