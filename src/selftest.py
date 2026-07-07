@@ -574,6 +574,12 @@ def run_selftest():
     check("tag builder returns exactly 13 tags + fixes typos",
           len(_t) == 13 and any(x["status"] == "TYPO_FIXED" for x in _t))
 
+    check("role PDF exports + AI-suggested editable fields wired",
+          all(callable(getattr(_ws, f, None)) for f in (
+              "run_data", "manager_report", "seller_report", "designer_report",
+              "suggest_fields")) and isinstance(_ws.ROLE_REPORTS, dict)
+          and all(x in _web_src for x in ("/run/export/", "runedit", "PRINT_BASE")))
+
     print("\nSELF-TEST RESULTS")
     for name, cond in results:
         print(f"  {'PASS' if cond else 'FAIL'}  {name}")

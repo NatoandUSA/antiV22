@@ -578,14 +578,58 @@ def save_qs(kw, opts):
     return urlencode(d)
 
 
-def build_workspace(kw, opts=None):
+def suggest_fields(kw, stats, related, mode, req_mode):
+    """AI-suggested value + source + confidence for each command-center field."""
+    low = kw.lower()
+    try:
+        from src.idea_report import cluster_of
+        cluster = cluster_of(low) or "apparel"
+    except Exception:  # noqa: BLE001
+        cluster = "apparel"
+    relw = " ".join(_g(r, "tag", "keyword", "title") or "" for r in related[:8]).lower()
+
+    def has(*ws):
+        return any(w in low or w in relw for w in ws)
+
+    cust = ("dads" if "dad" in low else "moms" if "mom" in low else
+            "teachers" if "teacher" in low else "nurses" if "nurse" in low else
+            "gift buyers, women 25-45")
+    occ = ("4th of July" if has("usa", "4th", "july", "america", "patriot")
+           else "Christmas" if has("christmas", "xmas")
+           else "Valentine's" if has("valentine")
+           else "birthday / gift-giving")
+    style = ", ".join(w for w in ("funny", "retro", "vintage", "cute", "boho",
+                                  "minimalist", "patriotic") if has(w)) \
+        or "bold, giftable, personalized"
+    pers = ("monogram" if "monogram" in low else "name" if "name" in low
+            else "name / date")
+    sup = ("Embroidery" if req_mode == "embroidery" or matches_mode(low, "embroidery")
+           else "Both" if req_mode == "both" else "Print on Demand")
+
+    def f(sug, src, conf):
+        return {"suggestion": sug, "source": src, "confidence": conf}
+
+    return {
+        "product_type": f(cluster, "keyword + cluster map", "High"),
+        "niche": f(_g(related[0], "tag", "keyword", "title") if related else kw,
+                   "YTrends related keywords", "Medium"),
+        "target_customer": f(cust, "keyword + Etsy buyer patterns", "Medium"),
+        "occasion": f(occ, "keyword + seasonal calendar", "Medium"),
+        "style": f(style, "competitor title words", "Medium"),
+        "personalization": f(pers, "keyword intent", "Medium"),
+        "supplier_type": f(sup, "keyword contains a product word", "High"),
+    }
+
+
+def _gather(kw, opts=None):
+    """Fetch + compute one full run. Returns a dict used by the workspace render,
+    the Manager/Seller/Designer reports, and save_run."""
     opts = {k: (v or "").strip() for k, v in (opts or {}).items()}
     kw = kw.strip()
     req_mode = (opts.get("supplier_type") or opts.get("mode") or "").lower()
     if req_mode not in MODES:
         req_mode = "embroidery" if matches_mode(kw.lower(), "embroidery") else "pod"
 
-    # fetch once
     rk = mcp.research_keyword(kw)
     stats = rk.get("stats", {}) if isinstance(rk, dict) else {}
     related = (rk.get("related_keywords") if isinstance(rk, dict) else None) or []
@@ -606,8 +650,7 @@ def build_workspace(kw, opts=None):
     risk, tm_reason = tm_check(kw.lower())
     data_flags = data_check(stats, kw)
 
-    compare_html = ""
-    mode = req_mode
+    compare_html, mode = "", req_mode
     if req_mode == "both":
         compare_html, mode = _mode_compare(kw, stats)
 
@@ -617,12 +660,34 @@ def build_workspace(kw, opts=None):
     tags = build_tags(kw, related, opts, mode)
     conv = _f(stats.get("avg_conversion_rate"))
     L = _listing_data(kw, opts, stats, related, mode, tags)
-    supplier_ok = False   # brand-new run: needs manual supplier confirmation
-    ready, failed = publish_gate(kw, tags, supplier_ok, risk, data_flags, vd["cls"])
+    ready, failed = publish_gate(kw, tags, False, risk, data_flags, vd["cls"])
     pod_prompt, emb_prompt, design_risks = design_prompts(kw, opts, mode)
     fc = sales_forecast(stats, L["rec_price"] or L["price_mid"], L["cost_total"],
                         conv, data_flags)
     audit_html, audit_status = competitor_audit(listings)
+    return dict(
+        kw=kw, opts=opts, req_mode=req_mode, mode=mode, stats=stats,
+        related=related, listings=listings, comp=comp, mo=mo, risk=risk,
+        tm_reason=tm_reason, data_flags=data_flags, compare_html=compare_html,
+        scores=scores, vd=vd, src_rows=src_rows, src_conf=src_conf, tags=tags,
+        conv=conv, L=L, ready=ready, failed=failed, pod_prompt=pod_prompt,
+        emb_prompt=emb_prompt, design_risks=design_risks, fc=fc,
+        audit_html=audit_html, audit_status=audit_status,
+        suggestions=suggest_fields(kw, stats, related, mode, req_mode))
+
+
+def build_workspace(kw, opts=None):
+    G = _gather(kw, opts)
+    kw, opts, req_mode, mode = G["kw"], G["opts"], G["req_mode"], G["mode"]
+    stats, related, listings, comp = G["stats"], G["related"], G["listings"], G["comp"]
+    risk, tm_reason, data_flags = G["risk"], G["tm_reason"], G["data_flags"]
+    compare_html, scores, vd = G["compare_html"], G["scores"], G["vd"]
+    src_rows, src_conf, tags, conv, L = (G["src_rows"], G["src_conf"], G["tags"],
+                                         G["conv"], G["L"])
+    ready, failed = G["ready"], G["failed"]
+    pod_prompt, emb_prompt, design_risks = (G["pod_prompt"], G["emb_prompt"],
+                                            G["design_risks"])
+    fc, audit_html, audit_status = G["fc"], G["audit_html"], G["audit_status"]
 
     def sec(anchor, icon, title, inner):
         return (f'<section class="ws" id="{anchor}"><h2>{icon} {title}</h2>'
@@ -742,18 +807,57 @@ def build_workspace(kw, opts=None):
                         "<li><b>POD:</b> high-contrast, transparent background, big subject</li>")
                      + '<li><b>Do NOT copy</b> any competitor art, photo, or title.</li></ul>')
 
+    _q = save_qs(kw, opts)
     export_html = (
         '<div class="expbar">'
-        f'<a class="cbtn" href="/run/save?{save_qs(kw, opts)}">💾 Save run (JSON)</a>'
+        f'<a class="cbtn" href="/run/save?{_q}">💾 Save run (JSON)</a>'
+        f'<a class="cbtn" href="/run/export/manager?{_q}" target="_blank">'
+        '🖨️ Manager PDF</a>'
+        f'<a class="cbtn" href="/run/export/seller?{_q}" target="_blank">'
+        '🖨️ Seller PDF</a>'
+        f'<a class="cbtn" href="/run/export/designer?{_q}" target="_blank">'
+        '🖨️ Designer PDF</a>'
         + _copy_btn("ws-title", "Copy title") + _copy_btn("ws-tags", "Copy tags")
         + _copy_btn("ws-desc", "Copy description") + _copy_btn("ws-pod", "Copy POD")
         + _copy_btn("ws-emb", "Copy embroidery")
         + '</div><p class="note">Save writes workspace.json, listing_draft.json, '
         'design_prompts.txt, competitor_audit.json, source_confidence.json under '
-        '<code>reports/latest/runs/</code>. Bilingual Manager/Seller/Designer PDF '
-        'export is the next upgrade. Never auto-published.</p>')
+        '<code>reports/latest/runs/</code>. Each PDF button opens a print-ready '
+        'page — use your browser\'s <b>Print → Save as PDF</b>. Never '
+        'auto-published.</p>')
 
-    out = sec("verdict", "🧭", "Product verdict", verdict_html)
+    # 0. AI-suggested, editable run inputs (re-run with edits)
+    sg = G["suggestions"]
+
+    def _fld(name, label):
+        s = sg.get(name, {})
+        cur = opts.get(name) or s.get("suggestion", "")
+        return (f'<div class="fld"><label>{_esc(label)}</label>'
+                f'<input name="{name}" value="{_esc(cur)}">'
+                f'<div class="fmeta">AI: <b>{_esc(s.get("suggestion",""))}</b> · '
+                f'{_esc(s.get("source",""))} · conf {_esc(s.get("confidence",""))}'
+                '</div></div>')
+    mode_opts = "".join(
+        f'<option value="{v}"{" selected" if req_mode == v else ""}>{lbl}</option>'
+        for v, lbl in (("pod", "Print on Demand"), ("embroidery", "Embroidery"),
+                       ("both", "Both")))
+    inputs_html = (
+        '<p class="note">AI filled these from the data — edit any field and '
+        're-run. Nothing is hidden; every suggestion shows its source + confidence.</p>'
+        f'<form class="runedit" method="get" action="/run">'
+        f'<input type="hidden" name="q" value="{_esc(kw)}">'
+        '<div class="fld"><label>Product mode</label>'
+        f'<select name="supplier_type">{mode_opts}</select>'
+        '<div class="fmeta">AI: <b>' + _esc(sg["supplier_type"]["suggestion"])
+        + '</b> · ' + _esc(sg["supplier_type"]["source"]) + ' · conf '
+        + _esc(sg["supplier_type"]["confidence"]) + '</div></div>'
+        + _fld("product_type", "Product type") + _fld("niche", "Niche")
+        + _fld("target_customer", "Target customer") + _fld("occasion", "Occasion")
+        + _fld("style", "Style") + _fld("personalization", "Personalization")
+        + '<button class="primary" type="submit">Re-run with these ↻</button></form>')
+
+    out = sec("inputs", "📝", "Run inputs (AI-suggested, editable)", inputs_html)
+    out += sec("verdict", "🧭", "Product verdict", verdict_html)
     if compare_html:
         out += sec("compare", "⚖️", "POD vs Embroidery", compare_html)
     out += (
@@ -817,3 +921,99 @@ def save_run(kw, opts, workspace_html):
     (folder / "source_confidence.json").write_text(
         json.dumps(data.get("source_confidence", {}), indent=2), encoding="utf-8")
     return folder
+
+
+# --------------------------- role reports (print -> PDF) -------------------
+
+def run_data(kw, opts=None):
+    """Full structured run — used by the Manager/Seller/Designer reports."""
+    return _gather(kw, opts)
+
+
+def _score_table(G):
+    rows = ["<table><tr><th>Score</th><th>/100</th><th>Sources</th></tr>"]
+    for s in G["scores"]:
+        rows.append(f"<tr><td>{_esc(s['name'])}</td><td><b>{s['score']}</b></td>"
+                    f"<td>{_esc(s['sources'])}</td></tr>")
+    return "".join(rows) + "</table>"
+
+
+def manager_report(G):
+    vd, fc, L = G["vd"], G["fc"], G["L"]
+    failed = "".join(f"<li>{_esc(x)}</li>" for x in G["failed"])
+    src = "".join(f"<li>{_esc(n)}: {_esc(st)} (conf {_esc(cf)})</li>"
+                  for n, st, cf in G["src_rows"])
+    return (
+        f"<h1>Manager report — {_esc(G['kw'])}</h1>"
+        f"<p class='meta'>Product mode: {G['req_mode'].upper()} · "
+        f"Data confidence: {_esc(G['src_conf'])}</p>"
+        f"<h2>Verdict: {vd['verdict']}</h2><p>{_esc(vd['reason'])}. "
+        f"Confidence {vd['confidence']}.</p>"
+        f"<p><b>Trademark:</b> {G['risk']} — {_esc(G['tm_reason'] or 'verify on USPTO')}</p>"
+        "<h2>Opportunity scores</h2>" + _score_table(G)
+        + "<h2>Source confidence</h2><ul>" + src + "</ul>"
+        + (f"<p class='warn'>DATA_CHECK_REQUIRED: "
+           f"{'; '.join(_esc(f) for f in G['data_flags'])}</p>" if G['data_flags'] else "")
+        + f"<h2>Profit &amp; 7-day forecast</h2><p>{_esc(L['margin_line'] or L['cost_line'])}</p>"
+        f"<ul><li>Expected sales: {fc['sales']} · profit {fc['profit']} · "
+        f"break-even {fc['breakeven']}</li><li>Scale: {fc['scale']} · Kill: "
+        f"{fc['kill']} · confidence {fc['confidence']}</li></ul>"
+        f"<h2>Publish gate</h2><p><b>PUBLISH_READY: {'true' if G['ready'] else 'false'}</b></p>"
+        + ("" if G['ready'] else f"<b>FAILED_PUBLISH_CHECKS</b><ul>{failed}</ul>")
+        + "<h2>What to approve</h2><ul>"
+        + ("<li>Approve design + listing build (draft).</li>"
+           if vd['cls'] in ('design', 'validate')
+           else f"<li>Do NOT approve publish — {_esc(vd['verdict'])}.</li>")
+        + "<li>Require supplier + trademark confirmation before any publish.</li></ul>")
+
+
+def seller_report(G):
+    L, tags = G["L"], G["tags"]
+    tag_rows = "".join(f"<tr><td>{i}</td><td>{_esc(t['tag'])}</td><td>{t['type']}</td>"
+                       f"<td>{t['status']}</td></tr>" for i, t in enumerate(tags, 1))
+    failed = "".join(f"<li>{_esc(x)}</li>" for x in G["failed"])
+    return (
+        f"<h1>Seller report — {_esc(G['kw'])}</h1>"
+        f"<p class='meta'>Mode: {G['req_mode'].upper()}</p>"
+        f"<h2>Listing {'(PUBLISH-READY)' if G['ready'] else '— DRAFT ONLY, DO NOT PUBLISH'}</h2>"
+        f"<p><b>Title:</b> {_esc(L['title'])}</p>"
+        "<h3>13 tags</h3><table><tr><th>#</th><th>Tag</th><th>Type</th>"
+        f"<th>Status</th></tr>{tag_rows}</table>"
+        f"<h3>Description</h3><pre>{_esc(L['desc'])}</pre>"
+        f"<h2>Supplier &amp; price</h2><p>{_esc(L['cost_line'] or 'NEED_SUPPLIER_DETAILS')}. "
+        f"{_esc(L['margin_line'])}</p>"
+        f"<h2>Publish checklist</h2><p><b>PUBLISH_READY: {'true' if G['ready'] else 'false'}</b></p>"
+        + ("" if G['ready'] else f"<ul>{failed}</ul>")
+        + "<h2>Trademark checklist</h2><ul>"
+        f"<li>Primary keyword: {G['risk']} — {_esc(G['tm_reason'] or 'verify USPTO')}</li>"
+        "<li>Exclude any NEED_TM_CHECK / BLOCKED_TM tags from a published listing.</li>"
+        "</ul>"
+        f"<h2>Competitor notes</h2>{G['audit_html']}")
+
+
+def designer_report(G):
+    opts, mode = G["opts"], G["mode"]
+    risks = "".join(f"<li>{_esc(r)}</li>" for r in G["design_risks"])
+    return (
+        f"<h1>Designer brief — {_esc(G['kw'])}</h1><p class='meta'>Mode: {mode}</p>"
+        "<h2>Visual direction</h2><ul>"
+        f"<li>Make: original {mode} design for \"{_esc(G['kw'])}\"</li>"
+        f"<li>Style: {_esc(opts.get('style') or 'clean, bold, giftable')}</li>"
+        f"<li>Personalization space: {_esc(opts.get('personalization') or 'name / date')}</li>"
+        "<li>Do NOT copy any competitor art, photo, or title.</li></ul>"
+        f"<h2>Design risk warnings</h2><ul>{risks}</ul>"
+        f"<h2>POD prompt</h2><pre>{_esc(G['pod_prompt'])}</pre>"
+        f"<h2>Embroidery prompt (stitch-safe)</h2><pre>{_esc(G['emb_prompt'])}</pre>"
+        "<h2>Mockup checklist</h2><ul><li>Hero image: bold subject, gift context.</li>"
+        "<li>Lifestyle / in-use shot.</li><li>Personalization example.</li>"
+        "<li>Size chart / detail shot.</li></ul>"
+        "<h2>Avoid list</h2><ul><li>Trademarks, brand logos, copyrighted characters.</li>"
+        "<li>Tiny text, clip-art look, copied designs.</li>"
+        + ("<li>Embroidery: gradients, fine detail, more than 6 colors.</li>"
+           if mode == "embroidery" else "") + "</ul>"
+        "<h2>Competitor weakness to beat</h2><p>Generic art + weak first image; "
+        "we win with a bold original hero image and real personalization.</p>")
+
+
+ROLE_REPORTS = {"manager": manager_report, "seller": seller_report,
+                "designer": designer_report}

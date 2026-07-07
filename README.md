@@ -1,6 +1,14 @@
-# Etsy Product Manager V21.1
+# Etsy Product Manager V21.2
 
-**New in V21.1 — Action-center workspace.** The Command Center now has a
+**New in V21.2 — PDF exports + AI-suggested editable fields.** Each run now opens
+with an **AI-filled, editable input panel** — every field (product type, niche,
+customer, occasion, style, personalization, mode) shows the **AI suggestion,
+source, and confidence**, and you can edit + re-run. And there are **Manager /
+Seller / Designer report exports**: each opens a clean, print-ready page — use
+the browser's **Print → Save as PDF** (English; no dependencies, works on the
+VPS). Save writes the JSON files as before.
+
+**V21.1 — Action-center workspace.** The Command Center now has a
 **Product Mode toggle (POD / Embroidery / Both)** at the top that controls the
 whole run (Both shows a side-by-side POD-vs-Embroidery recommendation). Each run
 adds: a **strict verdict** (SELL NOW / VALIDATE / WATCH / SKIP / BLOCKED) that

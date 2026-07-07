@@ -361,6 +361,27 @@ def build_app(password, secret):
                     f'to run</a></div><article class="md"><h1>Run saved</h1>'
                     f'<p>{msg}</p></article>')
 
+    @app.route("/run/export/<role>")
+    @login_required
+    def run_export(role):
+        import html as _html
+        if role not in ("manager", "seller", "designer"):
+            abort(404)
+        q, opts = _run_inputs()
+        from src import workspace
+        if not q:
+            body = "<h1>Export</h1><p>No keyword — start a run first.</p>"
+        else:
+            try:
+                G = workspace.run_data(q, opts)
+                body = workspace.ROLE_REPORTS[role](G)
+            except Exception as exc:  # noqa: BLE001
+                body = (f"<h1>{role.title()} report</h1><p>Could not build it: "
+                        f"{_html.escape(str(exc)[:200])}</p>")
+        title = _html.escape(f"{role.title()} report — {q}")
+        return Response(PRINT_BASE.replace("{{TITLE}}", title)
+                        .replace("{{BODY}}", body), mimetype="text/html")
+
     # ---- other live self-serve tools (all MCP-backed, run on the VPS 24/7) ----
     def _render_tool(title, txt):
         html = md.markdown(txt, extensions=["tables", "fenced_code",
@@ -611,6 +632,12 @@ padding:4px 9px;cursor:pointer;text-decoration:none;display:inline-block}
 .g-ok{background:var(--ok);color:#fff}.g-no{background:var(--stop);color:#fff}
 .warn{background:var(--accent-bg);border:1px solid var(--line-strong);border-radius:8px;padding:8px 12px;font-size:.83rem;margin-bottom:8px}
 .warn ul{margin:4px 0 0;padding-left:18px}
+.runedit{display:grid;grid-template-columns:repeat(auto-fill,minmax(205px,1fr));gap:10px;align-items:end}
+.runedit .fld{display:flex;flex-direction:column;gap:3px}
+.runedit label{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft)}
+.runedit input,.runedit select{padding:8px 10px;border:1px solid var(--line-strong);border-radius:8px;background:var(--paper);color:var(--ink);font-size:.88rem}
+.runedit .fmeta{font-size:.67rem;color:var(--ink-faint)}
+.runedit button{grid-column:1/-1;justify-self:start;padding:9px 16px;border:0;border-radius:9px;background:var(--accent);color:var(--paper);font-weight:700;cursor:pointer}
 /* internal product preview */
 .pv{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:16px;
 border:1px solid var(--line-strong);border-radius:12px;padding:14px;background:var(--paper)}
@@ -695,6 +722,30 @@ BASE = ("<!doctype html><html><head><meta charset=utf8>"
         "<meta name=viewport content='width=device-width,initial-scale=1'>"
         "<title>{{TITLE}} · Etsy Product Manager</title><style>" + CSS +
         "</style></head><body>{{BODY}}</body></html>")
+
+# Standalone print-ready page for the role reports -> browser Print/Save as PDF.
+PRINT_BASE = (
+    "<!doctype html><html><head><meta charset=utf8>"
+    "<meta name=viewport content='width=device-width,initial-scale=1'>"
+    "<title>{{TITLE}}</title><style>"
+    "body{font-family:-apple-system,Segoe UI,system-ui,sans-serif;max-width:800px;"
+    "margin:0 auto;padding:32px 28px;color:#1a1a1a;line-height:1.5;background:#fff}"
+    "h1{font-size:1.5rem;margin:0 0 4px}h2{font-size:1.05rem;border-bottom:1px solid #ddd;"
+    "padding-bottom:3px;margin:20px 0 8px;color:#b45309}h3{font-size:.95rem;margin:14px 0 4px}"
+    ".meta{color:#666;font-size:.85rem;margin:0 0 12px}"
+    ".warn{background:#fbe9d6;border:1px solid #e0c090;padding:6px 10px;border-radius:6px}"
+    "table{border-collapse:collapse;width:100%;font-size:.85rem;margin:6px 0}"
+    "th,td{border:1px solid #ddd;padding:4px 8px;text-align:left}th{background:#f5efe6}"
+    "pre{background:#faf7f1;border:1px solid #e5ddcc;border-radius:6px;padding:10px;"
+    "white-space:pre-wrap;font-size:.82rem}ul{margin:4px 0;padding-left:20px}"
+    ".pbtn{position:fixed;top:14px;right:14px;background:#b45309;color:#fff;border:0;"
+    "border-radius:8px;padding:9px 14px;font-weight:700;cursor:pointer}"
+    "@media print{.pbtn{display:none}body{padding:0 10px}}"
+    "</style></head><body>"
+    "<button class=pbtn onclick='window.print()'>🖨️ Save as PDF</button>{{BODY}}"
+    "<p style='margin-top:28px;color:#999;font-size:.75rem'>Etsy Product Manager — "
+    "internal working document. Draft only; never auto-published. Do not copy "
+    "competitor artwork, titles, or photos.</p></body></html>")
 
 LOGIN = """
 <div class="wrap"><div class="login">
