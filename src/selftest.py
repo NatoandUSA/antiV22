@@ -612,6 +612,17 @@ def run_selftest():
           and all(s in Path("src/supplier_pull.py").read_text(encoding="utf-8")
                   for s in ("merchize", "catkissfish", "pgprints")))
 
+    from src import supplier_ops as _so, feedback as _fbk
+    check("supplier ops: sync / import-csv / match + normalized schema + commands",
+          all(callable(getattr(_so, f, None)) for f in ("sync", "import_csv", "match"))
+          and len(_so.SCHEMA) >= 30
+          and "import-csv" in _main_src and '"workspace"' in _main_src)
+    check("supplier library + CSV upload + Sales Feedback loop wired",
+          callable(getattr(_fbk, "add", None)) and callable(_fbk.recommend)
+          and _fbk.recommend({"orders": 1})[0] == "SCALE PRODUCT LINE"
+          and all(x in _web_src for x in ("/suppliers", "/suppliers/upload",
+                                          "/feedback", "/feedback/add")))
+
     print("\nSELF-TEST RESULTS")
     for name, cond in results:
         print(f"  {'PASS' if cond else 'FAIL'}  {name}")

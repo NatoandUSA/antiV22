@@ -1,6 +1,16 @@
-# Etsy Product Manager V21.7
+# Etsy Product Manager V21.8
 
-**New in V21.7 — sales-execution brain.** The workspace now scores and gates on
+**New in V21.8 — supplier ops + Sales Feedback Loop.** New CLI: `supplier sync`
+(register a catalog supplier), `supplier import-csv --source shineon|embroidery
+--file <csv>` (normalize into `data/suppliers/supplier_products.csv`), `supplier
+match --product "..." --mode ...` (0-100 supplier match), and `workspace build
+--keyword "..." --mode ...` (build + save a run from the CLI). On the dashboard:
+a **🏭 Suppliers** library (all 8 suppliers, Open-catalog links, **CSV upload**
+for ShineOn/Embroidery, Sync) and a **📉 Sales Feedback** loop — log a published
+listing's real numbers and get a Day-3/7 **KEEP / CHANGE / KILL / SCALE**
+recommendation. Never auto-publishes. (English only.)
+
+**V21.7 — sales-execution brain.** The workspace now scores and gates on
 what actually wins: a **Can We Win score** (12 advantages — gates SELL NOW; if
 < 70 it won't recommend SELL NOW), a **Launch Readiness score** (10 checks —
 gates publishing; must be ≥ 85), a **First Image Battle** (competitor pattern vs

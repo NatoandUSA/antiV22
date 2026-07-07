@@ -270,11 +270,37 @@ def cmd_grow(cmd, args):
     harvest(mode=g_mode, seed=g_seed or None)
 
 
+def _flags(args):
+    """Parse --key value flags; return (dict, leftover_words)."""
+    kv, words, i = {}, [], 0
+    while i < len(args):
+        if args[i].startswith("--") and i + 1 < len(args):
+            kv[args[i][2:]] = args[i + 1]; i += 2
+        else:
+            words.append(args[i]); i += 1
+    return kv, words
+
+
 def cmd_supplier(cmd, args):
-    if not args or args[0].lower() not in ("pod", "embroidery"):
+    sub = args[0].lower() if args else ""
+    if sub in ("sync", "import-csv", "match"):
+        from src import supplier_ops as so
+        kv, words = _flags(args[1:])
+        out = kv.get("output", so.DEFAULT_OUT)
+        country = kv.get("country", "US")
+        if sub == "sync":
+            so.sync(kv.get("source", ""), country, out)
+        elif sub == "import-csv":
+            so.import_csv(kv.get("source", ""), kv.get("file", ""), out, country)
+        else:
+            so.match(kv.get("product") or " ".join(words).strip('\'"'),
+                     kv.get("mode"), country, out)
+        return
+    if sub not in ("pod", "embroidery"):
         _usage_exit('Usage: python main.py supplier pod|embroidery "product" '
                     '[--country US] [--suppliers Printify,Printway,...] '
-                    '[--output supplier_products.csv]')
+                    '[--output supplier_products.csv]  |  supplier '
+                    'sync|import-csv|match ...')
     kind, rest = args[0].lower(), args[1:]
     country, suppliers, output, words, i = "US", None, None, [], 0
     while i < len(rest):
@@ -349,6 +375,28 @@ def cmd_harvest(cmd, args):
     run_harvest(args)
 
 
+def cmd_workspace(cmd, args):
+    if args and args[0] == "build":
+        args = args[1:]
+    kv, words = _flags(args)
+    kw = kv.get("keyword") or kv.get("kw") or " ".join(words).strip('\'"')
+    if not kw:
+        _usage_exit('Usage: python main.py workspace build --keyword "..." '
+                    '--mode pod|embroidery|both [--country US]')
+    from src import workspace as w
+    opts = {"supplier_type": kv.get("mode", ""), "niche": kv.get("niche", "")}
+    G = w.run_data(kw, opts)
+    html = w.build_workspace(kw, opts)
+    folder = w.save_run(kw, opts, html)
+    overall = next(s["score"] for s in G["scores"]
+                   if s["name"] == "Overall Product")
+    print(f"\nWORKSPACE: {kw}  (mode={G['req_mode']})")
+    print(f"  Verdict: {G['vd']['verdict']}  ·  overall {overall}/100  ·  "
+          f"can-we-win {G['cww_score']}  ·  launch {G['lr_score']} "
+          f"({G['lr_status']})  ·  publish-ready {G['ready']}")
+    print(f"  Saved run -> {folder}")
+
+
 # Single source of truth for command routing: name -> handler(cmd, args).
 COMMANDS = {
     "listreports": cmd_listreports,
@@ -371,6 +419,7 @@ COMMANDS = {
     "discover": cmd_discover,
     "expand": cmd_expand,
     "harvest": cmd_harvest,
+    "workspace": cmd_workspace,
 }
 
 # Commands that reach the live YTrends/Printify APIs. For YTrends-backed ones

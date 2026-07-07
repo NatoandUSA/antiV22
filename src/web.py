@@ -224,6 +224,10 @@ def build_app(password, secret):
             '<span>Competitor-learning library</span></a>'
             '<a class="toolcard" href="/listings"><b>📌 Saved listings</b>'
             '<span>Listings to learn from</span></a>'
+            '<a class="toolcard" href="/suppliers"><b>🏭 Suppliers</b>'
+            '<span>Catalogs + ShineOn/Embroidery CSV upload</span></a>'
+            '<a class="toolcard" href="/feedback"><b>📉 Sales feedback</b>'
+            '<span>Post-launch: keep / change / kill / scale</span></a>'
             '</div>')
 
         # --- Archive: saved runs + the operator's daily reports (secondary) ---
@@ -547,6 +551,133 @@ def build_app(password, secret):
         from src import saved
         saved.delete_listing(lid)
         return redirect(url_for("listings"))
+
+    # ---- Supplier library: catalogs (open/sync) + CSV upload (ShineOn/Embroidery) ----
+    @app.route("/suppliers")
+    @login_required
+    def suppliers():
+        import html as _h
+        import collections
+        from src import supplier_ops as so
+        sources = so.load_sources()
+        counts = collections.Counter(r.get("supplier_id") for r in so.load_products())
+        rows = ["<table><tr><th>Supplier</th><th>Type</th><th>Modes</th>"
+                "<th>Catalog / CSV</th><th>Products</th><th>Action</th></tr>"]
+        for sid, info in sources.items():
+            typ, n = info.get("type", ""), counts.get(sid, 0)
+            if typ == "catalog_url":
+                link = (f'<a href="{_h.escape(info.get("catalog_url",""))}" '
+                        'target="_blank" rel="noopener">Open catalog ↗</a>')
+                action = f'<a class="cbtn" href="/suppliers/sync/{sid}">Sync</a>'
+            else:
+                link = f'CSV: {_h.escape(info.get("csv_file",""))}'
+                action = (
+                    '<form method="post" action="/suppliers/upload" '
+                    'enctype="multipart/form-data" style="display:inline">'
+                    f'<input type="hidden" name="source" value="{sid}">'
+                    '<input type="file" name="file" accept=".csv" required>'
+                    '<button class="cbtn" type="submit">Upload CSV</button></form>')
+            rows.append(f"<tr><td><b>{_h.escape(info.get('name',sid))}</b></td>"
+                        f"<td>{typ}</td><td>{', '.join(info.get('modes',[]))}</td>"
+                        f"<td>{link}</td><td>{n}</td><td>{action}</td></tr>")
+        rows.append("</table>")
+        bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
+        return page("Suppliers", bar + '<article class="md"><h1>Supplier library</h1>'
+                    '<p>POD catalogs (open + pull manually) and CSV suppliers '
+                    '(ShineOn / Embroidery — upload to normalize into the library). '
+                    'Nothing is scraped; uploaded CSVs are the truth. A product is '
+                    'only publish-ready once a supplier reaches SUPPLIER_CONFIRMED.'
+                    '</p>' + "".join(rows) + '<p class="note">CLI: <code>py main.py '
+                    'supplier import-csv --source shineon --file &lt;csv&gt;</code> · '
+                    '<code>supplier match --product "..." --mode embroidery</code></p>'
+                    '</article>')
+
+    @app.route("/suppliers/sync/<source>")
+    @login_required
+    def suppliers_sync(source):
+        from src import supplier_ops as so
+        if source.lower() in so.load_sources():
+            try:
+                so.sync(source.lower())
+            except Exception:  # noqa: BLE001
+                pass
+        return redirect(url_for("suppliers"))
+
+    @app.route("/suppliers/upload", methods=["POST"])
+    @login_required
+    def suppliers_upload():
+        from src import supplier_ops as so
+        source = (request.form.get("source") or "").lower()
+        f = request.files.get("file")
+        if f and source in ("shineon", "embroidery"):
+            dest = Path("data/suppliers")
+            dest.mkdir(parents=True, exist_ok=True)
+            fname = ("shineon_jewelry_acrylic.csv" if source == "shineon"
+                     else "Embroidery.csv")
+            path = dest / fname
+            try:
+                f.save(str(path))
+                so.import_csv(source, str(path))
+            except Exception:  # noqa: BLE001
+                pass
+        return redirect(url_for("suppliers"))
+
+    # ---- Sales Feedback Loop: log real numbers -> Day-3/7 recommendation ----
+    @app.route("/feedback")
+    @login_required
+    def feedback():
+        import html as _h
+        from src import feedback as fb
+        form = ('<form class="savedform" method="post" action="/feedback/add">'
+                '<input name="listing_url" placeholder="Listing URL" required>'
+                '<input name="publish_date" placeholder="Publish date">'
+                '<input name="product_mode" placeholder="Mode (pod/embroidery)">'
+                '<input name="supplier" placeholder="Supplier">'
+                '<input name="price" placeholder="Price">'
+                '<input name="title" placeholder="Title">'
+                '<input name="impressions" type="number" placeholder="Impressions">'
+                '<input name="views" type="number" placeholder="Views">'
+                '<input name="favorites" type="number" placeholder="Favorites">'
+                '<input name="carts" type="number" placeholder="Carts">'
+                '<input name="orders" type="number" placeholder="Orders">'
+                '<input name="revenue" type="number" placeholder="Revenue">'
+                '<input name="profit" type="number" placeholder="Profit">'
+                '<textarea name="notes" placeholder="Notes"></textarea>'
+                '<button class="primary" type="submit">Log + get recommendation</button>'
+                '</form>')
+        items = ""
+        for r in reversed(fb.load()):
+            items += ('<div class="saveditem"><div class="sihead">'
+                      f'<b>{_h.escape((r.get("title") or r.get("listing_url") or "")[:58])}</b> '
+                      f'<span class="pill">{_h.escape(r.get("recommendation",""))}</span> '
+                      f'<a class="cbtn" href="/feedback/del/{r["id"]}">delete</a></div>'
+                      f'<div class="note">{_h.escape(r.get("product_mode",""))} · '
+                      f'{r.get("views",0)} views · {r.get("favorites",0)} favs · '
+                      f'{r.get("carts",0)} carts · {r.get("orders",0)} orders · '
+                      f'logged {r.get("added_at","")}</div>'
+                      f'<p><b>Day 3/7 → {_h.escape(r.get("recommendation",""))}:</b> '
+                      f'{_h.escape(r.get("rec_reason",""))}</p></div>')
+        bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
+        return page("Sales feedback", bar + '<article class="md"><h1>Sales feedback '
+                    'loop</h1><p>After you MANUALLY publish, log the listing\'s real '
+                    'numbers to get a Day-3/7 <b>KEEP / CHANGE / KILL / SCALE</b> '
+                    'recommendation. This private performance data is your edge.</p>'
+                    + form + (items or '<p class="empty">No listings tracked yet.</p>')
+                    + '</article>')
+
+    @app.route("/feedback/add", methods=["POST"])
+    @login_required
+    def feedback_add():
+        from src import feedback as fb
+        fb.add({k: (request.form.get(k) or "").strip()[:300] for k in fb.FIELDS})
+        return redirect(url_for("feedback"))
+
+    @app.route("/feedback/del/<int:fid>")
+    @login_required
+    def feedback_del(fid):
+        from src import feedback as fb
+        fb.delete(fid)
+        return redirect(url_for("feedback"))
 
     # ---- other live self-serve tools (all MCP-backed, run on the VPS 24/7) ----
     def _render_tool(title, txt):
