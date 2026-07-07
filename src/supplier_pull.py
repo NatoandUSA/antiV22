@@ -18,6 +18,7 @@ SUPPLIER_CATALOGS = {
     "shineon": "https://teamshineon.zendesk.com/hc/en-us/articles/10195816837265",
     "burgerprints": "https://burgerprints.com/catalog/",
     "printway": "https://printway.io/en",
+    "embroidery partner": "(internal price sheet: data/embroidery_supplier_prices.csv)",
 }
 
 FIELDS = ["product_idea", "production_type", "supplier_name",
@@ -87,16 +88,55 @@ def compute_status(rec, kind):
     return "NEED_SUPPLIER_DETAILS", missing
 
 
-def load_supplier_products():
+def _read_csv(path):
+    p = Path(path)
+    if not p.exists():
+        return []
+    with p.open(newline="", encoding="utf-8") as f:
+        return list(csv.DictReader(f))
+
+
+def _known_fields(product_idea, kind, supplier):
+    """Pre-fill ONLY from our real data files (supplier_costs.csv). Never invents
+    — a field we don't actually have stays empty and shows up in missing_fields."""
+    out = {}
+    try:
+        from src.idea_report import cluster_of
+        cluster = (cluster_of(product_idea.lower()) or "").lower()
+    except Exception:  # noqa: BLE001
+        cluster = ""
+    sup = supplier.lower()
+    for r in _read_csv("supplier_costs.csv"):
+        if ((r.get("product_type") or "").lower() == cluster
+                and (r.get("supplier_name") or "").lower() == sup):
+            out.update({
+                "base_cost": r.get("base_cost", ""),
+                "shipping_cost": r.get("shipping_cost", ""),
+                "processing_time": r.get("processing_time", ""),
+                "material": r.get("material", ""),
+                "available_sizes": r.get("size", ""),
+                "variants_available": r.get("variants_available", ""),
+                "personalization_supported": r.get("personalization_supported", ""),
+                "production_partner_required":
+                    (r.get("production_partner_required") or "yes"),
+                "supplier_notes": "Pre-filled from supplier_costs.csv — verify the "
+                                  "exact product URL + remaining fields.",
+            })
+            break
+    return out
+
+
+def load_supplier_products(path=CSV_PATH):
     rows = []
-    if CSV_PATH.exists():
-        with CSV_PATH.open(newline="", encoding="utf-8") as f:
+    p = Path(path)
+    if p.exists():
+        with p.open(newline="", encoding="utf-8") as f:
             rows = list(csv.DictReader(f))
     return rows
 
 
-def save_supplier_products(rows):
-    with CSV_PATH.open("w", newline="", encoding="utf-8") as f:
+def save_supplier_products(rows, path=CSV_PATH):
+    with Path(path).open("w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=FIELDS, extrasaction="ignore")
         w.writeheader()
         w.writerows(rows)
@@ -144,30 +184,42 @@ def _printify_matches(primary_keyword):
 
 
 def run_pull(kind, product_idea, primary_keyword=None, cluster="",
-             target_country="US",
-             preferred=("printify", "printway", "burgerprints"),
-             fallback=("shineon",)):
+             target_country="US", suppliers=None, output=None,
+             preferred=None, fallback=("shineon",)):
     kind = kind.lower()
     primary_keyword = primary_keyword or product_idea
     ptype = classify_production_type(product_idea)
+    # supplier list: explicit --suppliers wins; else a sensible per-mode default.
+    if suppliers:
+        supplier_list = suppliers
+    elif preferred:
+        supplier_list = list(preferred) + list(fallback)
+    elif kind == "embroidery":
+        supplier_list = ["embroidery partner", "printify", "printway", "burgerprints"]
+    else:
+        supplier_list = ["printify", "printway", "burgerprints", "shineon"]
+    out_path = Path(output) if output else CSV_PATH
+
     print(f"\nPULL_SUPPLIER_DETAILS_{kind.upper()}: {product_idea}")
-    print(f"  production_type: {ptype}")
+    print(f"  production_type: {ptype} · country: {target_country} · "
+          f"suppliers: {', '.join(supplier_list)} · output: {out_path}")
     if kind == "pod" and ptype in ("EMBROIDERY", "CHENILLE_PATCH"):
         print("  WARNING: this product classifies as embroidery/chenille. "
               "Do not pretend a printed product is embroidery - use:\n"
               f'  py main.py supplier embroidery "{product_idea}"')
+    if kind == "embroidery" and ptype == "DIGITAL":
+        print("  NOTE: digital product — embroidery not applicable.")
 
-    existing = load_supplier_products()
+    existing = load_supplier_products(out_path)
     key = product_idea.strip().lower()
     updated = [r for r in existing
                if (r.get("product_idea") or "").strip().lower() != key]
     new_rows = []
 
     printify_hits = _printify_matches(primary_keyword) \
-        if "printify" in [p.lower() for p in list(preferred) + list(fallback)] \
-        else []
+        if "printify" in [p.lower() for p in supplier_list] else []
 
-    for sup in list(preferred) + list(fallback):
+    for sup in supplier_list:
         s = sup.lower()
         rec = {f: "" for f in FIELDS}
         rec.update({
@@ -177,6 +229,13 @@ def run_pull(kind, product_idea, primary_keyword=None, cluster="",
             "target_country": target_country,
             "production_partner_required": "yes",
         })
+        rec.update(_known_fields(product_idea, kind, s))   # real data pre-fill
+        if ptype in ("DIGITAL", "UNKNOWN"):
+            rec["supplier_status"] = "PRODUCT_NOT_SUPPORTED"
+            rec["missing_fields"] = ""
+            new_rows.append(rec)
+            print(f"  {s:<18} status=PRODUCT_NOT_SUPPORTED ({ptype})")
+            continue
         if s == "printify" and printify_hits:
             score, bp = printify_hits[0]
             rec["product_name_from_supplier"] = bp.get("title", "")
@@ -201,8 +260,8 @@ def run_pull(kind, product_idea, primary_keyword=None, cluster="",
               + (f"  match={rec['product_match_score']}"
                  if rec.get("product_match_score") else ""))
 
-    save_supplier_products(updated + new_rows)
-    print(f"\nRecords saved to {CSV_PATH}. Team: open the file, fill the "
+    save_supplier_products(updated + new_rows, out_path)
+    print(f"\nRecords saved to {out_path}. Team: open the file, fill the "
           "missing fields for the supplier you choose (costs, material, "
           "sizes, processing), then rerun 'py main.py manager'.")
     print("A product can only become PUBLISH_READY once one supplier row "

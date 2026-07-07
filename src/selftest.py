@@ -592,6 +592,16 @@ def run_selftest():
           and all(x in _web_src for x in ("/shops", "/listings", "/shops/add",
                                           "savedform")))
 
+    from src import supplier_pull as _sp
+    check("supplier command: flags + real-data pre-fill + PRODUCT_NOT_SUPPORTED",
+          callable(getattr(_sp, "_known_fields", None)) and callable(_sp.run_pull)
+          and "PRODUCT_NOT_SUPPORTED" in
+          Path("src/supplier_pull.py").read_text(encoding="utf-8")
+          and "--suppliers" in _main_src)
+    check("YTuong raw-save + normalized audit pipeline",
+          callable(getattr(_hv, "write_raw_and_processed", None))
+          and "data/processed" in Path("src/harvest.py").read_text(encoding="utf-8"))
+
     print("\nSELF-TEST RESULTS")
     for name, cond in results:
         print(f"  {'PASS' if cond else 'FAIL'}  {name}")

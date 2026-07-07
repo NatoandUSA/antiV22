@@ -271,10 +271,29 @@ def cmd_grow(cmd, args):
 
 
 def cmd_supplier(cmd, args):
-    if len(args) < 2 or args[0].lower() not in ("pod", "embroidery"):
-        _usage_exit('Usage: python main.py supplier pod|embroidery "keyword"')
+    if not args or args[0].lower() not in ("pod", "embroidery"):
+        _usage_exit('Usage: python main.py supplier pod|embroidery "product" '
+                    '[--country US] [--suppliers Printify,Printway,...] '
+                    '[--output supplier_products.csv]')
+    kind, rest = args[0].lower(), args[1:]
+    country, suppliers, output, words, i = "US", None, None, [], 0
+    while i < len(rest):
+        a = rest[i]
+        if a == "--country" and i + 1 < len(rest):
+            country = rest[i + 1]; i += 2
+        elif a == "--suppliers" and i + 1 < len(rest):
+            suppliers = [s.strip().lower() for s in rest[i + 1].split(",")
+                         if s.strip()]; i += 2
+        elif a == "--output" and i + 1 < len(rest):
+            output = rest[i + 1]; i += 2
+        else:
+            words.append(a); i += 1
+    product = " ".join(words).strip('\'"')
+    if not product:
+        _usage_exit('Usage: python main.py supplier pod|embroidery "product" ...')
     from src.supplier_pull import run_pull
-    run_pull(args[0].lower(), " ".join(args[1:]).strip('\'"'))
+    run_pull(kind, product, target_country=country, suppliers=suppliers,
+             output=output)
 
 
 def cmd_selftest(cmd, args):

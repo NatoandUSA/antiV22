@@ -1,6 +1,16 @@
-# Etsy Product Manager V21.5
+# Etsy Product Manager V21.6
 
-**New in V21.5 — 🕵️ Spy tool.** A dedicated competitor-intelligence view: type a
+**New in V21.6 — supplier command flags + data audit trail.** `py main.py
+supplier pod|embroidery "product" [--country US] [--suppliers Printify,Printway,…]
+[--output file.csv]` now takes flags, **pre-fills real costs** from
+`supplier_costs.csv` (so rows come back SUPPLIER_PARTIAL instead of empty),
+marks digital products `PRODUCT_NOT_SUPPORTED`, and never invents a field.
+And every `harvest` now writes an **audit trail**: raw pull →
+`data/raw/ytuong/keywords_YYYY-MM-DD.json`, normalized →
+`data/processed/keyword_data.csv` (with `source`, `raw_source_url`,
+`data_check_status`). Nothing faked; suspicious rows are flagged.
+
+**V21.5 — 🕵️ Spy tool.** A dedicated competitor-intelligence view: type a
 keyword → **who dominates the niche** (top shops with listings/revenue/avg price/
 country + saturation + new-entrant rate), **what's winning right now** (do NOT
 copy), **who just launched**, and the **gaps to exploit**. Same official YTrends

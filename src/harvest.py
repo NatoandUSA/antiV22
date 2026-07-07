@@ -239,6 +239,47 @@ def write_keyword_data(store, path="keyword_data.csv"):
     return len(rows)
 
 
+def write_raw_and_processed(store):
+    """Audit trail (spec §5): dump the raw pull to data/raw/ytuong/ and a
+    normalized copy to data/processed/keyword_data.csv (with source,
+    raw_source_url, data_check_status). The root keyword_data.csv stays the
+    report fuel; these are the transparency/audit files."""
+    from datetime import date
+    from pathlib import Path
+    from urllib.parse import quote
+    import json as _json
+    today = str(date.today())
+    raw_dir = Path("data/raw/ytuong")
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    (raw_dir / f"keywords_{today}.json").write_text(
+        _json.dumps(list(store.values()), indent=2, default=str), encoding="utf-8")
+
+    proc = Path("data/processed")
+    proc.mkdir(parents=True, exist_ok=True)
+    fields = ["keyword", "source", "views_24h", "revenue", "avg_price",
+              "conversion_rate", "etsy_listings", "seller_count", "collected_at",
+              "raw_source_url", "data_check_status"]
+    with (proc / "keyword_data.csv").open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=fields)
+        w.writeheader()
+        for r in sorted(store.values(), key=lambda x: x["score"], reverse=True):
+            conv, price = _num(r["conv"]), _num(r["price"])
+            dc = ("CHECK_CONVERSION" if conv > 0.15 else
+                  "CHECK_PRICE" if price and price < 3 else "OK")
+            w.writerow({
+                "keyword": r["tag"], "source": "mcp:" + r["source"],
+                "views_24h": _num(r["views"], int),
+                "revenue": round(_num(r["revenue"]), 2),
+                "avg_price": round(price, 2),
+                "conversion_rate": round(conv, 4),
+                "etsy_listings": _num(r["listings"], int),
+                "seller_count": _num(r["sellers"], int),
+                "collected_at": today,
+                "raw_source_url": f"https://trends.ytuong.ai/en/keyword/{quote(r['tag'])}",
+                "data_check_status": dc})
+    return raw_dir / f"keywords_{today}.json"
+
+
 def harvest(append=True, cap_pod=140, cap_emb=90, log=lambda s: None):
     store = {}
     _pull(store, log)
@@ -256,6 +297,10 @@ def harvest(append=True, cap_pod=140, cap_emb=90, log=lambda s: None):
         # (keywords.csv, the small curated Google-Trends seed list, is left
         #  alone; the permanent archive of discoveries is the DB below.)
         wrote_data = write_keyword_data(store)
+        try:                       # audit trail (spec §5): raw + normalized
+            write_raw_and_processed(store)
+        except Exception:  # noqa: BLE001 - never let the audit dump break harvest
+            pass
         try:
             from src.db import save_discovered
             save_discovered([("harvest", r["tag"], r["listings"], r["price"],
