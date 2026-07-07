@@ -552,6 +552,12 @@ def run_selftest():
               "/opportunities", "/calendar"))
           and "toolbar" in _web_src)   # restructured home page tool bar
 
+    # ---- V20.8: MCP-first data layer -> reports can build on the VPS ----
+    _yc_src = Path("src/ytrends_client.py").read_text(encoding="utf-8")
+    check("data layer is MCP-first (VPS builds reports without the cookie)",
+          "_mcp()" in _yc_src and "trending_keywords" in _yc_src
+          and Path("deploy/vps-build.sh").exists())
+
     print("\nSELF-TEST RESULTS")
     for name, cond in results:
         print(f"  {'PASS' if cond else 'FAIL'}  {name}")

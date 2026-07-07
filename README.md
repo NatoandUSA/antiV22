@@ -1,6 +1,14 @@
-# Etsy Product Manager V20.7
+# Etsy Product Manager V20.8
 
-**New in V20.7 — Self-serve Team Tools dashboard.** The portal home page now
+**New in V20.8 — hands-off builds + richer listing drafts.** The data layer is
+now **MCP-first**, so the whole report pipeline can build **on the VPS itself**
+(the MCP is reachable there; no cookie, no laptop). Point cron at
+`deploy/vps-build.sh` and the dashboard refreshes 24/7 with your PC off. The
+**Draft listing** tool now shows the **real supplier cost, margin, and a
+recommended price** (e.g. "at $34 you'd make $10.25/sale; price ≥ $32 for ~$8
+profit").
+
+**V20.7 — Self-serve Team Tools dashboard.** The portal home page now
 leads with live, self-serve tools any teammate can use anytime (no terminal, no
 waiting on the operator), all powered by the YTrends MCP and running on the VPS
 24/7:

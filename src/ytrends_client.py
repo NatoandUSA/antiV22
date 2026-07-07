@@ -97,27 +97,130 @@ def _get(path, params):
     return data
 
 
+# ---------------------------------------------------------------------------
+# MCP-first data. The functions below prefer the official YTrends MCP (which is
+# reachable everywhere, including the VPS, and needs no cookie) and fall back to
+# this legacy REST endpoint only if the MCP is unavailable. That lets the whole
+# report pipeline run server-side on the VPS with no laptop in the loop.
+# ---------------------------------------------------------------------------
+
+def _mcp():
+    from src import ytrends_mcp as m
+    return m
+
+
+def _kw_row(r):
+    """Map an MCP tag row to the legacy keyword-row shape callers expect."""
+    def pick(*ks):
+        for k in ks:
+            if r.get(k) is not None:
+                return r[k]
+        return None
+    return {
+        "tag": r.get("tag"),
+        "listing_count": pick("listing_count", "listings"),
+        "seller_count": pick("seller_count", "sellers"),
+        "avg_price": pick("avg_price", "avg_price_usd"),
+        "avg_revenue": r.get("avg_revenue"),
+        "avg_conversion_rate": r.get("avg_conversion_rate"),
+        "momentum_score": pick("momentum_score", "target_score"),
+        "gem_score": pick("gem_score", "opportunity_score"),
+        "competition_level": r.get("competition_level"),
+        "total_views_24h": r.get("total_views_24h"),
+        "avg_views_24h": r.get("avg_views_24h"),
+        "rank_change_7d": r.get("rank_change_7d"),
+        "first_seen_date": r.get("first_seen_date"),
+        "recommended_action": r.get("recommended_action") or r.get("action_reason"),
+        "action_reason": r.get("action_reason"),
+    }
+
+
+def _listing_row(r):
+    return {
+        "title": r.get("title"), "price": r.get("price"),
+        "revenue": r.get("revenue"), "avg_revenue": r.get("revenue"),
+        "tags": r.get("tags"), "total_sold": r.get("total_sold"),
+        "sold_24h": r.get("sold_24h"), "conversion_rate": r.get("conversion_rate"),
+        "favorites": r.get("favorites"), "views": r.get("views"),
+        "listing_id": r.get("listing_id"), "shop_country": r.get("shop_country"),
+    }
+
+
+def _sugg_row(r):
+    return {
+        "tag": r.get("tag") or r.get("keyword") or r.get("title"),
+        "relevance_score": r.get("relevance_score") or r.get("momentum_score") or 1.0,
+        "tag_listing_count": r.get("listing_count") or r.get("listings")
+                             or r.get("total_listings"),
+        "avg_revenue": r.get("avg_revenue"),
+        "avg_conversion_rate": r.get("avg_conversion_rate") or r.get("conversion"),
+        "recommended_action": r.get("recommended_action") or "",
+    }
+
+
+def _rest(path, params):
+    try:
+        return _get(path, params).get("data", [])
+    except (SystemExit, Exception):     # noqa: BLE001 - never crash the build
+        return []
+
+
 def top_keywords(sort="revenue", limit=50):
-    return _get("/keywords", {"sort": sort, "limit": limit}).get("data", [])
+    try:
+        rows = _mcp().trending_keywords(limit=limit)
+        if rows:
+            return [_kw_row(r) for r in rows]
+    except Exception:  # noqa: BLE001
+        pass
+    return _rest("/keywords", {"sort": sort, "limit": limit})
 
 
 def trending(sort="momentum", limit=50):
-    return _get("/trending", {"sort": sort, "limit": limit}).get("data", [])
+    try:
+        rows = _mcp().trending_keywords(limit=limit)
+        if rows:
+            return [_kw_row(r) for r in rows]
+    except Exception:  # noqa: BLE001
+        pass
+    return _rest("/trending", {"sort": sort, "limit": limit})
 
 
 def hidden_gems(sort="conversion", limit=50):
-    return _get("/hidden-gems", {"sort": sort, "limit": limit}).get("data", [])
+    try:
+        rows = _mcp().scout_opportunities(limit=limit)
+        if rows:
+            return [_kw_row(r) for r in rows]
+    except Exception:  # noqa: BLE001
+        pass
+    return _rest("/hidden-gems", {"sort": sort, "limit": limit})
 
 
 def top_listings(keyword, sort="revenue", limit=48):
-    """Top Etsy listings for a keyword (from YTrends' database)."""
-    return _get("/listings", {"keyword": keyword, "sort": sort, "limit": limit}).get("data", [])
+    """Top Etsy listings for a keyword (MCP first, legacy REST fallback)."""
+    try:
+        rows = _mcp().hot_listings(keyword=keyword, limit=min(limit, 40))
+        if rows:
+            return [_listing_row(r) for r in rows]
+    except Exception:  # noqa: BLE001
+        pass
+    return _rest("/listings", {"keyword": keyword, "sort": sort, "limit": limit})
 
 
 def suggestions(tag, sort="relevance", limit=30):
-    """Related keywords that co-occur with this tag."""
+    """Related keywords for a tag (MCP first, legacy REST fallback)."""
+    try:
+        rk = _mcp().research_keyword(tag)
+        rel = rk.get("related_keywords") if isinstance(rk, dict) else None
+        if not rel:
+            en = _mcp().call("ytrends_explore_niche", seed=tag)
+            rel = (en.get("data", {}) or {}).get("adjacent_tags")
+        if rel:
+            return [_sugg_row(r) for r in rel][:limit]
+    except Exception:  # noqa: BLE001
+        pass
     from urllib.parse import quote
-    return _get(f"/keywords/{quote(tag)}/suggestions", {"sort": sort, "limit": limit}).get("data", [])
+    return _rest(f"/keywords/{quote(tag)}/suggestions",
+                 {"sort": sort, "limit": limit})
 
 
 def categories(sort="revenue", limit=30):

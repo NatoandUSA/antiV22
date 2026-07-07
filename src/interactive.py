@@ -373,7 +373,41 @@ def draft_listing(kw):
 
     title = kw.title()
     lo, hi = _money(stats.get("price_p25")), _money(stats.get("price_p75"))
-    mid = _money(stats.get("median_price"))
+    mid_v = stats.get("median_price") or stats.get("avg_price")
+    mid = _money(mid_v)
+
+    # Real supplier cost + margin, same model the reports use.
+    cost_line, margin_line = "", ""
+    try:
+        from src.idea_report import cluster_of, load_costs, margin_at
+        mode = "embroidery" if matches_mode(kw.lower(), "embroidery") else "pod"
+        cluster = cluster_of(kw.lower())
+        costs = load_costs(mode=mode)
+        c = costs.get(cluster) if cluster else None
+        if c:
+            base, ship, supplier = c[0], c[1], c[2]
+            cost_line = (f"- **Supplier cost: {_money(base + ship)}** "
+                         f"({supplier}, {mode}) for the *{cluster}* product line.")
+            at_mid = margin_at(mid_v, cluster, costs) if mid_v else None
+            # lowest price that clears ~$8 profit after Etsy fees
+            rec = None
+            p = 5.0
+            while p < 200:
+                if (margin_at(p, cluster, costs) or -1) >= 8:
+                    rec = p
+                    break
+                p += 1
+            bits = []
+            if at_mid is not None:
+                warn = " ⚠️ too thin — price higher" if at_mid < 5 else ""
+                bits.append(f"at the market midpoint {mid} you'd make "
+                            f"**{_money(at_mid)}/sale**{warn}")
+            if rec:
+                bits.append(f"price **≥ {_money(rec)}** to clear ~$8 profit/sale")
+            margin_line = "- " + "; ".join(bits) + "." if bits else ""
+    except Exception:  # noqa: BLE001
+        pass
+
     L = [f"# Listing draft — {kw}", "",
          "> **DRAFT for review — do NOT publish as-is.** Verify the trademark, "
          "personalize the copy, add your own photos.", ""]
@@ -388,10 +422,16 @@ def draft_listing(kw):
     if len(tags) < 13:
         L.append(f"_(only {len(tags)} clean tags found — add "
                  f"{13 - len(tags)} more of your own)_")
-    L += ["", "## Price guidance",
-          f"- Typical selling range **{lo}–{hi}** (midpoint ~{mid}). Price for "
-          "your margin — embroidery cost ~$17, POD ~$9–12.", "",
-          "## Description skeleton", "", "```",
+    L += ["", "## Cost, price & margin",
+          f"- Market sells around **{lo}–{hi}** (midpoint {mid})."]
+    if cost_line:
+        L.append(cost_line)
+    if margin_line:
+        L.append(margin_line)
+    if not cost_line:
+        L.append("- _(No supplier cost on file for this product line — check "
+                 "supplier_costs.csv.)_")
+    L += ["", "## Description skeleton", "", "```",
           f"{title} — made just for you.", "",
           "★ Personalized: [what the buyer customizes]",
           "★ Material / size: [fill in]",
