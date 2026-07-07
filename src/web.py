@@ -134,6 +134,11 @@ def build_app(password, secret):
         session.clear()
         return redirect(url_for("login"))
 
+    # ---- public privacy policy (NO login_required: reviewers/APIs must reach it) ----
+    @app.route("/privacy")
+    def privacy():
+        return page("Privacy Policy", PRIVACY)
+
     def _card(sub, fname, badge, title, desc):
         return (f'<a class="report" href="/report/{sub}{fname}">'
                 f'<span class="rid">{badge}</span>'
@@ -555,6 +560,59 @@ PORTAL = """
   </header>
   {{BODY}}
   <footer>Reports are prepared on the research machine and synced here.</footer>
+</div>
+"""
+
+PRIVACY = """
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <div class="kicker">Etsy Product Manager</div>
+      <h1>Privacy Policy</h1>
+    </div>
+    <div class="hright"><a class="logout" href="/">Home</a></div>
+  </header>
+  <article class="md">
+    <p><em>Last updated: 7 July 2026</em></p>
+
+    <h2>Who we are</h2>
+    <p>This site is an internal market-research tool operated by The Global
+    Service Team for our own Etsy print-on-demand shop. It is used by our small
+    team to decide which products to design and list.</p>
+
+    <h2>How we use the Pinterest API</h2>
+    <p>Our application uses the Pinterest API v5 on a <strong>read-only</strong>
+    basis. It requests <strong>aggregate trending-keyword data</strong> (for
+    example, the top growing search keywords in a region) to cross-check demand
+    for product ideas. We do <strong>not</strong> access, collect, or store any
+    Pinterest user's personal information &mdash; no boards, pins, followers,
+    messages, or private account data.</p>
+
+    <h2>Data we store</h2>
+    <p>We may cache the aggregate keyword and trend figures returned by the API
+    on our own server so that reports load quickly. This is not personal data.
+    Our API access token is kept privately in server configuration; it is never
+    shared, sold, or exposed publicly.</p>
+
+    <h2>How the data is used</h2>
+    <p>Trend data is used solely to inform our own team's product research and
+    listing decisions. We do <strong>not</strong> sell, rent, publish, or share
+    Pinterest data with any third party.</p>
+
+    <h2>Cookies</h2>
+    <p>This site sets a single session cookie so team members stay signed in.
+    It stores no personal or tracking information and is not shared with anyone.</p>
+
+    <h2>Data retention &amp; deletion</h2>
+    <p>Cached trend figures are overwritten on each new research run. To request
+    deletion of any data, or revocation of our Pinterest access, contact us at
+    the address below and we will action it promptly.</p>
+
+    <h2>Contact</h2>
+    <p>Questions about this policy:
+    <a href="mailto:nvphilong@gmail.com">nvphilong@gmail.com</a></p>
+  </article>
+  <footer>Etsy Product Manager &middot; internal market-research tool</footer>
 </div>
 """
 
