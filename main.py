@@ -375,6 +375,28 @@ def cmd_harvest(cmd, args):
     run_harvest(args)
 
 
+def cmd_autopull(cmd, args):
+    """Refresh the auto learning feeds (Saved Shops + Saved Listings) from the
+    official YTrends MCP. Safe to run nightly on the VPS (no cookie needed)."""
+    kv, words = _flags(args)
+    m = kv.get("mode")
+    mode = m if m in ("pod", "embroidery") else None
+    what = (words[0] if words else kv.get("what", "all")).lower()
+    from src import autopull, saved
+    total = 0
+    if what in ("all", "shops"):
+        shops = autopull.pull_shops(mode=mode)
+        n = saved.auto_save_shops(shops)
+        print(f"  Shops:    pulled {len(shops):>2}, {n} new -> data/saved_shops.json")
+        total += n
+    if what in ("all", "listings"):
+        ls = autopull.pull_listings(mode=mode)
+        n = saved.auto_save_listings(ls)
+        print(f"  Listings: pulled {len(ls):>2}, {n} new -> data/saved_listings.json")
+        total += n
+    print(f"AUTOPULL DONE: {total} new saved (mode={mode or 'all'}).")
+
+
 def cmd_workspace(cmd, args):
     if args and args[0] == "build":
         args = args[1:]
@@ -420,6 +442,7 @@ COMMANDS = {
     "expand": cmd_expand,
     "harvest": cmd_harvest,
     "workspace": cmd_workspace,
+    "autopull": cmd_autopull,
 }
 
 # Commands that reach the live YTrends/Printify APIs. For YTrends-backed ones

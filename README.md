@@ -1,6 +1,27 @@
-# Etsy Product Manager V21.9
+# Etsy Product Manager V22.0
 
-**New in V21.9 — Listing Grader + demand sparkline (learned from the best
+**New in V22.0 — auto-pulling learning feeds + a real seasonal planner.** Three
+self-serve upgrades, all from the official YTrends MCP (never scraped):
+
+- **🏪 Saved shops → Auto-pull new shops already selling.** One click pulls the
+  fresh-winner feed, groups it by shop, and auto-saves the shops whose listings
+  are all **recent (< 1 year)** with real sales and the **highest conversion**,
+  ranked. (Etsy exposes no shop-registration date, so this is an honest
+  *young-listing* proxy for a new shop.)
+- **📌 Saved listings → Auto-pull young winners.** Pulls listings **under ~3
+  months old** that already **outperform their niche**, ranked by performance,
+  **conversion, views, favorites, and sales** — with a thumbnail and an "open on
+  Etsy" link. (Add-to-cart is never public; favorites + conversion stand in.)
+- **📅 Seasonal calendar → what to launch next, timed.** Upcoming holidays /
+  e-com events with a **🚀 launch-by date** (≈6 weeks before the peak), a
+  suggested product per mode, and keyword angles — merged with the **live rising
+  keywords** from the index (peak date, opportunity grade, competition).
+
+Both feeds auto-refresh nightly on the VPS (`py main.py autopull`, wired into
+`deploy/vps-build.sh`). Learning only — study structure, **never copy**; nothing
+auto-publishes. (English only.)
+
+**V21.9 — Listing Grader + demand sparkline (learned from the best
 open-source Etsy tools).** A **📝 Grade my listing** tool: paste a title, your 13
 tags, and the description and get a **0–100 score with exact fixes** — keyword
 front-loading, tag **character-packing** (how much of the 260-char tag budget you

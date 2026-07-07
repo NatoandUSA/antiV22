@@ -216,14 +216,14 @@ def build_app(password, secret):
             'Opportunities</b><span>Low-competition sweet spots</span></a>'
             '<a class="toolcard" href="/spy"><b>🕵️ Spy</b>'
             '<span>Who wins + who dominates a niche</span></a>'
-            '<a class="toolcard" href="/calendar"><b>📅 Seasonal calendar</b>'
-            '<span>What to launch next, timed</span></a>'
+            f'<a class="toolcard" href="/calendar?mode={active}"><b>📅 Seasonal calendar</b>'
+            '<span>Upcoming holidays + launch-by dates + keywords</span></a>'
             '<a class="toolcard" href="/research"><b>🔬 Saved research</b>'
             '<span>Past keyword lookups</span></a>'
             '<a class="toolcard" href="/shops"><b>🏪 Saved shops</b>'
-            '<span>Competitor-learning library</span></a>'
+            '<span>Auto-pull new shops already selling (&lt; 1yr, high CR)</span></a>'
             '<a class="toolcard" href="/listings"><b>📌 Saved listings</b>'
-            '<span>Listings to learn from</span></a>'
+            '<span>Auto-pull young winners (&lt; 3mo, high CR/views/favs)</span></a>'
             '<a class="toolcard" href="/suppliers"><b>🏭 Suppliers</b>'
             '<span>Catalogs + ShineOn/Embroidery CSV upload</span></a>'
             '<a class="toolcard" href="/feedback"><b>📉 Sales feedback</b>'
@@ -409,6 +409,31 @@ def build_app(password, secret):
                 out[n] = max(0, min(100, int(v)))
         return out
 
+    def _pull_bar(endpoint, label, sub):
+        return (
+            '<div class="pullbar"><div class="pulltxt">'
+            f'<b>⚡ Auto-pull {label} from the live index</b><span>{sub}</span></div>'
+            '<div class="pullbtns">'
+            f'<a class="pullbtn" href="/{endpoint}?mode=pod">Print on Demand</a>'
+            f'<a class="pullbtn" href="/{endpoint}?mode=embroidery">Embroidery</a>'
+            f'<a class="pullbtn primary" href="/{endpoint}">All lines</a>'
+            '</div></div>')
+
+    def _pull_banner():
+        import html as _h
+        p = request.args.get("pulled")
+        if p is None:
+            return ""
+        t = _h.escape(str(request.args.get("total", p)))
+        return (f'<div class="pullnote">✓ Auto-pulled <b>{t}</b> from the live '
+                f'index · <b>{_h.escape(str(p))}</b> new (rest refreshed). '
+                'Ranked below — study structure, never copy.</div>')
+
+    def _chips(pairs):
+        return ('<div class="chips">'
+                + "".join(f'<span class="chip">{a}</span>' for a in pairs)
+                + '</div>')
+
     @app.route("/shops")
     @login_required
     def shops():
@@ -427,28 +452,54 @@ def build_app(password, secret):
             '<p class="note">Scores 0-100 (your read): '
             + ", ".join(saved.SHOP_SCORES) + '</p>' + _score_inputs(saved.SHOP_SCORES)
             + '<button class="primary" type="submit">Save shop</button></form>')
+        # auto-pulled shops first (newest + highest CR), then manual
+        rows = saved.load_shops()
+        rows.sort(key=lambda r: (r.get("source") == "auto",
+                                 (r.get("metrics") or {}).get("avg_conversion_rate", 0)),
+                  reverse=True)
         items = ""
-        for r in reversed(saved.load_shops()):
+        for r in rows:
+            is_auto = r.get("source") == "auto"
             ov = saved.overall(r.get("scores"))
             fw = "".join(f"<li>{_h.escape(f)}</li>" for f in saved.SHOP_FRAMEWORK)
             url = _h.escape(r.get("shop_url") or "")
+            m = r.get("metrics") or {}
+            chips = ""
+            if is_auto and m:
+                chips = _chips([
+                    f'CR {m.get("avg_conversion_rate", 0) * 100:.1f}%',
+                    f'sold/day {m.get("sold_24h")}',
+                    f'{m.get("fresh_winners")} fresh winners',
+                    f'youngest {m.get("youngest_age_days")}d (&lt; 1yr)',
+                    f'{m.get("total_favorites")} favs',
+                    f'rev/day ~${m.get("revenue_24h_est", 0):,.0f}',
+                    f'TM {m.get("trademark", "-")}'])
+            pill = "auto" if is_auto else _h.escape(r.get("status", ""))
             items += (
-                '<div class="saveditem"><div class="sihead">'
+                f'<div class="saveditem{" auto" if is_auto else ""}"><div class="sihead">'
                 f'<b>{_h.escape(r.get("shop_name",""))}</b> '
-                f'<span class="pill">{_h.escape(r.get("status",""))}</span>'
+                f'<span class="pill{" apill" if is_auto else ""}">{pill}</span>'
                 + (f' · <a href="{url}" target="_blank" rel="noopener">open</a>' if url else "")
                 + f' <a class="cbtn" href="/shops/del/{r["id"]}">delete</a></div>'
                 f'<div class="note">{_h.escape(r.get("category",""))} · '
-                f'{_h.escape(r.get("niche",""))} · learning score '
-                f'{ov if ov is not None else "—"}/100 · saved {r.get("last_analyzed_at","")}</div>'
+                f'{_h.escape(r.get("niche",""))} · '
+                + ("new-shop proxy (listing age)" if is_auto
+                   else f'learning score {ov if ov is not None else "—"}/100')
+                + f' · saved {r.get("last_analyzed_at","")}</div>'
+                + chips
                 + (f'<p>{_h.escape(r.get("notes",""))}</p>' if r.get("notes") else "")
                 + '<details><summary>Analysis rubric — what to examine</summary>'
                 f'<ul class="facts">{fw}</ul><p class="note">{saved.DO_NOT_COPY}</p>'
                 '</details></div>')
         bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
+        pull = _pull_bar("shops/pull", "new shops already selling",
+                         "New shops (recent listings &lt; 1 year) with real sales + "
+                         "the highest conversion. Auto-saved + ranked. Refresh anytime.")
         return page("Saved Shops", bar + '<article class="md"><h1>Saved Shops</h1>'
                     f'<p>Competitor-learning library. {saved.DO_NOT_COPY}</p>'
-                    + form + (items or '<p class="empty">No saved shops yet.</p>')
+                    + pull + _pull_banner()
+                    + form + (items or '<p class="empty">No saved shops yet — '
+                              'hit Auto-pull above.</p>')
                     + '</article>')
 
     @app.route("/shops/add", methods=["POST"])
@@ -472,6 +523,19 @@ def build_app(password, secret):
         saved.delete_shop(sid)
         return redirect(url_for("shops"))
 
+    @app.route("/shops/pull")
+    @login_required
+    def shops_pull():
+        m = request.args.get("mode")
+        mode = m if m in ("pod", "embroidery") else None
+        from src import autopull, saved
+        try:
+            rows = autopull.pull_shops(mode=mode, limit=15)
+            n = saved.auto_save_shops(rows)
+            return redirect(url_for("shops", pulled=n, total=len(rows)))
+        except Exception as exc:  # noqa: BLE001
+            return _tool_error("Auto-pull shops", exc)
+
     @app.route("/listings")
     @login_required
     def listings():
@@ -491,11 +555,34 @@ def build_app(password, secret):
             + ", ".join(saved.LISTING_SCORES) + '</p>'
             + _score_inputs(saved.LISTING_SCORES)
             + '<button class="primary" type="submit">Save listing</button></form>')
+        # auto-pulled listings first (highest performance), then manual
+        rows = saved.load_listings()
+        rows.sort(key=lambda r: (r.get("source") == "auto",
+                                 (r.get("metrics") or {}).get("performance_score", 0)),
+                  reverse=True)
         items = ""
-        for r in reversed(saved.load_listings()):
+        for r in rows:
+            is_auto = r.get("source") == "auto"
             ov = saved.overall(r.get("scores"))
             fw = "".join(f"<li>{_h.escape(f)}</li>" for f in saved.LISTING_FRAMEWORK)
             url = _h.escape(r.get("listing_url") or "")
+            m = r.get("metrics") or {}
+            thumb, chips = "", ""
+            if is_auto and m:
+                img = _h.escape(m.get("image_url") or "")
+                if img:
+                    thumb = (f'<img class="lthumb" src="{img}" alt="" '
+                             'loading="lazy" referrerpolicy="no-referrer">')
+                beats = ", ".join(m.get("outperforms_peers_on") or []) or "-"
+                chips = _chips([
+                    f'{m.get("listing_age_days")}d old (&lt; 3mo)',
+                    f'CR {m.get("conversion_rate", 0) * 100:.1f}%',
+                    f'{m.get("views_24h")} views/day',
+                    f'{m.get("favorites")} favs',
+                    f'sold/day {m.get("sold_24h")}',
+                    f'perf {int(m.get("performance_score", 0))}',
+                    f'beats peers on: {beats}',
+                    f'TM {m.get("trademark", "-")}'])
             ctx = r.get("context") or {}
             ctx_html = ""
             if ctx:
@@ -506,14 +593,19 @@ def build_app(password, secret):
                             f'{_h.escape(", ".join(ctx.get("related",[])[:4]))}</div>')
                 if ctx.get("original_idea"):
                     ctx_html += f'<p><b>Original idea:</b> {_h.escape(ctx["original_idea"])}</p>'
+            pill = "auto" if is_auto else _h.escape(r.get("status", ""))
             items += (
-                '<div class="saveditem"><div class="sihead">'
+                f'<div class="saveditem{" auto" if is_auto else ""}"><div class="sihead">'
                 f'<b>{_h.escape(r.get("listing_title","")[:70])}</b> '
-                f'<span class="pill">{_h.escape(r.get("status",""))}</span>'
-                + (f' · <a href="{url}" target="_blank" rel="noopener">open</a>' if url else "")
+                f'<span class="pill{" apill" if is_auto else ""}">{pill}</span>'
+                + (f' · <a href="{url}" target="_blank" rel="noopener">open on Etsy</a>' if url else "")
                 + f' <a class="cbtn" href="/listings/del/{r["id"]}">delete</a></div>'
-                f'<div class="note">{_h.escape(r.get("shop_name",""))} · listing score '
-                f'{ov if ov is not None else "—"}/100 · saved {r.get("last_analyzed_at","")}</div>'
+                f'<div class="note">{_h.escape(r.get("shop_name",""))} · '
+                + ("young high-performer" if is_auto
+                   else f'listing score {ov if ov is not None else "—"}/100')
+                + f' · saved {r.get("last_analyzed_at","")}</div>'
+                + ('<div class="lrow">' + thumb + '<div>' + chips + '</div></div>'
+                   if is_auto else "")
                 + ctx_html
                 + (f'<p>{_h.escape(r.get("notes",""))}</p>' if r.get("notes") else "")
                 + '<details><summary>Analysis rubric + how to beat it</summary>'
@@ -523,9 +615,15 @@ def build_app(password, secret):
                 f'your own design.</p><p class="note">{saved.DO_NOT_COPY}</p>'
                 '</details></div>')
         bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
+        pull = _pull_bar("listings/pull", "young winning listings",
+                         "Listings under ~3 months old already outperforming their "
+                         "niche — highest conversion, views &amp; favorites. "
+                         "(Add-to-cart isn't public; favorites + CR stand in.)")
         return page("Saved Listings", bar + '<article class="md"><h1>Saved Listings'
                     f'</h1><p>Competitor-listing library. {saved.DO_NOT_COPY}</p>'
-                    + form + (items or '<p class="empty">No saved listings yet.</p>')
+                    + pull + _pull_banner()
+                    + form + (items or '<p class="empty">No saved listings yet — '
+                              'hit Auto-pull above.</p>')
                     + '</article>')
 
     @app.route("/listings/add", methods=["POST"])
@@ -553,6 +651,19 @@ def build_app(password, secret):
         from src import saved
         saved.delete_listing(lid)
         return redirect(url_for("listings"))
+
+    @app.route("/listings/pull")
+    @login_required
+    def listings_pull():
+        m = request.args.get("mode")
+        mode = m if m in ("pod", "embroidery") else None
+        from src import autopull, saved
+        try:
+            rows = autopull.pull_listings(mode=mode, limit=20)
+            n = saved.auto_save_listings(rows)
+            return redirect(url_for("listings", pulled=n, total=len(rows)))
+        except Exception as exc:  # noqa: BLE001
+            return _tool_error("Auto-pull listings", exc)
 
     # ---- Supplier library: catalogs (open/sync) + CSV upload (ShineOn/Embroidery) ----
     @app.route("/suppliers")
@@ -742,9 +853,11 @@ def build_app(password, secret):
     @app.route("/calendar")
     @login_required
     def calendar():
+        m = request.args.get("mode")
+        mode = m if m in ("pod", "embroidery") else None
         from src import interactive
         try:
-            return _render_tool("Seasonal calendar", interactive.calendar())
+            return _render_tool("Seasonal calendar", interactive.calendar(mode))
         except Exception as exc:  # noqa: BLE001
             return _tool_error("Seasonal calendar", exc)
 
@@ -943,6 +1056,24 @@ font-family:var(--sans);font-weight:400}
 .gradeform textarea{resize:vertical}
 .gradeform button.primary{align-self:flex-start;padding:11px 18px;border:1px solid var(--accent);
 border-radius:10px;background:var(--accent);color:var(--paper);font-weight:700;cursor:pointer}
+/* auto-pull bar + feed */
+.pullbar{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;
+background:var(--accent-bg);border:1px solid var(--accent);border-radius:12px;padding:13px 16px;margin:12px 0}
+.pulltxt{display:flex;flex-direction:column;gap:2px}
+.pulltxt b{font-size:.98rem}.pulltxt span{font-size:.8rem;color:var(--ink-soft)}
+.pullbtns{display:flex;gap:8px;flex-wrap:wrap}
+.pullbtn{padding:9px 14px;border:1px solid var(--accent);border-radius:9px;background:var(--surface);
+color:var(--accent);font-weight:700;font-size:.85rem;text-decoration:none}
+.pullbtn.primary{background:var(--accent);color:var(--paper)}
+.pullbtn:hover{filter:brightness(1.06)}
+.pullnote{background:#1E6B54;color:#fff;border-radius:10px;padding:10px 14px;margin:10px 0;font-size:.9rem}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.chip{font-size:.74rem;font-weight:700;background:var(--surface);border:1px solid var(--line-strong);
+border-radius:20px;padding:3px 10px;color:var(--ink);font-variant-numeric:tabular-nums}
+.saveditem.auto{border-left:3px solid var(--accent)}
+.pill.apill{background:var(--accent);color:var(--paper)}
+.lrow{display:flex;gap:12px;align-items:flex-start;margin-top:6px}
+.lthumb{width:84px;height:84px;object-fit:cover;border-radius:10px;border:1px solid var(--line);flex:none}
 /* workspace */
 .ws{background:var(--surface);border:1px solid var(--line);border-radius:14px;
 padding:18px 20px;margin:14px 0;box-shadow:var(--shadow)}

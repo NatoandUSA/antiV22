@@ -281,6 +281,46 @@ def scout_opportunities(limit=25, **filters):
     return _list_call("ytrends_scout_opportunities", "results", limit, **filters)
 
 
+def browse_new_listings(limit=50, keyword=None, search=None):
+    """Fresh, high-performing NEW listings (young + already outperforming peers).
+
+    Each row carries listing_age_days, conversion_rate, views_24h, favorites,
+    sold_24h, performance_score, outperforms_peers_on, peer_*_ratio, shop_id,
+    shop_country, primary_tag, price_usd, image_url. The server pages ~10 rows
+    at a time, so we paginate with offset to gather up to `limit`. keyword= gives
+    a tightly-scoped niche; search= is broader. Deduped by listing_id."""
+    step = 10
+    out, seen = [], set()
+    for i in range((limit + step - 1) // step):
+        args = {"offset": i * step}
+        if keyword:
+            args["keyword"] = keyword
+        if search:
+            args["search"] = search
+        try:
+            rows = _list_call("ytrends_browse_new_listings", "listings", step, **args)
+        except YTrendsMCPError:
+            break
+        added = 0
+        for r in rows:
+            lid = r.get("listing_id") or r.get("id")
+            if lid in seen:
+                continue
+            seen.add(lid)
+            out.append(r)
+            added += 1
+        if added == 0 or len(out) >= limit:
+            break
+    return out[:limit]
+
+
+def analyze_competition(seed, seed_type="keyword"):
+    """Niche competition snapshot: top_shops (revenue/listings/country),
+    saturation, new_entrant_rate, avg_listing_age_days, seller_concentration."""
+    p = call("ytrends_analyze_competition", seed=seed, seed_type=seed_type)
+    return p.get("data", p) if isinstance(p, dict) else {}
+
+
 def browse_rankings(mode="top", limit=50, offset=0, **filters):
     """Rank-based discovery surface. mode='top' (highest ranked) or 'new'.
     total is in the hundreds of thousands, so paginate with offset. Each entry

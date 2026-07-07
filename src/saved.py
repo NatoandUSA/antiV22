@@ -95,6 +95,70 @@ def overall(scores):
     return round(sum(vals) / len(vals)) if vals else None
 
 
+# ---- auto-pull: merge MCP feeds into the library, dedup, refresh in place ----
+def _auto_upsert(path, key_field, rows, build):
+    """Upsert auto-pulled rows keyed by their id. Manual entries are untouched;
+    a re-pull refreshes an existing auto row instead of duplicating it."""
+    kept = _load(path)
+    by_key = {r.get("auto_key"): r for r in kept
+              if r.get("source") == "auto" and r.get("auto_key") is not None}
+    added = 0
+    for src in rows:
+        key = str(src.get(key_field))
+        rec = build(src)
+        rec["auto_key"] = key
+        rec["source"] = "auto"
+        rec["last_analyzed_at"] = str(date.today())
+        if key in by_key:
+            by_key[key].update(rec)
+        else:
+            rec["id"] = max([r.get("id", 0) for r in kept], default=0) + 1
+            kept.append(rec)
+            by_key[key] = rec
+            added += 1
+    _save(path, kept)
+    return added
+
+
+def _build_auto_shop(s):
+    return {
+        "shop_name": f"Shop {s['shop_id']}",
+        "shop_url": "",
+        "category": s.get("top_tag") or "",
+        "niche": s.get("top_tag") or "",
+        "status": "new shop (auto)",
+        "notes": (f"{s['fresh_winners']} fresh winners · youngest "
+                  f"{s['youngest_age_days']}d · avg CR "
+                  f"{s['avg_conversion_rate'] * 100:.1f}% · sold/day {s['sold_24h']} "
+                  f"· rev/day est ${s['revenue_24h_est']:,.0f} · "
+                  f"{s.get('shop_country') or '?'}"),
+        "scores": {}, "metrics": s}
+
+
+def _build_auto_listing(x):
+    beats = ", ".join(x.get("outperforms_peers_on") or []) or "-"
+    return {
+        "listing_title": x.get("title", ""),
+        "listing_url": x.get("url", ""),
+        "shop_name": f"Shop {x.get('shop_id')}",
+        "main_keyword": x.get("primary_tag") or "",
+        "context": {},
+        "status": "fresh winner (auto)",
+        "notes": (f"{x['listing_age_days']}d old · CR "
+                  f"{x['conversion_rate'] * 100:.1f}% · {x.get('views_24h')} views/day "
+                  f"· {x.get('favorites')} favs · sold/day {x.get('sold_24h')} · "
+                  f"perf {int(x['performance_score'])} · beats peers on {beats}"),
+        "scores": {}, "metrics": x}
+
+
+def auto_save_shops(rows):
+    return _auto_upsert(SHOPS, "shop_id", rows, _build_auto_shop)
+
+
+def auto_save_listings(rows):
+    return _auto_upsert(LISTINGS, "listing_id", rows, _build_auto_listing)
+
+
 def listing_market_context(keyword):
     """Live market context for a saved listing's main keyword (via the MCP)."""
     if not keyword:

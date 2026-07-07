@@ -649,6 +649,47 @@ def run_selftest():
           and "demand_spark" in _iv_src and "winners share" in _iv_src
           and 'G["timeline"]' in _ws_src)
 
+    # ---- V22.0: auto-pull Saved Shops + Saved Listings + seasonal planner ----
+    from datetime import date as _date
+    from src import autopull as _ap, seasonal as _se
+    _mcp_src = Path("src/ytrends_mcp.py").read_text(encoding="utf-8")
+    _main_src2 = Path("main.py").read_text(encoding="utf-8")
+    _lrow = {"title": "Test tee", "listing_age_days": 20, "conversion_rate": 0.2,
+             "views_24h": 8, "favorites": 29, "sold_24h": 1,
+             "performance_score": 95.0, "outperforms_peers_on": ["conversion"],
+             "trademark": "OK"}
+    _lmd = _ap.listings_md([_lrow], "pod")
+    _smd = _ap.shops_md([], "pod")
+    from src import ytrends_mcp as _mcp
+    check("auto-pull listings feed (young + CR/views/favs, ranked, MCP-backed)",
+          all(callable(getattr(_ap, f, None)) for f in (
+              "pull_listings", "pull_shops", "listings_md", "shops_md"))
+          and callable(getattr(_mcp, "browse_new_listings", None))
+          and "Test tee" in _lmd and "CR" in _lmd
+          and "New shops" in _smd
+          and "ytrends_browse_new_listings" in _mcp_src
+          and all(x in _web_src for x in ("/listings/pull", "/shops/pull",
+                                          "pullbar", "lthumb", "apill")))
+    from src import saved as _sv2
+    _ashop = _sv2._build_auto_shop({
+        "shop_id": 123, "shop_country": "US", "fresh_winners": 2,
+        "youngest_age_days": 20, "oldest_age_days": 40, "sold_24h": 3,
+        "avg_conversion_rate": 0.15, "total_favorites": 50, "total_views_24h": 100,
+        "revenue_24h_est": 90.0, "top_tag": "dog shirt", "trademark": "OK"})
+    check("auto-save merges into the learning library (dedup + metrics + CLI)",
+          all(callable(getattr(_sv2, f, None)) for f in (
+              "auto_save_shops", "auto_save_listings"))
+          and _ashop.get("metrics") and "avg CR" in _ashop.get("notes", "")
+          and "autopull" in _main_src2)
+    _hols = _se.upcoming_holidays(today=_date(2026, 7, 8), mode="pod")
+    check("seasonal planner: upcoming holidays + launch-by dates + keywords/products",
+          callable(getattr(_se, "calendar_plan", None))
+          and len(_hols) >= 3
+          and all(e["launch_by"] < e["peak"] for e in _hols)
+          and all(e.get("keywords") and e.get("product") for e in _hols)
+          and len(_se.HOLIDAYS) >= 10
+          and "interactive.calendar(mode)" in _web_src)
+
     print("\nSELF-TEST RESULTS")
     for name, cond in results:
         print(f"  {'PASS' if cond else 'FAIL'}  {name}")

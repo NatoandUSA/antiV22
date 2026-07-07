@@ -329,23 +329,11 @@ def opportunities(mode=None):
     return "\n".join(L)
 
 
-def calendar():
-    events = mcp.trend_calendar(window="next_90d", limit=25)
-    L = ["# Seasonal calendar — next 90 days", "",
-         "_Event-tied niches gaining demand. Launch **4–6 weeks before** the peak "
-         "so listings have time to rank._", "",
-         "| Niche | Listings | Conv | Avg price | Sold 24h | Trademark |",
-         "|---|---|---|---|---|---|"]
-    for e in events:
-        tag = _clean(e.get("tag"))
-        risk, _ = tm_check(tag.lower())
-        L.append(f"| {tag} | {_int(e.get('listing_count'))} "
-                 f"| {_pct(e.get('avg_conversion_rate'))} "
-                 f"| {_money(e.get('avg_price_usd'))} "
-                 f"| {_int(e.get('total_sold_24h'))} | {risk} |")
-    if not events:
-        L.append("_No calendar data right now._")
-    return "\n".join(L)
+def calendar(mode=None):
+    """Upcoming holiday/e-com calendar + live rising keywords + launch-by dates
+    and product ideas. Delegates to src.seasonal."""
+    from src import seasonal
+    return seasonal.calendar_plan(mode)
 
 
 _SPARK = "▁▂▃▄▅▆▇█"
