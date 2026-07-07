@@ -10,6 +10,22 @@ it off to include everything. Example: `py main.py daily pod`.
 
 ---
 
+## Where each thing runs (important)
+
+**You never type commands into the website.** There are three places things happen:
+
+| Place | What happens there |
+|---|---|
+| 🌍 **The dashboard** (etsy.theglobalserviceteam.site) | **Read-only.** The team just *reads* the reports, Market Pulse, and this cheat sheet. **No commands run here** — it only shows what was already built and uploaded. |
+| 💻🌐 **Your PC/Mac — with internet** | Where reports are *built*. These commands fetch live data, so you need Wi-Fi: `daily`, `harvest`, `discover`, `ideas`, `manager`, `grow`, `expand`, `categories`, `supplier`, `printify`, `images --all`, `rawreports`, and the publish button `push-to-vps.ps1`. |
+| 💻 **Your PC/Mac — offline** | No internet needed: `selftest`, `web` (local preview), `listreports`, `openreports`, `tasks`, `blockers`, `statusboard`, `finalqa`, `performance`, `images` (list only). |
+
+**The flow:** you *build* on your computer (internet) → *publish* with `push-to-vps.ps1`
+→ the team *reads* on the dashboard. The website never builds anything itself —
+that's why trend-fetching stays on your laptop (the server's IP is blocked from YTrends).
+
+---
+
 ## ⭐ The 3 you'll use every day
 
 | Command | What it does | Notes |
