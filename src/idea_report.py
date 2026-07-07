@@ -171,13 +171,51 @@ def margin_at(price, cluster, costs):
 
 def gather_rows(mode=None):
     seen, rows = set(), []
-    for source, fetched in (("keywords", top_keywords()),
-                            ("trending", trending()),
-                            ("hidden_gems", hidden_gems())):
+
+    def _ok(tag):
+        return (tag and tag not in seen and tag not in GENERIC_JUNK
+                and not looks_like_shop_name(tag) and matches_mode(tag, mode))
+
+    # 1) the live YTrends-MCP harvested pool (keyword_data.csv) — the rich,
+    #    current data written by `main.py harvest`. This is what gives both
+    #    modes (especially Embroidery) a deep keyword universe.
+    kd = Path("keyword_data.csv")
+    if kd.exists():
+        import csv as _csv
+
+        def _f(v):
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                return 0
+        with kd.open(newline="", encoding="utf-8") as f:
+            for r in _csv.DictReader(f):
+                tag = (r.get("keyword") or "").strip().lower()
+                if not _ok(tag):
+                    continue
+                seen.add(tag)
+                rows.append({
+                    "tag": tag, "source": r.get("source") or "keyword_data",
+                    "listing_count": _f(r.get("etsy_listings")),
+                    "seller_count": _f(r.get("seller_count")),
+                    "demand_24h": _f(r.get("views_24h")),
+                    "avg_price": _f(r.get("avg_price")),
+                    "avg_revenue": _f(r.get("avg_revenue")),
+                    "conversion": _f(r.get("conversion_rate")),
+                    "momentum": _f(r.get("momentum")),
+                })
+
+    # 2) legacy live client — supplements anything not already seen. Guarded so
+    #    an expired cookie / API hiccup can't wipe out the harvested pool above.
+    for source, fetch in (("keywords", top_keywords), ("trending", trending),
+                          ("hidden_gems", hidden_gems)):
+        try:
+            fetched = fetch()
+        except Exception:
+            continue
         for r in fetched:
             tag = (r.get("tag") or "").strip().lower()
-            if not tag or tag in seen or tag in GENERIC_JUNK \
-                    or looks_like_shop_name(tag) or not matches_mode(tag, mode):
+            if not _ok(tag):
                 continue
             seen.add(tag)
             rows.append({
@@ -193,8 +231,16 @@ def gather_rows(mode=None):
     return rows
 
 
-def evaluate(rows, costs, tm_ok, tm_blocked):
+# Minimum 24h views to count as real demand. Embroidery is a premium, niche,
+# high-margin line (avg price ~$27, supplier cost ~$17) — healthy niches there
+# run at lower volume than broad POD, so a lower floor is correct, not lax.
+DEMAND_FLOOR = {"embroidery": 150}
+DEFAULT_DEMAND_FLOOR = 300
+
+
+def evaluate(rows, costs, tm_ok, tm_blocked, mode=None):
     accepted, rejected = [], []
+    floor = DEMAND_FLOOR.get(mode, DEFAULT_DEMAND_FLOOR)
     for x in rows:
         tag = x["tag"]
         risk, reason = tm_check(tag)
@@ -217,8 +263,8 @@ def evaluate(rows, costs, tm_ok, tm_blocked):
             why = "trademark CAUTION unverified - check USPTO, log in tm_verified.csv"
         elif x["season_status"].startswith("PASSED"):
             why = f"seasonal window passed ({x['season']})"
-        elif x["demand_24h"] < 300:
-            why = f"demand too low ({x['demand_24h']} views/24h)"
+        elif x["demand_24h"] < floor:
+            why = f"demand too low ({x['demand_24h']} views/24h, floor {floor})"
         elif x["margin"] is not None and x["margin"] < 4:
             why = f"margin too thin (${x['margin']} after fees/costs)"
         elif x["cluster"] is None:
@@ -310,7 +356,7 @@ def run_ideas(mode=None):
     mode_label = {"pod": " (POD)", "embroidery": " (Embroidery/Theu)"}.get(mode, "")
     print(f"Building Best Etsy Idea Report{mode_label}...")
     rows = gather_rows(mode)
-    accepted, rejected = evaluate(rows, costs, tm_ok, tm_blocked)
+    accepted, rejected = evaluate(rows, costs, tm_ok, tm_blocked, mode)
     clusters = score_clusters(accepted, costs)
     path = write_ideas_report(clusters, rejected, costs, mode_label, mode)
     print(f"\n{len(rows)} keywords -> {len(accepted)} accepted, "

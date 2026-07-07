@@ -278,7 +278,24 @@ def trend_calendar(window="next_90d", limit=15):
 
 
 def scout_opportunities(limit=25, **filters):
-    return _list_call("ytrends_scout_opportunities", "tags", limit, **filters)
+    return _list_call("ytrends_scout_opportunities", "results", limit, **filters)
+
+
+def browse_rankings(mode="top", limit=50, offset=0, **filters):
+    """Rank-based discovery surface. mode='top' (highest ranked) or 'new'.
+    total is in the hundreds of thousands, so paginate with offset. Each entry
+    has tag, rank, tier, target_score, rank_change_*d, listing_count."""
+    return _list_call("ytrends_browse_rankings", "entries", limit,
+                      mode=mode, offset=offset, **filters)
+
+
+def search(query, limit=25, kinds=None):
+    """Unified search across keywords/listings/categories. Great for pulling
+    keywords that contain a seed term (e.g. every 'embroidered ...' keyword)."""
+    args = {"query": query, "limit": limit}
+    if kinds:
+        args["kinds"] = kinds
+    return _rows(call("ytrends_search", **args), "results")
 
 
 def research_keyword(keyword, days=30):

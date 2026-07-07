@@ -282,6 +282,11 @@ def cmd_expand(cmd, args):
     expand(" ".join(args).strip('\'"'))
 
 
+def cmd_harvest(cmd, args):
+    from src.harvest import run_harvest
+    run_harvest(args)
+
+
 # Single source of truth for command routing: name -> handler(cmd, args).
 COMMANDS = {
     "listreports": cmd_listreports,
@@ -303,6 +308,7 @@ COMMANDS = {
     "categories": cmd_categories,
     "discover": cmd_discover,
     "expand": cmd_expand,
+    "harvest": cmd_harvest,
 }
 
 # Commands that reach the live YTrends/Printify APIs. For YTrends-backed ones

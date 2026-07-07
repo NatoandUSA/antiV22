@@ -14,7 +14,8 @@ $PYTHON   = "py"          # use "python" if "py" isn't on your PATH
 
 Set-Location (Split-Path $PSScriptRoot -Parent)   # repo root
 
-Write-Host "== 1/2  Building reports: POD + Embroidery (the only two the team sees) =="
+Write-Host "== 1/2  Harvest fresh keywords, then build POD + Embroidery =="
+& $PYTHON main.py harvest        # enrich keywords.csv from the live YTrends index
 & $PYTHON main.py daily pod
 if ($LASTEXITCODE -ne 0) { Write-Host "daily pod failed - not syncing."; exit 1 }
 & $PYTHON main.py daily embroidery

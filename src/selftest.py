@@ -527,6 +527,19 @@ def run_selftest():
     check("cross-check tokens documented in .env.example",
           "PINTEREST_ACCESS_TOKEN" in _env_ex and "X_BEARER_TOKEN" in _env_ex)
 
+    # ---- V20.5: MCP keyword harvester feeds the reports ----
+    from src import harvest as _hv
+    _main_src = Path("main.py").read_text(encoding="utf-8")
+    check("keyword harvester wired (writes keyword_data.csv + harvest command)",
+          callable(_hv.harvest) and callable(_hv.write_keyword_data)
+          and "keyword" in _hv.KDATA_FIELDS and '"harvest"' in _main_src)
+
+    from src.idea_report import DEMAND_FLOOR
+    _idea_src = Path("src/idea_report.py").read_text(encoding="utf-8")
+    check("ideas report reads harvested pool + niche demand floor",
+          "keyword_data.csv" in _idea_src
+          and bool(DEMAND_FLOOR.get("embroidery")))
+
     print("\nSELF-TEST RESULTS")
     for name, cond in results:
         print(f"  {'PASS' if cond else 'FAIL'}  {name}")

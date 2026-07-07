@@ -1,13 +1,20 @@
-# Etsy Product Manager V20.4
+# Etsy Product Manager V20.5
 
-**New in V20.4 — Live Market Pulse.** Every `daily` run now builds a **Market
-Pulse** report (per mode: Print on Demand + Embroidery) straight from the
-official **YTrends MCP** live index — trending keywords, hidden gems, winning
-listings (market intel, never copy), and the seasonal calendar — each
-cross-checked against **Google Trends** (Pinterest and X switch on when you add
-their tokens to `.env`). It's the first card on the team dashboard. PDF export
-was removed; reports are Markdown-only. See [SUPPLIERS.md](SUPPLIERS.md) for
-data sources.
+**New in V20.5 — Keyword harvester.** `py main.py harvest` pulls a deep,
+data-driven keyword universe from the live YTrends index (top rankings +
+opportunities + trending + targeted POD/embroidery search), filters out digital
+/ off-domain noise, and writes `keyword_data.csv` so the ideas + manager reports
+research it. This took Embroidery from ~13 keywords to 200+, and the demand
+floor is now niche-aware (Embroidery is premium/low-volume). The sync runs it
+automatically before each build.
+
+**V20.4 — Live Market Pulse.** Every `daily` run builds a **Market Pulse**
+report (per mode: Print on Demand + Embroidery) straight from the official
+**YTrends MCP** live index — trending keywords, hidden gems, winning listings
+(market intel, never copy), and the seasonal calendar — each cross-checked
+against **Google Trends** (Pinterest and X switch on when you add their tokens
+to `.env`). It's the first card on the team dashboard. PDF export was removed;
+reports are Markdown-only. See [SUPPLIERS.md](SUPPLIERS.md) for data sources.
 
 ## Run it on a new computer (Mac M1 / Windows / Linux)
 
