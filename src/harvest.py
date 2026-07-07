@@ -281,16 +281,17 @@ def run_harvest(argv=None):
           f"{' (DRY RUN - writing nothing)' if dry else ''}...")
     s = harvest(append=not dry, log=print)
     print(f"\nScanned {s['scanned']} unique clean keywords from the index.")
-    print(f"NEW (not already in keywords.csv): {s['new_total']} "
+    print(f"NEW vs current seed list: {s['new_total']} "
           f"(embroidery {s['new_emb']}, POD {s['new_pod']})")
-    print(f"\nEmbroidery added ({s['added_emb']}): "
-          + ", ".join(s["emb_sample"]) + (" ..." if s['added_emb'] > 18 else ""))
-    print(f"\nPOD added ({s['added_pod']}): "
-          + ", ".join(s["pod_sample"]) + (" ..." if s['added_pod'] > 18 else ""))
+    if s.get("emb_sample"):
+        print(f"\nTop embroidery picks ({s['top_emb']}): "
+              + ", ".join(s["emb_sample"]))
+    if s.get("pod_sample"):
+        print(f"Top POD picks ({s['top_pod']}): " + ", ".join(s["pod_sample"]))
     if dry:
         print("\n(DRY RUN — nothing written. Re-run without --dry to apply.)")
     else:
-        print(f"\nWrote {s['wrote_data']} keywords to keyword_data.csv (fuels the "
-              f"reports) and added {s['added']} new seeds to keywords.csv.")
+        print(f"\nWrote {s['wrote_data']} keywords to keyword_data.csv — this is "
+              "what fuels the reports.")
         print("Next `daily pod` / `daily embroidery` will research them all.")
     return s

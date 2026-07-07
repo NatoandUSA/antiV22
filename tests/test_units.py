@@ -205,3 +205,32 @@ def test_partner_status_four_states(required, disclosed, expected):
         "production_partner_required": required,
         "production_partner_disclosed": disclosed,
     }) == expected
+
+
+def test_run_harvest_summary_matches_return_dict(monkeypatch, tmp_path):
+    """run_harvest's summary print must only use keys harvest() returns.
+    Guards the KeyError class of bug (offline: the network pull is stubbed)."""
+    import src.harvest as h
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "keywords.csv").write_text("keyword,competition\nfoo,\n",
+                                           encoding="utf-8")
+
+    def fake_pull(store, log=lambda s: None):
+        store.update({
+            "embroidered hat": {"tag": "embroidered hat", "score": 9.0,
+                                "source": "trending", "listings": 5,
+                                "sellers": 3, "comp": "low", "price": 20.0,
+                                "conv": 0.03, "revenue": 100.0, "sold": 2,
+                                "views": 300.0},
+            "dad shirt": {"tag": "dad shirt", "score": 8.0,
+                          "source": "opportunity", "listings": 9, "sellers": 4,
+                          "comp": "low", "price": 18.0, "conv": 0.03,
+                          "revenue": 90.0, "sold": 1, "views": 250.0},
+        })
+    monkeypatch.setattr(h, "_pull", fake_pull)
+
+    s = h.run_harvest([])            # must NOT raise (KeyError etc.)
+    assert s["wrote_data"] == 2
+    for k in ("scanned", "new_total", "new_emb", "new_pod", "top_emb",
+              "top_pod", "emb_sample", "pod_sample"):
+        assert k in s
