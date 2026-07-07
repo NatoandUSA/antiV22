@@ -1,0 +1,9 @@
+supplier,product_line,catalog_url,data_source,notes
+Printify,pod,https://printify.com/app/products,API (live),via `py main.py printify`
+BurgerPrints,pod,https://burgerprints.com/catalog/,manual,HAR-capture then reverse the JSON API (see DEPLOY notes)
+Printway,pod,https://printway.io/en/all-products,manual,HAR-capture then reverse the JSON API
+ShineOn,jewelry,CSV import,data/shineon_products.csv,1010 jewelry/acrylic products imported
+Catkissfish,pod,https://www.catkissfish.com/product-home,manual,HAR-capture then reverse the JSON API
+PGprints,pod,https://pgprints.io/product-category/all/,manual,HAR-capture then reverse the JSON API
+Merchize,pod,https://merchize.com/all-products/,manual,HAR-capture then reverse the JSON API
+Embroidery partner,embroidery,CSV import,data/embroidery_supplier_prices.csv,prices INCLUDE US ePacket shipping (7-12 business days)

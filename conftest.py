@@ -33,5 +33,13 @@ def sandbox(tmp_path, monkeypatch):
     """
     dst = tmp_path / "proj"
     shutil.copytree(REPO_ROOT, dst, ignore=_ignore)
+    # data/ is excluded (runtime state), but the committed supplier reference
+    # CSVs are part of the repo — copy them so supplier-data checks run here too.
+    (dst / "data").mkdir(exist_ok=True)
+    for name in ("supplier_catalog.csv", "shineon_products.csv",
+                 "embroidery_supplier_prices.csv"):
+        src = REPO_ROOT / "data" / name
+        if src.exists():
+            shutil.copy(src, dst / "data" / name)
     monkeypatch.chdir(dst)
     yield dst

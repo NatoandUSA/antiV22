@@ -489,6 +489,33 @@ def run_selftest():
     _sh.rmtree("reports/selftest_runs", ignore_errors=True)
     _sh.rmtree("reports/selftest_latest", ignore_errors=True)
 
+    # ---- V20.3: supplier data integration ----
+    import csv as _csv
+    cat = Path("data/supplier_catalog.csv")
+    n_sup = 0
+    if cat.exists():
+        with open(cat, newline="", encoding="utf-8") as f:
+            n_sup = sum(1 for _ in _csv.DictReader(f))
+    check("supplier catalog registry exists (7+ suppliers)", n_sup >= 7)
+
+    shine = Path("data/shineon_products.csv")
+    shine_ok = False
+    if shine.exists():
+        with open(shine, newline="", encoding="utf-8") as f:
+            sr = list(_csv.DictReader(f))
+        shine_ok = len(sr) >= 900 and any(
+            (r.get("base_cost_usd") or "").strip() for r in sr)
+    check("ShineOn products imported with base costs (900+)", shine_ok)
+
+    emb = Path("data/embroidery_supplier_prices.csv")
+    emb_txt = emb.read_text(encoding="utf-8") if emb.exists() else ""
+    check("embroidery supplier prices imported (shipping INCLUDED)",
+          "INCLUDED" in emb_txt and "TSHIRT" in emb_txt.upper())
+
+    from src.team_packs import EMB_SPEC
+    check("design prompts carry real embroidery areas",
+          "250mm" in EMB_SPEC and "120mm" in EMB_SPEC and "56-58cm" in EMB_SPEC)
+
     print("\nSELF-TEST RESULTS")
     for name, cond in results:
         print(f"  {'PASS' if cond else 'FAIL'}  {name}")

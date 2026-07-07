@@ -1,4 +1,4 @@
-# Etsy Product Manager V20.2-FINAL
+# Etsy Product Manager V20.3
 
 ## Run it on a new computer (Mac M1 / Windows / Linux)
 

@@ -23,7 +23,10 @@ EMB_SPEC = """OUTPUT SPEC (embroidery - STRICT production limits):
 - Maximum 6 thread colors, flat solid fills only - NO gradients, NO photos,
   NO tiny details (minimum line thickness ~1mm at final size)
 - Bold, simple shapes that survive stitching; satin-stitch friendly lettering
-- Embroidery area: assume 4x4 in (10x10 cm) unless supplier confirms larger
+- CONFIRMED embroidery areas (from our supplier price sheet - design to these):
+    - Tshirt / Sweatshirt / Hoodie CHEST: max 250mm (25cm) wide
+    - SLEEVE (left or right): max 70mm (7cm) wide x 250mm (25cm) tall, vertical only
+    - Wash cap FRONT: max 120mm x 60mm (one size, fits 56-58cm head)
 - For chenille: 2-3 inch bold letters/initials only, single color per patch
 - Show placement with the sample name "Emma"
 - Deliver: 3 lettering style variations + 2 motif variations, each described

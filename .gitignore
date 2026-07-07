@@ -1,6 +1,10 @@
 .env
 .venv/
-data/
+data/*
+# ...but keep the committed supplier reference data (not generated at runtime):
+!data/supplier_catalog.csv
+!data/shineon_products.csv
+!data/embroidery_supplier_prices.csv
 reports/
 __pycache__/
 *.pyc
