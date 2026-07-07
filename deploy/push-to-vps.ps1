@@ -14,11 +14,11 @@ $PYTHON   = "py"          # use "python" if "py" isn't on your PATH
 
 Set-Location (Split-Path $PSScriptRoot -Parent)   # repo root
 
-Write-Host "== 1/2  Building reports: all keywords + POD + embroidery =="
-& $PYTHON main.py daily
-if ($LASTEXITCODE -ne 0) { Write-Host "daily failed - not syncing."; exit 1 }
+Write-Host "== 1/2  Building reports: POD + Embroidery (the only two the team sees) =="
 & $PYTHON main.py daily pod
+if ($LASTEXITCODE -ne 0) { Write-Host "daily pod failed - not syncing."; exit 1 }
 & $PYTHON main.py daily embroidery
+if ($LASTEXITCODE -ne 0) { Write-Host "daily embroidery failed - not syncing."; exit 1 }
 
 Write-Host "`n== 2/2  Copying to the VPS (enter the etsy password when asked) =="
 scp -P $VPS_PORT keyword_data.csv "${VPS_USER}@${VPS_HOST}:${VPS_PATH}/keyword_data.csv"

@@ -16,10 +16,9 @@ VPS_PATH=/home/etsy/etsy-agent
 cd "$(dirname "$0")/.."   # repo root
 PYTHON=${PYTHON:-$([ -x .venv/bin/python ] && echo .venv/bin/python || echo python)}
 
-echo "== 1/2  Building reports: all keywords + POD + embroidery =="
-"$PYTHON" main.py daily
-"$PYTHON" main.py daily pod
-"$PYTHON" main.py daily embroidery
+echo "== 1/2  Building reports: POD + Embroidery (the only two the team sees) =="
+"$PYTHON" main.py daily pod || { echo "daily pod failed - not syncing."; exit 1; }
+"$PYTHON" main.py daily embroidery || { echo "daily embroidery failed - not syncing."; exit 1; }
 
 echo
 echo "== 2/2  Copying to the VPS (enter the etsy password when asked) =="
