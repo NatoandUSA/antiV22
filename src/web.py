@@ -228,6 +228,8 @@ def build_app(password, secret):
             '<span>Catalogs + ShineOn/Embroidery CSV upload</span></a>'
             '<a class="toolcard" href="/feedback"><b>📉 Sales feedback</b>'
             '<span>Post-launch: keep / change / kill / scale</span></a>'
+            '<a class="toolcard" href="/grade"><b>📝 Grade my listing</b>'
+            '<span>Paste a title + 13 tags + description → 0–100 + fixes</span></a>'
             '</div>')
 
         # --- Archive: saved runs + the operator's daily reports (secondary) ---
@@ -751,6 +753,49 @@ def build_app(password, secret):
     def spy():
         return _kw_tool(lambda iv, q: iv.spy(q), "Spy")
 
+    @app.route("/grade", methods=["GET", "POST"])
+    @login_required
+    def grade():
+        import html as _html
+        bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
+        title = (request.form.get("title") or "").strip()
+        tags = (request.form.get("tags") or "").strip()
+        desc = (request.form.get("description") or "").strip()
+        kw = (request.form.get("keyword") or "").strip()
+        result_html = ""
+        if request.method == "POST" and (title or tags or desc):
+            from src import interactive
+            try:
+                out = interactive.grade_listing(title, tags, desc, kw)
+                rendered = md.markdown(out, extensions=["tables", "fenced_code",
+                                                        "sane_lists"])
+                result_html = (f'<article class="md">{rendered}</article>' + COPY_JS)
+            except Exception as exc:  # noqa: BLE001
+                result_html = ('<p class="empty">Could not grade: '
+                               f'{_html.escape(str(exc)[:200])}</p>')
+        form = (
+            '<article class="md"><h1>📝 Grade my listing</h1>'
+            '<p class="lead">Paste an existing listing and get a 0–100 score with '
+            'exact fixes — front-loading, tag character-packing, typos, trademark '
+            'cautions, and description gaps. <b>Grade only — never publishes.</b></p>'
+            '<form method="post" action="/grade" class="gradeform">'
+            '<label>Focus keyword'
+            f'<input name="keyword" value="{_html.escape(kw)}" '
+            'placeholder="e.g. personalized dog mom shirt"></label>'
+            '<label>Title'
+            f'<input name="title" value="{_html.escape(title)}" '
+            'placeholder="Your listing title"></label>'
+            '<label>Tags (13, comma-separated)'
+            f'<textarea name="tags" rows="3" '
+            f'placeholder="tag one, tag two, ...">{_html.escape(tags)}</textarea></label>'
+            '<label>Description'
+            f'<textarea name="description" rows="6" '
+            f'placeholder="Your full listing description">{_html.escape(desc)}'
+            '</textarea></label>'
+            '<button class="primary" type="submit">Grade listing →</button>'
+            '</form></article>')
+        return page("Grade my listing", bar + result_html + form)
+
     # ---- keyword research (from `py main.py expand`, synced in reports/latest) ----
     @app.route("/research")
     @login_required
@@ -887,6 +932,17 @@ border-radius:8px;background:var(--paper);color:var(--ink);font-size:.85rem}
 background:var(--surface);color:var(--accent);font-weight:700;font-size:.88rem;cursor:pointer}
 .cmdbtns button.primary{background:var(--accent);color:var(--paper)}
 .cmdbtns button:hover{filter:brightness(1.06)}
+/* demand sparkline + grade form */
+.spark{font-family:var(--mono,ui-monospace,Menlo,Consolas,monospace);font-size:1.15rem;
+letter-spacing:1px;color:var(--accent);background:transparent;padding:0}
+.gradeform{display:flex;flex-direction:column;gap:12px;margin-top:14px}
+.gradeform label{display:flex;flex-direction:column;gap:4px;font-weight:700;font-size:.85rem}
+.gradeform input,.gradeform textarea{padding:11px 13px;border:1px solid var(--line-strong);
+border-radius:10px;background:var(--paper);color:var(--ink);font-size:.95rem;
+font-family:var(--sans);font-weight:400}
+.gradeform textarea{resize:vertical}
+.gradeform button.primary{align-self:flex-start;padding:11px 18px;border:1px solid var(--accent);
+border-radius:10px;background:var(--accent);color:var(--paper);font-weight:700;cursor:pointer}
 /* workspace */
 .ws{background:var(--surface);border:1px solid var(--line);border-radius:14px;
 padding:18px 20px;margin:14px 0;box-shadow:var(--shadow)}

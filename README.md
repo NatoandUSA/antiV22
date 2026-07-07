@@ -1,6 +1,16 @@
-# Etsy Product Manager V21.8
+# Etsy Product Manager V21.9
 
-**New in V21.8 — supplier ops + Sales Feedback Loop.** New CLI: `supplier sync`
+**New in V21.9 — Listing Grader + demand sparkline (learned from the best
+open-source Etsy tools).** A **📝 Grade my listing** tool: paste a title, your 13
+tags, and the description and get a **0–100 score with exact fixes** — keyword
+front-loading, tag **character-packing** (how much of the 260-char tag budget you
+use), typo and trademark cautions, and description gaps. Every workspace now shows
+a **demand-over-time sparkline** (▁▂▃▅▇ from the keyword's 6-month timeline) with
+a rising / flat / falling read, and the **🕵️ Spy** view lists the **tags the top
+listings share** (reference only — write your own). Grade only — never
+auto-publishes. (English only.)
+
+**V21.8 — supplier ops + Sales Feedback Loop.** New CLI: `supplier sync`
 (register a catalog supplier), `supplier import-csv --source shineon|embroidery
 --file <csv>` (normalize into `data/suppliers/supplier_products.csv`), `supplier
 match --product "..." --mode ...` (0-100 supplier match), and `workspace build

@@ -348,6 +348,148 @@ def calendar():
     return "\n".join(L)
 
 
+_SPARK = "▁▂▃▄▅▆▇█"
+
+
+def sparkline(values):
+    """Unicode sparkline from a series (e.g. views over time)."""
+    vals = [float(v) for v in values if isinstance(v, (int, float))]
+    if len(vals) < 2:
+        return ""
+    lo, hi = min(vals), max(vals)
+    if hi == lo:
+        return _SPARK[0] * len(vals)
+    return "".join(_SPARK[int((v - lo) / (hi - lo) * (len(_SPARK) - 1))]
+                   for v in vals)
+
+
+def trend_word(values):
+    vals = [float(v) for v in values if isinstance(v, (int, float))]
+    if len(vals) < 4:
+        return "flat"
+    n = max(1, len(vals) // 3)
+    head, tail = sum(vals[:n]) / n, sum(vals[-n:]) / n
+    return ("rising" if tail > head * 1.15 else
+            "falling" if tail < head * 0.85 else "flat")
+
+
+def demand_spark(timeline):
+    """A 'demand over 6 months' sparkline line from research_keyword.timeline."""
+    if not timeline:
+        return ""
+    views = [p.get("total_views_24h") for p in timeline]
+    sp = sparkline(views)
+    if not sp:
+        return ""
+    return f"Demand (last ~6 mo): `{sp}` — **{trend_word(views)}**"
+
+
+def _typo_flag(tag):
+    from src.workspace import _looks_typo
+    return _looks_typo(tag)[1]
+
+
+def grade_listing(title, tags_str, desc, kw="", mode=None):
+    """Grade an EXISTING listing (paste title / 13 tags / description) 0–100 +
+    exact fixes. Grade only — never publishes. Modelled on eRank/Marmalead."""
+    title = (title or "").strip()
+    desc = (desc or "").strip()
+    kw = (kw or "").strip().lower()
+    tags = [t.strip().lower() for t in (tags_str or "").replace("\n", ",").split(",")
+            if t.strip()]
+    fixes, comp = [], {}
+    tl, dl = title.lower(), desc.lower()
+
+    # Title (25)
+    ts = 0
+    if kw and tl.startswith(kw[:min(len(kw), 15)]):
+        ts += 10
+    elif kw and kw in tl:
+        ts += 5
+        fixes.append("Move the focus keyword to the FRONT of the title.")
+    elif kw:
+        fixes.append(f"Add '{kw}' to the title, front-loaded.")
+    ts += 6 if "," in title else 0
+    if "," not in title:
+        fixes.append("Use commas to fit 2–3 keyword phrases in the title.")
+    if 0 < len(title) <= 140:
+        ts += 5
+    elif len(title) > 140:
+        fixes.append(f"Title is {len(title)} chars — trim to ≤140.")
+    ts += 4 if title and not title.isupper() else 0
+    comp["Title"] = (ts, 25)
+
+    # Tags (35)
+    gs, n = 0, len(tags)
+    gs += 12 if n == 13 else max(0, int(12 * n / 13))
+    if n != 13:
+        fixes.append(f"You have {n}/13 tags — use all 13.")
+    chars = sum(len(t) for t in tags)
+    eff = chars / 260 if tags else 0
+    gs += int(8 * min(1, eff))
+    if eff < 0.6:
+        fixes.append(f"Tags use {chars}/260 chars — pack longer multi-word tags.")
+    typos = [t for t in tags if _typo_flag(t)]
+    gs += 0 if typos else 5
+    if typos:
+        fixes.append(f"Fix typo tags: {', '.join(typos[:3])}.")
+    caution = [t for t in tags if tm_check(t)[0] in ("HIGH", "CAUTION")]
+    gs += 0 if caution else 5
+    if caution:
+        fixes.append(f"Trademark-risky tags — remove/verify: {', '.join(caution[:3])}.")
+    if kw and any(kw in t for t in tags):
+        gs += 5
+    elif kw:
+        fixes.append("Add the focus keyword as one of the 13 tags.")
+    comp["Tags"] = (min(gs, 35), 35)
+
+    # Description (25)
+    ds = 0
+    if kw and kw in dl:
+        ds += 8
+    elif kw:
+        fixes.append("Mention the focus keyword in the first line of the description.")
+    ds += 7 if len(desc) >= 100 else 0
+    if len(desc) < 100:
+        fixes.append("Description is thin — add materials, personalization, shipping.")
+    if any(w in dl for w in ("personaliz", "custom", "name", "monogram")):
+        ds += 5
+    else:
+        fixes.append("State the personalization + how to order.")
+    if any(w in dl for w in ("ship", "processing", "delivery")):
+        ds += 5
+    else:
+        fixes.append("Add a clear shipping / processing note.")
+    comp["Description"] = (ds, 25)
+
+    # Focus-keyword consistency (15)
+    if kw:
+        hits = sum([kw in tl, any(kw in t for t in tags), kw in dl])
+        cs = int(15 * hits / 3)
+        if hits < 3:
+            fixes.append("Use the SAME focus keyword in the title, a tag, AND the description.")
+    else:
+        cs = 8
+        fixes.append("Set a focus keyword so consistency can be graded.")
+    comp["Focus keyword"] = (cs, 15)
+
+    total = sum(s for s, _ in comp.values())
+    band = ("A — strong" if total >= 85 else "B — good" if total >= 70 else
+            "C — needs work" if total >= 55 else "D — weak" if total >= 40
+            else "F — rebuild")
+    L = [f"# Listing grade: {total}/100 ({band})", "", "| Component | Score |",
+         "|---|---|"]
+    for name, (s, m) in comp.items():
+        L.append(f"| {name} | {s}/{m} |")
+    L += ["", f"_Tags use {chars}/260 characters ({int(eff*100)}% of the space)._",
+          "", "## Fixes (do these first)"]
+    L += (["- " + f for f in fixes] if fixes
+          else ["- Looks strong — only minor polish needed."])
+    L += ["", "_Grade only — never auto-published. Verify any flagged trademark "
+          "on USPTO before publishing._"]
+    return "\n".join(L)
+
+
 def spy(kw, mode=None):
     """Competitor intelligence for a keyword — who wins, who dominates, who just
     launched, and the gaps. Learning only: study structure, never copy."""
@@ -383,8 +525,12 @@ def spy(kw, mode=None):
     try:
         rk = mcp.research_keyword(kw)
         listings = (rk.get("top_listings") if isinstance(rk, dict) else None) or []
+        timeline = (rk.get("timeline") if isinstance(rk, dict) else None) or []
     except Exception:  # noqa: BLE001
-        listings = []
+        listings, timeline = [], []
+    _ds = demand_spark(timeline)
+    if _ds:
+        L += ["", _ds, ""]
     L += ["## What's winning right now (do NOT copy)", ""]
     if listings:
         L += ["| Listing | Price | Sold 24h | Total sold | Conv | Favs | Sample tags |",
@@ -397,6 +543,18 @@ def spy(kw, mode=None):
                      f"| {tags} |")
     else:
         L.append("_No winning listings returned for this keyword._")
+
+    from collections import Counter
+    freq = Counter()
+    for r in listings:
+        for t in (r.get("tags") or []):
+            c = _clean(t).lower()
+            if c:
+                freq[c] += 1
+    shared = [(t, c) for t, c in freq.most_common(12) if c >= 2]
+    if shared:
+        L += ["", "## Tags the winners share (reference — write your own)", ""]
+        L += [f"- **{t}** — used by {c} of the top listings" for t, c in shared]
 
     L += ["", "## Who just launched (new entrants — what's fresh)", ""]
     try:

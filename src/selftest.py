@@ -623,6 +623,32 @@ def run_selftest():
           and all(x in _web_src for x in ("/suppliers", "/suppliers/upload",
                                           "/feedback", "/feedback/add")))
 
+    _grade = _iv.grade_listing(
+        "personalized dog mom shirt, custom pet gift",
+        ", ".join(["personalized dog mom shirt", "custom dog mom gift",
+                   "dog lover present", "pet owner shirt", "dog mama tee",
+                   "custom pet portrait", "dog mom birthday", "fur mama gift",
+                   "personalized pet tee", "dog owner apparel", "gift for dog mom",
+                   "custom dog name shirt", "dog lover birthday gift"]),
+        "This personalized dog mom shirt is custom printed with your pet's name. "
+        "Ships in 3-5 days. A perfect gift for any dog lover.",
+        kw="personalized dog mom shirt")
+    check("Listing Grader (paste title/13 tags/desc -> 0-100 + char-pack + fixes)",
+          callable(getattr(_iv, "grade_listing", None))
+          and "Listing grade:" in _grade and "/260 characters" in _grade
+          and all(x in _web_src for x in ("/grade", "gradeform",
+                                          'href="/grade"')))
+    _iv_src = Path("src/interactive.py").read_text(encoding="utf-8")
+    _ws_src = Path("src/workspace.py").read_text(encoding="utf-8")
+    check("demand-over-time sparkline + tag-frequency across winners",
+          callable(getattr(_iv, "sparkline", None))
+          and callable(getattr(_iv, "demand_spark", None))
+          and _iv.sparkline([1, 3, 2, 8, 5]) != ""
+          and ".spark{" in _web_src               # CSS in web.py
+          and 'class="spark"' in _ws_src          # rendered in the workspace
+          and "demand_spark" in _iv_src and "winners share" in _iv_src
+          and 'G["timeline"]' in _ws_src)
+
     print("\nSELF-TEST RESULTS")
     for name, cond in results:
         print(f"  {'PASS' if cond else 'FAIL'}  {name}")

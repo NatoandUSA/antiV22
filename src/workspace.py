@@ -757,6 +757,7 @@ def _gather(kw, opts=None):
     stats = rk.get("stats", {}) if isinstance(rk, dict) else {}
     related = (rk.get("related_keywords") if isinstance(rk, dict) else None) or []
     listings = (rk.get("top_listings") if isinstance(rk, dict) else None) or []
+    timeline = (rk.get("timeline") if isinstance(rk, dict) else None) or []
     try:
         comp = mcp.call("ytrends_analyze_competition", seed=kw, seed_type="keyword")
         comp = comp.get("data", comp) if isinstance(comp, dict) else {}
@@ -800,7 +801,7 @@ def _gather(kw, opts=None):
         scores=scores, vd=vd, src_rows=src_rows, src_conf=src_conf, tags=tags,
         conv=conv, L=L, ready=ready, failed=failed, pod_prompt=pod_prompt,
         emb_prompt=emb_prompt, design_risks=design_risks, fc=fc,
-        audit_html=audit_html, audit_status=audit_status,
+        audit_html=audit_html, audit_status=audit_status, timeline=timeline,
         cww_score=cww_score, cww_scores=cww_scores, lr_score=lr_score,
         lr_status=lr_status, lr_reasons=lr_reasons, fib_score=fib_score,
         fib_pattern=fib_pattern, fib_plan=fib_plan,
@@ -819,6 +820,7 @@ def build_workspace(kw, opts=None):
     pod_prompt, emb_prompt, design_risks = (G["pod_prompt"], G["emb_prompt"],
                                             G["design_risks"])
     fc, audit_html, audit_status = G["fc"], G["audit_html"], G["audit_status"]
+    timeline = G["timeline"]
     cww_score, cww_scores = G["cww_score"], G["cww_scores"]
     lr_score, lr_status, lr_reasons = G["lr_score"], G["lr_status"], G["lr_reasons"]
     fib_score, fib_pattern, fib_plan = G["fib_score"], G["fib_pattern"], G["fib_plan"]
@@ -857,6 +859,11 @@ def build_workspace(kw, opts=None):
                 "Unavailable sources show SOURCE_NOT_AVAILABLE — never faked.</p>")
 
     # market
+    from src.interactive import sparkline, trend_word
+    _views = [p.get("total_views_24h") for p in timeline]
+    _sp = sparkline(_views)
+    spark_html = (f'<li>Demand (last ~6 mo): <code class="spark">{_sp}</code> — '
+                  f'<b>{trend_word(_views)}</b></li>' if _sp else "")
     market_html = (
         '<ul class="facts">'
         f'<li><b>{_int(stats.get("total_listings"))}</b> listings · '
@@ -864,7 +871,8 @@ def build_workspace(kw, opts=None):
         f'<b>{_money(stats.get("avg_price"))}</b></li>'
         f'<li>Conversion <b>{_pct(conv)}</b> · demand:supply '
         f'<b>{stats.get("demand_supply_ratio","-")}</b> · buyer intent '
-        f'<b>personalized / gift</b></li></ul>'
+        f'<b>personalized / gift</b></li>'
+        f'{spark_html}</ul>'
         '<h3>Related & long-tail keywords</h3>' + md_table(_rel_rows(related, 15)))
 
     # niches
