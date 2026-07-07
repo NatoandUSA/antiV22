@@ -13,13 +13,35 @@ not provide stays empty and appears in missing_fields.
 import csv
 from pathlib import Path
 
+def _load_sources():
+    """Supplier registry from data/suppliers/supplier_sources.json (catalog URLs,
+    types, modes). Falls back to the built-in defaults below."""
+    import json
+    p = Path("data/suppliers/supplier_sources.json")
+    if p.exists():
+        try:
+            return json.loads(p.read_text(encoding="utf-8"))
+        except Exception:  # noqa: BLE001
+            pass
+    return {}
+
+
+SUPPLIER_SOURCES = _load_sources()
+
 SUPPLIER_CATALOGS = {
     "printify": "https://printify.com/app/products",
-    "shineon": "https://teamshineon.zendesk.com/hc/en-us/articles/10195816837265",
     "burgerprints": "https://burgerprints.com/catalog/",
-    "printway": "https://printway.io/en",
+    "printway": "https://printway.io/en/all-products",
+    "catkissfish": "https://www.catkissfish.com/product-home",
+    "pgprints": "https://pgprints.io/product-category/all/",
+    "merchize": "https://merchize.com/all-products/",
+    "shineon": "https://teamshineon.zendesk.com/hc/en-us/articles/10195816837265",
     "embroidery partner": "(internal price sheet: data/embroidery_supplier_prices.csv)",
 }
+# Registry catalog URLs win when present.
+for _sid, _info in SUPPLIER_SOURCES.items():
+    if _info.get("catalog_url"):
+        SUPPLIER_CATALOGS[_sid] = _info["catalog_url"]
 
 FIELDS = ["product_idea", "production_type", "supplier_name",
           "supplier_catalog_url", "product_name_from_supplier", "product_url",

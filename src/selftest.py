@@ -602,6 +602,16 @@ def run_selftest():
           callable(getattr(_hv, "write_raw_and_processed", None))
           and "data/processed" in Path("src/harvest.py").read_text(encoding="utf-8"))
 
+    check("Can We Win + Launch Readiness + First Image + Offer + Better Angle",
+          all(callable(getattr(_ws, f, None)) for f in (
+              "can_we_win", "launch_readiness", "first_image_battle",
+              "offer_builder", "better_angles"))
+          and isinstance(_ws.CWW_FACTORS, list) and len(_ws.CWW_FACTORS) == 12)
+    check("supplier source registry (6 POD catalogs + ShineOn + Embroidery)",
+          Path("data/suppliers/supplier_sources.json").exists()
+          and all(s in Path("src/supplier_pull.py").read_text(encoding="utf-8")
+                  for s in ("merchize", "catkissfish", "pgprints")))
+
     print("\nSELF-TEST RESULTS")
     for name, cond in results:
         print(f"  {'PASS' if cond else 'FAIL'}  {name}")

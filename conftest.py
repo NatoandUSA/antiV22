@@ -41,5 +41,9 @@ def sandbox(tmp_path, monkeypatch):
         src = REPO_ROOT / "data" / name
         if src.exists():
             shutil.copy(src, dst / "data" / name)
+    ss = REPO_ROOT / "data" / "suppliers" / "supplier_sources.json"
+    if ss.exists():
+        (dst / "data" / "suppliers").mkdir(parents=True, exist_ok=True)
+        shutil.copy(ss, dst / "data" / "suppliers" / "supplier_sources.json")
     monkeypatch.chdir(dst)
     yield dst

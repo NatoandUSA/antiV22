@@ -1,0 +1,50 @@
+{
+  "printify": {
+    "name": "Printify",
+    "type": "catalog_url",
+    "modes": ["POD"],
+    "catalog_url": "https://printify.com/app/products"
+  },
+  "burgerprints": {
+    "name": "BurgerPrints",
+    "type": "catalog_url",
+    "modes": ["POD"],
+    "catalog_url": "https://burgerprints.com/catalog/"
+  },
+  "printway": {
+    "name": "Printway",
+    "type": "catalog_url",
+    "modes": ["POD"],
+    "catalog_url": "https://printway.io/en/all-products"
+  },
+  "catkissfish": {
+    "name": "CatKissFish",
+    "type": "catalog_url",
+    "modes": ["POD"],
+    "catalog_url": "https://www.catkissfish.com/product-home"
+  },
+  "pgprints": {
+    "name": "PGPrints",
+    "type": "catalog_url",
+    "modes": ["POD"],
+    "catalog_url": "https://pgprints.io/product-category/all/"
+  },
+  "merchize": {
+    "name": "Merchize",
+    "type": "catalog_url",
+    "modes": ["POD"],
+    "catalog_url": "https://merchize.com/all-products/"
+  },
+  "shineon": {
+    "name": "ShineOn",
+    "type": "csv_upload",
+    "modes": ["JEWELRY", "ACRYLIC", "POD"],
+    "csv_file": "shineon_jewelry_acrylic.csv"
+  },
+  "embroidery": {
+    "name": "Embroidery",
+    "type": "csv_upload",
+    "modes": ["EMBROIDERY", "CHENILLE_PATCH"],
+    "csv_file": "Embroidery.csv"
+  }
+}

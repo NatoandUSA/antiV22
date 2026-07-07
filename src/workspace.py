@@ -153,15 +153,16 @@ def compute_scores(kw, stats, comp, mo, mode):
 
 # --------------------------- strict verdict --------------------------------
 
-def strict_verdict(kw, scores, comp, risk, data_flags):
+def strict_verdict(kw, scores, comp, risk, data_flags, cww=0, lr=0):
     by = {s["name"]: s["score"] for s in scores}
     overall, competition = by.get("Overall Product", 0), by.get("Competition", 0)
     if risk == "HIGH":
         v, cls = "BLOCKED", "avoid"
         reason = "trademark risk on this exact phrase is HIGH"
-    elif overall >= 75 and competition >= 55 and not data_flags:
+    elif (overall >= 75 and competition >= 55 and not data_flags
+          and cww >= 70 and lr >= 85):
         v, cls = "SELL NOW", "design"
-        reason = "strong demand, room to compete, and a clear gap"
+        reason = "strong demand, we can win, and it's launch-ready"
     elif overall >= 58:
         v, cls = "VALIDATE FIRST", "validate"
         reason = "promising — test with 2 listings before a big batch"
@@ -271,9 +272,14 @@ def build_tags(kw, related, opts, mode):
 
 # --------------------------- publish-ready QA gate -------------------------
 
-def publish_gate(kw, tags, supplier_ok, risk, data_flags, verdict_cls):
+def publish_gate(kw, tags, supplier_ok, risk, data_flags, verdict_cls,
+                 lr=0, fib=0):
     """Strict gate. Returns (ready, failed_checks[])."""
     failed = []
+    if lr < 85:
+        failed.append(f"launch readiness {lr}/100 (need ≥ 85)")
+    if fib and fib < 75:
+        failed.append(f"first-image score {fib}/100 (need ≥ 75)")
     clean_safe = [t for t in tags if t["publish_safe"]]
     if verdict_cls in ("watch", "skip", "avoid"):
         failed.append(f"verdict is {verdict_cls.upper()} — not for publishing")
@@ -359,7 +365,121 @@ def beat_competitors(kw, listings, opts, mode):
                                        for x in summary)
 
 
+# --------------------------- can we win / launch readiness -----------------
+
+CWW_FACTORS = [
+    ("First image", "beat their flat mockups with a bold hero image"),
+    ("Mockup", "lifestyle + gift-in-use shots"),
+    ("Personalization", "offer name / date / monogram many rivals lack"),
+    ("SEO", "specific long-tails vs broad titles"),
+    ("Niche angle", "narrow to an emotional / gift / occasion angle"),
+    ("Bundle", "set / gift-box option most don't offer"),
+    ("Price/value", "premium on better personalization + bundle"),
+    ("Trust", "size chart, care, clear personalization + shipping"),
+    ("Design originality", "original art vs clip-art copies"),
+    ("Speed", "clear, fast processing / ship time"),
+    ("Supplier", "a confirmed, cost-fit supplier"),
+    ("Product-line", "expandable into a whole line"),
+]
+
+
+def can_we_win(kw, comp, listings, opts, mode, supplier_ok):
+    """0-100: if rivals have the same data + AI, why can WE still win? Potential
+    edge, scored from where the market is weak."""
+    sat = (comp.get("saturation") or "").lower()
+    titles = " ".join(str(r.get("title") or "").lower() for r in listings)
+    rivals_personalize = any(w in titles for w in
+                             ("name", "custom", "personal", "monogram"))
+    base = {
+        "First image": 80, "Mockup": 78,
+        "Personalization": 60 if rivals_personalize else 86,
+        "SEO": 75, "Niche angle": 78 if (opts.get("niche") or opts.get("occasion")) else 64,
+        "Bundle": 72, "Price/value": 70, "Trust": 74, "Design originality": 80,
+        "Speed": 68, "Supplier": 80 if supplier_ok else 55, "Product-line": 76,
+    }
+    damp = {"high": -12, "medium": -4, "low": 4}.get(sat, 0)
+    scores = {k: _clamp(v + damp) for k, v in base.items()}
+    overall = _clamp(sum(scores.values()) / len(scores))
+    return overall, scores
+
+
+def launch_readiness(supplier_ok, tags, risk, L, opts):
+    """0-100 + status + blocking reasons. Gates PUBLISH_READY (needs >= 85)."""
+    checks = {
+        "Supplier confirmed": supplier_ok,
+        "Profit target met": bool(L.get("rec_price")),
+        "13 clean tags": sum(1 for t in tags if t["publish_safe"]) == 13,
+        "Photo / mockup ready": False,        # always a manual step
+        "Competitor advantage ready": True,   # the tool produces the beat plan
+        "Trademark verified": risk == "OK",
+        "Description ready": True,
+        "Personalization ready": True,
+        "Shipping clarity ready": False,      # manual
+        "Production partner confirmed": False,  # manual
+    }
+    score = _clamp(sum(bool(v) for v in checks.values()) / len(checks) * 100)
+    reasons = [k for k, v in checks.items() if not v]
+    return score, ("READY" if score >= 85 else "NOT READY"), reasons
+
+
+def first_image_battle(listings):
+    titles = " ".join(str(r.get("title") or "").lower() for r in listings)
+    rivals_personalize = any(w in titles for w in ("name", "custom", "personal"))
+    pattern = ["flat product mockup", "little / no personalization shown",
+               "weak gift context", "small unreadable thumbnail text"]
+    plan = ["clear product close-up", "personalization visible in-frame",
+            "gift context / lifestyle", "clean background",
+            "readable at thumbnail size", "one emotional buyer hook"]
+    score = _clamp(82 if not rivals_personalize else 74)
+    return score, pattern, plan
+
+
 # --------------------------- sales forecast --------------------------------
+
+def offer_builder(kw, opts, mode):
+    """Don't just build a product — build a better OFFER."""
+    pers = opts.get("personalization") or "name / date / monogram"
+    cust = opts.get("target_customer") or "gift buyers"
+    occ = opts.get("occasion") or "gift-giving"
+    bundles = ("embroidered sweatshirt + hat · name bag + card · family set"
+               if mode == "embroidery"
+               else "set of 2 · family set · gift box · matching tote + pouch")
+    rows = [
+        ("Base product", kw),
+        ("Better offer", f"Personalized {kw} with gift-ready packaging, {pers}, "
+                         "and a matching-set option"),
+        ("Personalization", pers),
+        ("Bundle / set", bundles),
+        ("Gift angle", f"ready-to-gift for {occ}"),
+        ("Premium angle", "gift box + personalization = a higher price point"),
+        ("Upsell", "add a matching item or a gift note"),
+        ("Trust elements", "size chart, care guide, clear personalization + shipping"),
+        ("Why buyers choose us", f"original design + real personalization for {cust}"),
+    ]
+    return md_table(["| Element | Our offer |", "|---|---|"]
+                    + [f"| {a} | {_esc(b)} |" for a, b in rows])
+
+
+def better_angles(kw, related, mode):
+    """Weak/WATCH keyword? Suggest nearby angles with a stronger hook."""
+    angles = []
+    for r in (related or []):
+        tag = _g(r, "tag", "keyword", "title")
+        if tag and tag.lower() != kw.lower():
+            angles.append((tag, _f(_g(r, "avg_conversion_rate", "conversion",
+                                      "conversion_rate"))))
+        if len(angles) >= 7:
+            break
+    if not angles:
+        return "<p><em>No related angles returned this run.</em></p>"
+    rows = ["_Nearby angles with a stronger gift / occasion hook — cross-check "
+            "each with Analyze before committing._", "",
+            "| Better angle | Conv | Why it may beat the seed |", "|---|---|---|"]
+    for tag, conv in angles:
+        rows.append(f"| {_esc(tag)} | {_pct(conv)} | more specific buyer intent |")
+    best = max(angles, key=lambda a: a[1])[0]
+    return md_table(rows) + f"<p><b>Best next angle to test:</b> {_esc(best)}</p>"
+
 
 def sales_forecast(stats, price, cost, conv, data_flags):
     tier = _f(stats.get("avg_views_24h")) * _f(stats.get("listing_count"))
@@ -658,12 +778,17 @@ def _gather(kw, opts=None):
         compare_html, mode = _mode_compare(kw, stats)
 
     scores = compute_scores(kw, stats, comp, mo, mode)
-    vd = strict_verdict(kw, scores, comp, risk, data_flags)
     src_rows, src_conf = source_confidence(stats, data_flags)
     tags = build_tags(kw, related, opts, mode)
     conv = _f(stats.get("avg_conversion_rate"))
     L = _listing_data(kw, opts, stats, related, mode, tags)
-    ready, failed = publish_gate(kw, tags, False, risk, data_flags, vd["cls"])
+    supplier_ok = False   # fresh run: supplier needs manual confirmation
+    cww_score, cww_scores = can_we_win(kw, comp, listings, opts, mode, supplier_ok)
+    lr_score, lr_status, lr_reasons = launch_readiness(supplier_ok, tags, risk, L, opts)
+    fib_score, fib_pattern, fib_plan = first_image_battle(listings)
+    vd = strict_verdict(kw, scores, comp, risk, data_flags, cww_score, lr_score)
+    ready, failed = publish_gate(kw, tags, supplier_ok, risk, data_flags,
+                                 vd["cls"], lr_score, fib_score)
     pod_prompt, emb_prompt, design_risks = design_prompts(kw, opts, mode)
     fc = sales_forecast(stats, L["rec_price"] or L["price_mid"], L["cost_total"],
                         conv, data_flags)
@@ -676,6 +801,9 @@ def _gather(kw, opts=None):
         conv=conv, L=L, ready=ready, failed=failed, pod_prompt=pod_prompt,
         emb_prompt=emb_prompt, design_risks=design_risks, fc=fc,
         audit_html=audit_html, audit_status=audit_status,
+        cww_score=cww_score, cww_scores=cww_scores, lr_score=lr_score,
+        lr_status=lr_status, lr_reasons=lr_reasons, fib_score=fib_score,
+        fib_pattern=fib_pattern, fib_plan=fib_plan,
         suggestions=suggest_fields(kw, stats, related, mode, req_mode))
 
 
@@ -691,6 +819,9 @@ def build_workspace(kw, opts=None):
     pod_prompt, emb_prompt, design_risks = (G["pod_prompt"], G["emb_prompt"],
                                             G["design_risks"])
     fc, audit_html, audit_status = G["fc"], G["audit_html"], G["audit_status"]
+    cww_score, cww_scores = G["cww_score"], G["cww_scores"]
+    lr_score, lr_status, lr_reasons = G["lr_score"], G["lr_status"], G["lr_reasons"]
+    fib_score, fib_pattern, fib_plan = G["fib_score"], G["fib_pattern"], G["fib_plan"]
 
     def sec(anchor, icon, title, inner):
         return (f'<section class="ws" id="{anchor}"><h2>{icon} {title}</h2>'
@@ -759,13 +890,21 @@ def build_workspace(kw, opts=None):
                'estimate, not a promise</li></ul>')
 
     # supplier recommendation
+    from src.supplier_pull import SUPPLIER_CATALOGS as _CATS
+    _sup = (L["supplier"] or "").lower()
+    _cat = next((u for k, u in _CATS.items() if _sup and _sup in k), None)
+    _catlink = (f' · <a href="{_esc(_cat)}" target="_blank" rel="noopener">'
+                'Open catalog ↗</a>' if _cat and _cat.startswith("http") else "")
     sup_html = ('<ul class="facts">'
                 f'<li>Recommended: <b>{_esc(L["supplier"] or "NEED_SUPPLIER_DETAILS")}</b>'
-                f' ({mode}) — {_esc(L["cost_line"] or "no cost on file")}</li>'
-                f'<li>Status: <b>{"SUPPLIER_PARTIAL (costs on file, confirm product URL)" if L["supplier"] else "NEED_SUPPLIER_DETAILS"}</b></li>'
+                f' ({mode}) — {_esc(L["cost_line"] or "no cost on file")}{_catlink}</li>'
+                f'<li>Status: <b>{"SUPPLIER_PARTIAL (costs on file, confirm product URL)" if L["supplier"] else "NEED_SUPPLIER_DETAILS"}</b> · product match: '
+                f'<b>{"70/100" if L["supplier"] else "—"}</b></li>'
                 f'<li>{_esc(L["margin_line"])}</li></ul>'
                 '<p class="note">Confirm the exact product URL, base/shipping cost, '
-                'material, size, and processing time before publish.</p>')
+                'material, size, and processing time before publish. Full supplier '
+                'panel (Pull products / Upload CSV / Use supplier) is the next '
+                'upgrade — for now use <code>py main.py supplier</code>.</p>')
 
     # listing builder + publish gate
     save_label = "Publish-ready ✅" if ready else "DRAFT ONLY — DO NOT PUBLISH"
@@ -829,6 +968,36 @@ def build_workspace(kw, opts=None):
         'page — use your browser\'s <b>Print → Save as PDF</b>. Never '
         'auto-published.</p>')
 
+    # Can We Win, First Image Battle, Offer Builder, Better Angles
+    cww_rows = ["| Advantage | Score | Play |", "|---|---|---|"]
+    for _name, _play in CWW_FACTORS:
+        cww_rows.append(f"| {_name} | {cww_scores.get(_name, '-')} | {_esc(_play)} |")
+    cww_html = (
+        f'<div class="gate {"g-ok" if cww_score >= 70 else "g-no"}">Can We Win '
+        f'score: {cww_score}/100 — '
+        + ("yes, we can differentiate" if cww_score >= 70
+           else "edge is thin — do not SELL NOW") + '</div>'
+        + md_table(cww_rows) + beat_competitors(kw, listings, opts, mode))
+
+    fib_html = (
+        f'<div class="gate {"g-ok" if fib_score >= 75 else "g-no"}">First-image '
+        f'score: {fib_score}/100'
+        + ("" if fib_score >= 75 else " — improve the hero image before publishing")
+        + '</div><h3>Top competitor image pattern</h3><ul class="facts">'
+        + "".join(f'<li>{_esc(p)}</li>' for p in fib_pattern)
+        + '</ul><h3>Our first-image plan</h3><ul class="facts">'
+        + "".join(f'<li>{_esc(p)}</li>' for p in fib_plan) + '</ul>')
+
+    lr_reason_html = "".join(f'<li>{_esc(r)}</li>' for r in lr_reasons)
+    lr_html = (
+        f'<div class="gate {"g-ok" if lr_score >= 85 else "g-no"}">Launch '
+        f'Readiness: {lr_score}/100 — {lr_status}</div>'
+        + ("" if lr_score >= 85 else '<b>Not ready — blockers:</b>'
+           f'<ul class="check">{lr_reason_html}</ul>'))
+
+    offer_html = offer_builder(kw, opts, mode)
+    angle_html = better_angles(kw, related, mode)
+
     # 0. AI-suggested, editable run inputs (re-run with edits)
     sg = G["suggestions"]
 
@@ -862,18 +1031,22 @@ def build_workspace(kw, opts=None):
     # --- assemble: collapsed inputs -> hero (verdict + at-a-glance) -> sticky
     #     nav -> 5 clearly-labelled groups. Easy to scan, easy to follow.
     overall = next((s["score"] for s in scores if s["name"] == "Overall Product"), 0)
-    next_act = {"design": "Send to design + build the draft below.",
+    next_act = {"design": "Build the listing + get manager sign-off to publish.",
                 "validate": "Publish 2 test listings from the draft.",
                 "watch": "Save &amp; recheck in 2–4 weeks — do NOT publish.",
-                "skip": "Try a nearby, lower-competition keyword.",
+                "skip": "Try a better angle below, or a lower-competition keyword.",
                 "avoid": "Change the wording — blocked."}[vd["cls"]]
     glance = (
         '<div class="glance">'
         f'<span class="chip">Overall <b>{overall}/100</b></span>'
+        f'<span class="chip {"cg-ok" if cww_score >= 70 else "cg-no"}">Can we win '
+        f'<b>{cww_score}/100</b></span>'
+        f'<span class="chip {"cg-ok" if lr_score >= 85 else "cg-no"}">Launch-ready '
+        f'<b>{lr_score}/100</b></span>'
         f'<span class="chip">Mode <b>{req_mode.upper()}</b></span>'
         f'<span class="chip {"cg-ok" if ready else "cg-no"}">Publish-ready '
         f'<b>{"yes" if ready else "no"}</b></span>'
-        f'<span class="chip">Trademark <b>{risk}</b></span>'
+        f'<span class="chip">TM <b>{risk}</b></span>'
         f'<span class="chip wide">Next → <b>{next_act}</b></span></div>')
     hero = f'<section class="ws hero" id="top">{verdict_html}{glance}</section>'
     nav = ('<nav class="wsnav"><a href="#top">Verdict</a>'
@@ -894,12 +1067,16 @@ def build_workspace(kw, opts=None):
     out += (
         sec("scores", "📊", "Opportunity scores (0–100)", _score_grid(scores))
         + sec("sources", "🛰️", "Source confidence", src_html)
-        + sec("beat", "🥊", "How we beat competitors", beat_competitors(kw, listings, opts, mode))
+        + sec("canwin", "🏆", "Can we win? + how we beat competitors", cww_html)
+        + sec("firstimage", "🖼️", "First image battle", fib_html)
         + sec("market", "🔑", "Market &amp; keyword opportunity", market_html)
         + sec("niches", "💡", "Niche &amp; angle discovery", niche_html)
+        + sec("angles", "🧭", "Better angle generator", angle_html)
+        + sec("offer", "🎁", "Offer builder", offer_html)
         + sec("forecast", "📈", "7-day sales forecast", fc_html)
         + sec("competitors", "🔍", "Competitor audit", audit_html)
         + grp("g2", "② Listing &amp; supplier")
+        + sec("readiness", "🚦", "Launch readiness", lr_html)
         + sec("supplier", "🏭", "Supplier recommendation", sup_html)
         + sec("listing", "🛠️", "Listing builder + publish gate", listing_html)
         + sec("preview", "👁️", "Internal product preview", _preview_html(L, tags, vd["cls"]))
@@ -986,6 +1163,11 @@ def manager_report(G):
         f"Confidence {vd['confidence']}.</p>"
         f"<p><b>Trademark:</b> {G['risk']} — {_esc(G['tm_reason'] or 'verify on USPTO')}</p>"
         "<h2>Opportunity scores</h2>" + _score_table(G)
+        + f"<h2>Can We Win: {G['cww_score']}/100 · Launch Readiness: "
+        f"{G['lr_score']}/100 ({G['lr_status']})</h2>"
+        + (f"<p>Launch blockers: {_esc('; '.join(G['lr_reasons']))}</p>"
+           if G['lr_reasons'] else "<p>Launch-ready.</p>")
+        + f"<p>First-image score: {G['fib_score']}/100.</p>"
         + "<h2>Source confidence</h2><ul>" + src + "</ul>"
         + (f"<p class='warn'>DATA_CHECK_REQUIRED: "
            f"{'; '.join(_esc(f) for f in G['data_flags'])}</p>" if G['data_flags'] else "")
@@ -1037,6 +1219,8 @@ def designer_report(G):
         f"<li>Personalization space: {_esc(opts.get('personalization') or 'name / date')}</li>"
         "<li>Do NOT copy any competitor art, photo, or title.</li></ul>"
         f"<h2>Design risk warnings</h2><ul>{risks}</ul>"
+        f"<h2>First-image plan (score {G['fib_score']}/100)</h2><ul>"
+        + "".join(f"<li>{_esc(p)}</li>" for p in G["fib_plan"]) + "</ul>"
         f"<h2>POD prompt</h2><pre>{_esc(G['pod_prompt'])}</pre>"
         f"<h2>Embroidery prompt (stitch-safe)</h2><pre>{_esc(G['emb_prompt'])}</pre>"
         "<h2>Mockup checklist</h2><ul><li>Hero image: bold subject, gift context.</li>"

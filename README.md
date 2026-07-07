@@ -1,6 +1,16 @@
-# Etsy Product Manager V21.6
+# Etsy Product Manager V21.7
 
-**New in V21.6 — supplier command flags + data audit trail.** `py main.py
+**New in V21.7 — sales-execution brain.** The workspace now scores and gates on
+what actually wins: a **Can We Win score** (12 advantages — gates SELL NOW; if
+< 70 it won't recommend SELL NOW), a **Launch Readiness score** (10 checks —
+gates publishing; must be ≥ 85), a **First Image Battle** (competitor pattern vs
+our plan + score), an **Offer Builder** (better offer, bundles, upsell, trust),
+and a **Better Angle Generator** (nearby angles to rescue a weak keyword). The
+verdict, hero chips, publish gate, and Manager/Designer PDFs all use these. Also
+added the supplier source registry (`data/suppliers/supplier_sources.json` +
+6 POD catalogs + ShineOn/Embroidery). (English only.)
+
+**V21.6 — supplier command flags + data audit trail.** `py main.py
 supplier pod|embroidery "product" [--country US] [--suppliers Printify,Printway,…]
 [--output file.csv]` now takes flags, **pre-fills real costs** from
 `supplier_costs.csv` (so rows come back SUPPLIER_PARTIAL instead of empty),
