@@ -804,11 +804,25 @@ def build_app(password, secret):
         return redirect(url_for("feedback"))
 
     # ---- other live self-serve tools (all MCP-backed, run on the VPS 24/7) ----
-    def _render_tool(title, txt):
+    def _mode_switch(endpoint, current):
+        """One-click POD / Embroidery / All toggle for mode-aware tool pages.
+        Reuses the pullbar styling; the active line is highlighted."""
+        row = []
+        for val, label in (("pod", "Print on Demand"),
+                           ("embroidery", "Embroidery"), ("", "All lines")):
+            href = f"/{endpoint}?mode={val}" if val else f"/{endpoint}"
+            cls = "pullbtn primary" if (current or "") == val else "pullbtn"
+            row.append(f'<a class="{cls}" href="{href}">{label}</a>')
+        return ('<div class="pullbar"><div class="pulltxt"><b>Product line</b>'
+                '<span>Switch POD &#8646; Embroidery for this tool</span></div>'
+                '<div class="pullbtns">' + "".join(row) + '</div></div>')
+
+    def _render_tool(title, txt, switch=""):
         html = md.markdown(txt, extensions=["tables", "fenced_code",
                                             "sane_lists"])
         bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
-        return page(title, bar + f'<article class="md">{html}</article>' + COPY_JS)
+        return page(title, bar + switch
+                    + f'<article class="md">{html}</article>' + COPY_JS)
 
     def _tool_error(title, exc):
         import html as _html
@@ -835,9 +849,11 @@ def build_app(password, secret):
     def _mode_tool(fn, title):
         m = request.args.get("mode")
         mode = m if m in ("pod", "embroidery") else None
+        endpoint = request.path.strip("/")
         from src import interactive
         try:
-            return _render_tool(title, fn(interactive, mode))
+            return _render_tool(title, fn(interactive, mode),
+                                switch=_mode_switch(endpoint, mode))
         except (SystemExit, Exception) as exc:  # noqa: BLE001
             return _tool_error(title, exc)
 
@@ -868,7 +884,8 @@ def build_app(password, secret):
         mode = m if m in ("pod", "embroidery") else None
         from src import interactive
         try:
-            return _render_tool("Seasonal calendar", interactive.calendar(mode))
+            return _render_tool("Seasonal calendar", interactive.calendar(mode),
+                                switch=_mode_switch("calendar", mode))
         except (SystemExit, Exception) as exc:  # noqa: BLE001
             return _tool_error("Seasonal calendar", exc)
 
