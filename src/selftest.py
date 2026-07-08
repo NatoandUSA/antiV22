@@ -554,6 +554,18 @@ def run_selftest():
           and callable(getattr(_ops3, "clean", None))
           and '"clean": cmd_clean' in Path("main.py").read_text(encoding="utf-8"))
 
+    # ---- V26.8: team Tool Feedback (members submit, owner resolves) ----
+    from src import toolfeedback as _tfb
+    from src import appdb as _appdb2
+    _web_src_v268 = Path("src/web.py").read_text(encoding="utf-8")
+    check("Tool Feedback: members submit, owner/managers resolve",
+          all(callable(getattr(_tfb, f, None))
+              for f in ("submit", "list_all", "set_resolved", "counts"))
+          and "tool_feedback" in _appdb2.SCHEMA
+          and '@app.route("/team/feedback")' in _web_src_v268
+          and "/team/feedback/resolve" in _web_src_v268
+          and 'href="/team/feedback"' in _web_src_v268)
+
     from src import crosscheck as _cc
     check("cross-check sources present (Google Trends + Pinterest + X)",
           set(_cc.status()) == {"Google Trends", "Pinterest", "X / Twitter"}

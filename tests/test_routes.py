@@ -51,9 +51,28 @@ def test_home_is_clean(client):
     "/cheatsheet", "/workflow", "/suppliers", "/feedback", "/profit", "/grade",
     "/alerts", "/launchpad", "/trackers", "/research", "/shops", "/listings",
     "/team", "/team/calendar", "/team/calendar?view=overdue", "/me/tasks",
+    "/team/feedback",
 ])
 def test_pages_render(client, route):
     assert client.get(route).status_code == 200
+
+
+def test_tool_feedback_submit_and_resolve(client):
+    from src import toolfeedback as tfb
+    # a member submits feedback
+    r = client.post("/team/feedback/add",
+                    data={"category": "bug", "message": "Trending is slow to load"})
+    assert r.status_code in (301, 302)
+    mine = [f for f in tfb.list_all() if f["message"] == "Trending is slow to load"]
+    assert mine and mine[0]["status"] == "open"
+    fid = mine[0]["id"]
+    # owner (the test client is OWNER) ticks it resolved
+    r2 = client.post(f"/team/feedback/resolve/{fid}", data={"to": "resolved"})
+    assert r2.status_code in (301, 302)
+    assert tfb.get(fid)["status"] == "resolved"
+    # and can reopen it
+    client.post(f"/team/feedback/resolve/{fid}", data={"to": "open"})
+    assert tfb.get(fid)["status"] == "open"
 
 
 def test_spy_and_run_without_keyword_are_graceful(client):

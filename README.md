@@ -1,6 +1,14 @@
-# Etsy Product Manager V26.7
+# Etsy Product Manager V26.8
 
-**New in V26.7 — cleanup + disk hygiene + VPS self-fetch confirmed.**
+**New in V26.8 — team Tool Feedback.**
+- Every team member gets a **💬 Tool Feedback** box (Team → Tool Feedback): pick a
+  category (idea / bug / question) and write what to improve, add, or fix. They see
+  their own submissions + status.
+- The **Owner / managers** see the full list with an open-count badge on the hub
+  card and a **✓ Mark resolved** (and Reopen) tick on each item. Stored in the team
+  DB (`data/app.db`), separate from the listing *Sales feedback*.
+
+**V26.7 — cleanup + disk hygiene + VPS self-fetch confirmed.**
 - **`py main.py clean`** (laptop or VPS) reclaims disk: trims old `reports/runs`
   archives (kept newest 5), prunes stale keyword cache + `VACUUM`s `agent.db`,
   drops `__pycache__`/`.pytest_cache`. Freed ~107 MB on first run.

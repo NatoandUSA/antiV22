@@ -1450,6 +1450,15 @@ def build_app(password, secret):
         if auth.has_perm(u["role"], "users.manage"):
             cards.append('<a class="toolcard" href="/admin/users"><b>👥 User Management</b>'
                          '<span>Create / edit / disable team members</span></a>')
+        from src import toolfeedback as tfb
+        if auth.has_perm(u["role"], "logs.view_all"):
+            n = tfb.counts()["open"]
+            badge = f' — {n} open' if n else ''
+            cards.append('<a class="toolcard" href="/team/feedback"><b>💬 Tool Feedback</b>'
+                         f'<span>Review what the team suggests{badge}</span></a>')
+        else:
+            cards.append('<a class="toolcard" href="/team/feedback"><b>💬 Tool Feedback</b>'
+                         '<span>Suggest an improvement / report a bug</span></a>')
         cards.append('<a class="toolcard" href="/me"><b>👤 My Profile</b>'
                      '<span>Your role + recent activity</span></a>')
         return page("Team", _bar() + '<article class="md"><h1>👥 Team</h1>'
@@ -1516,6 +1525,82 @@ def build_app(password, secret):
                     '<p class="note">Tasks by due date (overdue in red). Update status '
                     'in <a href="/me/tasks">My Tasks</a>; approve in the '
                     '<a href="/admin/reviews">Review Queue</a>.</p>' + table + '</article>')
+
+    # ---- Tool Feedback (team suggestions ABOUT the tool) ----
+    def _feedback_items(rows, is_mgr, show_author):
+        out = ""
+        for r in rows:
+            resolved = r["status"] == "resolved"
+            pill = ('<span class="pill apill">✓ Resolved</span>' if resolved
+                    else '<span class="pill">Open</span>')
+            who = f' — {_h_esc(r["author"])}' if show_author else ''
+            meta = (f'resolved by {_h_esc(r["resolved_by"])}'
+                    if resolved and r["resolved_by"] else '')
+            btn = ""
+            if is_mgr:
+                to = "open" if resolved else "resolved"
+                label = "Reopen" if resolved else "✓ Mark resolved"
+                btn = (f'<form method="post" action="/team/feedback/resolve/{r["id"]}"'
+                       ' style="display:inline;margin:0">'
+                       f'<input type="hidden" name="to" value="{to}">'
+                       '<button class="cbtn" type="submit" style="background:none;'
+                       f'border:0;cursor:pointer">{label}</button></form>')
+            out += ('<div class="saveditem"><div class="sihead">'
+                    f'<b>[{_h_esc(r["category"])}]{who}</b> {pill} {btn}</div>'
+                    f'<div style="margin:6px 0;white-space:pre-wrap">'
+                    f'{_h_esc(r["message"])}</div>'
+                    f'<div class="note">{_h_esc((r["created_at"] or "")[:16])} {meta}</div>'
+                    '</div>')
+        return out or '<p class="note">Nothing yet.</p>'
+
+    @app.route("/team/feedback")
+    @login_required
+    def team_feedback():
+        from src import toolfeedback as tfb
+        u = current_user()
+        is_mgr = auth.has_perm(u["role"], "logs.view_all")
+        thanks = ('<p class="note">✅ Thanks — your feedback was sent to the owner.'
+                  '</p>' if request.args.get("ok") else '')
+        cats = "".join(f'<option value="{c}">{c.title()}</option>'
+                       for c in tfb.CATEGORIES)
+        form = ('<form class="savedform" method="post" action="/team/feedback/add">'
+                f'<select name="category">{cats}</select>'
+                '<textarea name="message" required placeholder="What should we '
+                'improve, add, or fix? Be specific — the screen name + what happened '
+                'helps."></textarea>'
+                '<button type="submit">Send feedback</button></form>')
+        if is_mgr:
+            c = tfb.counts()
+            listing = (f'<h2>Team feedback — {c["open"]} open · {c["resolved"]} '
+                       f'resolved</h2>{_feedback_items(tfb.list_all(), True, True)}')
+        else:
+            listing = ('<h2>Your feedback</h2>'
+                       + _feedback_items(tfb.list_by_user(u["user_id"]), False, False))
+        return page("Tool Feedback", _bar() + '<article class="md">'
+                    '<h1>💬 Tool Feedback</h1><p>Tell us what to improve, add, or fix '
+                    'in this tool — bugs, ideas, anything confusing. The owner reviews '
+                    'every note.</p>' + thanks + form + listing + '</article>')
+
+    @app.route("/team/feedback/add", methods=["POST"])
+    @login_required
+    def team_feedback_add():
+        from src import toolfeedback as tfb
+        u = current_user()
+        tfb.submit(u["user_id"], u["display_name"],
+                   request.form.get("message"), request.form.get("category"))
+        _log("TOOL_FEEDBACK_SUBMIT", module="team")
+        return redirect(url_for("team_feedback", ok=1))
+
+    @app.route("/team/feedback/resolve/<int:fid>", methods=["POST"])
+    @require_perm("logs.view_all")
+    def team_feedback_resolve(fid):
+        from src import toolfeedback as tfb
+        u = current_user()
+        to_resolved = request.form.get("to") != "open"
+        tfb.set_resolved(fid, to_resolved, resolver_name=u["display_name"])
+        _log("TOOL_FEEDBACK_RESOLVE", module="team",
+             summary=f"#{fid} {'resolved' if to_resolved else 'reopened'}")
+        return redirect(url_for("team_feedback"))
 
     # ---- My Tasks ----
     @app.route("/me/tasks")

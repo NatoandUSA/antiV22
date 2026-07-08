@@ -95,6 +95,21 @@ CREATE TABLE IF NOT EXISTS approvals (
     gate_snapshot   TEXT,
     created_at      TEXT NOT NULL
 );
+
+-- Team feedback ABOUT THE TOOL (bug/idea/UX) — distinct from sales feedback.
+-- Any member submits; owner/managers mark items resolved.
+CREATE TABLE IF NOT EXISTS tool_feedback (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at  TEXT NOT NULL,
+    user_id     INTEGER,
+    author      TEXT,
+    category    TEXT,
+    message     TEXT NOT NULL,
+    status      TEXT NOT NULL DEFAULT 'open',   -- open / resolved
+    resolved_by TEXT,
+    resolved_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_feedback_status ON tool_feedback(status);
 """
 
 
