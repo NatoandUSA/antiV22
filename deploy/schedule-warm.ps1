@@ -27,10 +27,11 @@ if ($Hours -lt 1 -or $Hours -gt 24) { throw "-Hours must be 1..24" }
 
 $action  = New-ScheduledTaskAction -Execute "powershell.exe" `
   -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$script`"" -WorkingDirectory $repo
-# Repeat every N hours, indefinitely, starting a couple minutes from now.
+# Repeat every N hours, starting a couple minutes from now. Use a large FINITE
+# duration (~27 yrs) - [TimeSpan]::MaxValue serializes to an out-of-range task XML.
 $start   = (Get-Date).AddMinutes(2)
 $trigger = New-ScheduledTaskTrigger -Once -At $start `
-  -RepetitionInterval (New-TimeSpan -Hours $Hours) -RepetitionDuration ([TimeSpan]::MaxValue)
+  -RepetitionInterval (New-TimeSpan -Hours $Hours) -RepetitionDuration (New-TimeSpan -Days 9999)
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable `
   -DontStopOnIdleEnd -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 20)
 

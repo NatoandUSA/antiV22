@@ -26,7 +26,13 @@ if ($LASTEXITCODE -ne 0) { Write-Host "warm failed (YTrends unreachable?) - not 
 Write-Host "Shipping data/agent.db to the VPS (atomic rename)..."
 # agent.db = keyword cache only. Team logins/tasks/activity are in data/app.db and
 # are NOT synced. Copy to a temp name, then atomic mv so a live read never tears.
-scp -q -P $VPS_PORT data/agent.db "${VPS_USER}@${VPS_HOST}:${VPS_PATH}/data/agent.db.tmp"
-ssh -p $VPS_PORT "${VPS_USER}@${VPS_HOST}" "mv -f ${VPS_PATH}/data/agent.db.tmp ${VPS_PATH}/data/agent.db"
+# BatchMode=yes: no password prompt -> without SSH keys this FAILS FAST in the log
+# instead of hanging the unattended task for its whole 20-min time limit.
+$sshOpt = "-o", "BatchMode=yes", "-o", "ConnectTimeout=15"
+scp -q @sshOpt -P $VPS_PORT data/agent.db "${VPS_USER}@${VPS_HOST}:${VPS_PATH}/data/agent.db.tmp"
+if ($LASTEXITCODE -ne 0) {
+  Write-Host "scp failed - is passwordless SSH set up? (warm cache is still fresh locally)"; exit 1
+}
+ssh @sshOpt -p $VPS_PORT "${VPS_USER}@${VPS_HOST}" "mv -f ${VPS_PATH}/data/agent.db.tmp ${VPS_PATH}/data/agent.db"
 
 Write-Host "[$stamp] warm-sync done -> team sees fresh lists at https://etsy.theglobalserviceteam.site"
