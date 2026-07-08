@@ -208,6 +208,8 @@ def build_app(password, secret):
             '<button formaction="/draft-listing">Build listing</button>'
             '<button formaction="/spy">🕵️ Spy</button>'
             '</div></form>'
+            # --- Section 1: find what to make (live market research) ---
+            '<h2 class="grouph">🔍 Find opportunities — live market research</h2>'
             '<div class="toolgrid">'
             f'<a class="toolcard" href="/trending?mode={active}"><b>📈 Trending now'
             f'</b><span>Rising keywords in {active_label}</span></a>'
@@ -217,6 +219,10 @@ def build_app(password, secret):
             '<span>Mode-aware: who wins + can we make it in this mode</span></a>'
             f'<a class="toolcard" href="/calendar?mode={active}"><b>📅 Seasonal calendar</b>'
             '<span>Upcoming holidays + launch-by dates + keywords</span></a>'
+            '</div>'
+            # --- Section 2: saved intelligence you build up over time ---
+            '<h2 class="grouph">📚 Your library — saved intelligence</h2>'
+            '<div class="toolgrid">'
             '<a class="toolcard" href="/research"><b>🔬 Saved research</b>'
             '<span>Past keyword lookups</span></a>'
             '<a class="toolcard" href="/shops"><b>🏪 Saved shops</b>'
@@ -225,10 +231,14 @@ def build_app(password, secret):
             '<span>Auto-pull young winners (&lt; 3mo, high CR/views/favs)</span></a>'
             '<a class="toolcard" href="/suppliers"><b>🏭 Suppliers</b>'
             '<span>Catalogs + ShineOn/Embroidery CSV upload</span></a>'
-            '<a class="toolcard" href="/feedback"><b>📉 Sales feedback</b>'
-            '<span>Post-launch: keep / change / kill / scale</span></a>'
+            '</div>'
+            # --- Section 3: ship it, then learn from results ---
+            '<h2 class="grouph">🚀 Execute &amp; improve</h2>'
+            '<div class="toolgrid">'
             '<a class="toolcard" href="/grade"><b>📝 Grade my listing</b>'
             '<span>Paste a title + 13 tags + description → 0–100 + fixes</span></a>'
+            '<a class="toolcard" href="/feedback"><b>📉 Sales feedback</b>'
+            '<span>Post-launch: keep / change / kill / scale</span></a>'
             '<a class="toolcard" href="/cheatsheet"><b>📖 Cheat Sheet</b>'
             '<span>Every command + workflow, in plain English</span></a>'
             '</div>')
