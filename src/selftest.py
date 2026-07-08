@@ -853,6 +853,10 @@ def run_selftest():
           "/run/approve" in _web_src and "MANAGER_APPROVED_FOR_MANUAL_PUBLISH" in _web_src
           and 'require_perm("listing.approve")' in _web_src
           and all(c in _main_src2 for c in ('"auth"', '"activity"', '"task"')))
+    check("Overdue-task alerts + one-click Assign-task (Launchpad + workspace run)",
+          "task_overdue" in Path("src/alerts.py").read_text(encoding="utf-8")
+          and 'href="/admin/tasks?keyword=' in _web_src        # Launchpad assign link
+          and "Assign a task for this product" in _web_src)     # run-page assign bar
 
     print("\nSELF-TEST RESULTS")
     for name, cond in results:

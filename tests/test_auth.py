@@ -97,6 +97,18 @@ def test_task_create_update_review():
     assert t["review_status"] == "APPROVED" and t["status"] == "APPROVED"
 
 
+def test_overdue_task_raises_and_clears_alert():
+    from src import auth, tasks, alerts
+    o = auth.create_user("o2@x.com", "Right123!", "O", "OWNER")
+    t = tasks.create_task("Late task", assigned_to_user_id=o["user_id"],
+                          task_type="SUPPLIER_CHECK", due_date="2020-01-01")
+    alerts.generate()
+    assert any(a["kind"] == "task_overdue" for a in alerts.load())
+    tasks.update_task(t["task_id"], status="DONE")
+    alerts.generate()
+    assert not any(a["kind"] == "task_overdue" for a in alerts.load())
+
+
 def test_publish_automation_is_false():
     # The approval path only records "allowed for manual publish" — it never
     # publishes. Guard the visible promise + require server-side re-verification.

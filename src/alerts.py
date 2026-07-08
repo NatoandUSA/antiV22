@@ -147,6 +147,23 @@ def generate():
     except Exception:  # noqa: BLE001
         pass
 
+    # overdue team tasks (past due_date + still open) — clears when done/rescheduled
+    try:
+        from src import tasks as _tk
+        today = date.today().isoformat()
+        for t in _tk.list_tasks():
+            ref = f"task-{t['task_id']}"
+            due = (t.get("due_date") or "").strip()
+            still_open = t["status"] not in ("DONE", "APPROVED", "REJECTED")
+            if due and still_open and due[:10] < today:
+                add("task_overdue",
+                    f"Task '{(t['title'] or '')[:40]}' is OVERDUE (due {due[:10]}).",
+                    "warn", ref, "auto")
+            else:
+                resolve_ref(ref)
+    except Exception:  # noqa: BLE001
+        pass
+
     return load()
 
 

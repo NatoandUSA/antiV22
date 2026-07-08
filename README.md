@@ -1,6 +1,11 @@
-# Etsy Product Manager V25.0
+# Etsy Product Manager V25.1
 
-**New in V25.0 — team login, roles, activity tracking, tasks & manager approval.**
+**New in V25.1 — overdue-task alerts + one-click Assign-task.** Tasks past their
+due date now show up automatically in the 🔔 Alerts panel (and clear when done).
+Managers can assign a task in one click from a **🚀 Launchpad** card or from the
+**"Assign a task for this product"** bar on any workspace run (keyword pre-filled).
+
+**V25.0 — team login, roles, activity tracking, tasks & manager approval.**
 The dashboard is now multi-user. No auto-publishing — publishing stays manual and
 manager-approved.
 

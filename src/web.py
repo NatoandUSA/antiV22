@@ -486,9 +486,26 @@ def build_app(password, secret):
                            '<p class="empty">Not approvable yet — PUBLISH_READY is '
                            'false. Complete the sign-off + failed checks above.</p>'
                            '</section>')
+        # Assign a task for this product (managers+). One click, keyword pre-filled.
+        assign = ""
+        if u and auth.has_perm(u["role"], "tasks.assign"):
+            from src import tasks as _tk
+            types = "".join(f"<option>{x}</option>" for x in _tk.TASK_TYPES)
+            assign = (
+                '<section class="ws"><h2>👥 Assign a task for this product</h2>'
+                '<form method="post" action="/admin/tasks/create" class="toolbar">'
+                f'<input type="hidden" name="related_keyword" value="{_html.escape(q)}">'
+                f'<input name="title" value="{_html.escape(q)} — " placeholder="Task" required>'
+                f'<select name="assigned_to">{_user_options()}</select>'
+                f'<select name="task_type">{types}</select>'
+                '<select name="priority"><option>MEDIUM</option><option>HIGH</option>'
+                '<option>URGENT</option><option>LOW</option></select>'
+                '<button class="primary" type="submit">Assign →</button>'
+                '</form><p class="note">Goes to Team Tasks + the assignee\'s My Tasks; '
+                'logged in the activity log.</p></section>')
         head = (bar + f'<h1 style="margin:.1em 0 0">Keyword run — '
                 f'{_html.escape(q)}</h1>')
-        return page(f"Run: {q}", head + ws + approve + WORKSPACE_JS)
+        return page(f"Run: {q}", head + ws + approve + assign + WORKSPACE_JS)
 
     @app.route("/run/approve", methods=["POST"])
     @require_perm("listing.approve")
@@ -1181,15 +1198,23 @@ def build_app(password, secret):
     def launchpad_page():
         import html as _h
         from src import launchpad as lp
+        u = current_user()
+        can_assign = auth.has_perm(u["role"], "tasks.assign")
         b = lp.board()
+
+        def _card_html(card):
+            kw = _h.escape(str(card["keyword"])[:40])
+            assign = (f'<a class="cbtn" href="/admin/tasks?keyword={_h.escape(str(card["keyword"]))}">'
+                      '+ Assign task</a>' if can_assign else "")
+            return ('<div class="lpcard"><b>' + kw + '</b>'
+                    f'<span class="pill">{_h.escape(card.get("mode",""))}</span>'
+                    f'<div class="note">{_h.escape(card.get("next_action",""))}</div>'
+                    + assign + '</div>')
+
         cols = ""
         for c in lp.COLUMNS:
             cards = b.get(c, [])
-            body = "".join(
-                '<div class="lpcard"><b>' + _h.escape(str(card["keyword"])[:40]) + '</b>'
-                f'<span class="pill">{_h.escape(card.get("mode",""))}</span>'
-                f'<div class="note">{_h.escape(card.get("next_action",""))}</div></div>'
-                for card in cards)
+            body = "".join(_card_html(card) for card in cards)
             cols += (f'<div class="lpcol"><h3>{_h.escape(c)} '
                      f'<span class="count">{len(cards)}</span></h3>{body or "<p class=note>—</p>"}</div>')
         bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
@@ -1432,14 +1457,19 @@ def build_app(password, secret):
                       + '</td><td>' + _h_esc(t["task_type"]) + '</td><td>'
                       + _h_esc(t["priority"]) + '</td><td>' + _h_esc(t["status"])
                       + '</td><td>' + _h_esc(t.get("related_keyword")) + '</td></tr>')
-        types = "".join(f"<option>{x}</option>" for x in tk.TASK_TYPES)
+        # a pre-fill (e.g. from a Launchpad "Assign task" link: ?keyword=...&type=...)
+        pk = _h_esc(request.args.get("keyword") or "")
+        ptype = request.args.get("type") or ""
+        types = "".join(f'<option{" selected" if x == ptype else ""}>{x}</option>'
+                        for x in tk.TASK_TYPES)
         prios = "".join(f"<option>{x}</option>" for x in tk.PRIORITIES)
+        title_pre = f"{pk} — " if pk else ""
         form = ('<form method="post" action="/admin/tasks/create" class="gradeform">'
-                '<label>Title<input name="title" required></label>'
+                f'<label>Title<input name="title" value="{title_pre}" required></label>'
                 f'<label>Assign to<select name="assigned_to">{_user_options()}</select></label>'
                 f'<label>Type<select name="task_type">{types}</select></label>'
                 f'<label>Priority<select name="priority">{prios}</select></label>'
-                '<label>Keyword<input name="related_keyword"></label>'
+                f'<label>Keyword<input name="related_keyword" value="{pk}"></label>'
                 '<label>Due date<input name="due_date" placeholder="YYYY-MM-DD"></label>'
                 '<button class="primary" type="submit">Create + assign task</button></form>')
         return page("Team Tasks", _bar() + '<article class="md"><h1>📋 Team Tasks</h1>'
