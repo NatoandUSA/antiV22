@@ -11,18 +11,27 @@ import pytest
 from src import web
 
 
+def _ensure_owner():
+    from src import auth
+    auth.appdb.init_db()
+    if not auth.get_user_by_email("owner@test.local"):
+        auth.create_user("owner@test.local", "Test123!", "Test Owner", "OWNER", "test")
+    return auth.get_user_by_email("owner@test.local")
+
+
 @pytest.fixture
 def client():
-    app = web.build_app("pw", "secret")
+    u = _ensure_owner()
+    app = web.build_app("", "secret")
     app.config["TESTING"] = True
     c = app.test_client()
     with c.session_transaction() as s:
-        s["ok"] = True
+        s["uid"] = u["user_id"]
     return c
 
 
-def test_auth_required(client):
-    app = web.build_app("pw", "secret")
+def test_auth_required():
+    app = web.build_app("", "secret")
     anon = app.test_client()
     r = anon.get("/", follow_redirects=False)
     assert r.status_code in (301, 302)

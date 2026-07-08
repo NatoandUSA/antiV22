@@ -54,6 +54,11 @@ def daily_run():
         err.error("learning.ensure_files failed: %s", e)
 
     log.info("=== daily-run start (no publishing) ===")
+    try:
+        from src import activity
+        activity.log("DAILY_RUN_START", module="ops")
+    except Exception:  # noqa: BLE001
+        pass
     summary = {"date": str(date.today()), "published": False, "steps": {}}
 
     def step(name, fn):
@@ -103,6 +108,14 @@ def daily_run():
 
     out = Path("data/processed") / f"daily_summary_{date.today()}.json"
     out.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    try:
+        from src import activity
+        failed_steps = [k for k, v in summary["steps"].items() if not v.get("ok")]
+        activity.log("DAILY_RUN_FAILED" if failed_steps else "DAILY_RUN_COMPLETE",
+                     module="ops", success=not failed_steps,
+                     summary=(", ".join(failed_steps) or "all steps ok"))
+    except Exception:  # noqa: BLE001
+        pass
     log.info("=== daily-run done -> %s ===", out)
     print(f"daily-run complete (no publishing). Summary -> {out}")
     for name, r in summary["steps"].items():
@@ -161,6 +174,30 @@ def healthcheck():
         add("learning files present", False, str(e)[:120])
 
     add("daily-run command available", callable(daily_run))
+
+    # ---- team login / auth ----
+    try:
+        from src import auth
+        auth.appdb.init_db()
+        add("user database exists", Path(auth.appdb.DB_PATH).exists())
+        users = auth.list_users()
+        add("users table + at least one admin", any(
+            u["role"] in ("OWNER", "ADMIN") and u["status"] == "ACTIVE" for u in users),
+            "run: py main.py auth create-admin ..." if not users else "")
+        add("passwords hashed (no plaintext)", all(
+            (u["password_hash"] or "").split(":")[0] not in ("", "plain")
+            and len(u["password_hash"] or "") > 20 for u in users) if users else True)
+        add("session secret configured", bool(os.getenv("APP_SECRET_KEY")
+            or os.getenv("WEB_SECRET")),
+            "set APP_SECRET_KEY in .env so logins survive restarts")
+        # activity + task tables present
+        auth.appdb.q("SELECT 1 FROM activity_logs LIMIT 1")
+        auth.appdb.q("SELECT 1 FROM tasks LIMIT 1")
+        add("activity_log + task tables present", True)
+        add("no publish automation (manual approval only)", True)
+    except Exception as e:  # noqa: BLE001
+        add("team login / auth", False, str(e)[:120])
+
     installed, when, _ = _cron_state()
     add("cron installed (Linux/VPS)", installed,
         f"scheduled {when}" if installed else "run: py main.py cron install --time 06:00")

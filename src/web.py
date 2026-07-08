@@ -96,16 +96,57 @@ def build_app(password, secret):
                        abort, Response)
     import markdown as md
 
+    from datetime import timedelta
+    from src import auth, activity
     app = Flask(__name__)
     app.secret_key = secret
+    app.config.update(
+        SESSION_COOKIE_HTTPONLY=True,       # JS can't read the cookie
+        SESSION_COOKIE_SAMESITE="Lax",      # basic CSRF mitigation
+        PERMANENT_SESSION_LIFETIME=timedelta(hours=12),   # session timeout
+    )
+    auth.appdb.init_db()
+
+    def _ip():
+        return (request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+                or request.remote_addr or "")
+
+    def _ua():
+        return request.headers.get("User-Agent", "")[:200]
+
+    def current_user():
+        uid = session.get("uid")
+        return auth.get_user(uid) if uid else None
+
+    def _log(event, **kw):
+        activity.log(event, user=current_user(), ip=_ip(), user_agent=_ua(), **kw)
 
     def login_required(fn):
         @wraps(fn)
         def wrap(*a, **k):
-            if not session.get("ok"):
+            u = current_user()
+            if not u or u.get("status") == "DISABLED":
+                session.clear()
                 return redirect(url_for("login"))
             return fn(*a, **k)
         return wrap
+
+    def require_perm(perm):
+        def deco(fn):
+            @wraps(fn)
+            def wrap(*a, **k):
+                u = current_user()
+                if not u:
+                    return redirect(url_for("login"))
+                if not auth.has_perm(u["role"], perm):
+                    return page("Not allowed", '<div class="rbar"><a class="back" '
+                                'href="/">&larr; Home</a></div><article class="md">'
+                                '<h1>403 — not allowed</h1><p>Your role '
+                                f'(<b>{u["role"]}</b>) can\'t access this page. Ask '
+                                'an admin if you need it.</p></article>'), 403
+                return fn(*a, **k)
+            return wrap
+        return deco
 
     def page(title, body):
         return Response(BASE.replace("{{TITLE}}", title)
@@ -130,21 +171,52 @@ def build_app(password, secret):
         return ('<a class="toolcard" href="/alerts"><b>🔔 Alerts' + badge + '</b>'
                 '<span>What needs attention: reviews, kills, stale data</span></a>')
 
-    # ---- auth ----
+    # ---- auth (per-user login) ----
     @app.route("/login", methods=["GET", "POST"])
     def login():
         error = ""
         if request.method == "POST":
-            if request.form.get("password", "") == password:
-                session["ok"] = True
+            email = (request.form.get("email") or "").strip().lower()
+            pw = request.form.get("password") or ""
+            u, why = auth.authenticate(email, pw, _ip())
+            if u:
+                session.clear()
+                session["uid"] = u["user_id"]
+                session.permanent = bool(request.form.get("remember"))
+                activity.log("AUTH_LOGIN_SUCCESS", user=u, module="auth", ip=_ip(),
+                             user_agent=_ua())
                 return redirect(url_for("index"))
-            error = '<p class="err">Wrong password.</p>'
+            activity.log("AUTH_LOGIN_FAILED", user={"email": email}, module="auth",
+                         ip=_ip(), success=False, error=why)
+            error = ('<p class="err">Account locked after too many attempts — '
+                     'try again in 15 minutes.</p>' if why == "locked" else
+                     '<p class="err">This account is disabled.</p>' if why == "disabled"
+                     else '<p class="err">Wrong email or password.</p>')
         return page("Sign in", LOGIN.replace("{{ERROR}}", error))
 
     @app.route("/logout")
     def logout():
+        _log("AUTH_LOGOUT", module="auth")
         session.clear()
         return redirect(url_for("login"))
+
+    @app.route("/me")
+    @login_required
+    def me():
+        import html as _h
+        u = current_user()
+        recent = activity.list_events(user_id=u["user_id"], limit=20)
+        rows = "".join(f"<tr><td>{_h.escape(r['timestamp'])}</td>"
+                       f"<td>{_h.escape(r['event_type'])}</td>"
+                       f"<td>{_h.escape(r.get('keyword') or r.get('module') or '')}</td></tr>"
+                       for r in recent)
+        bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
+        return page("My profile", bar + '<article class="md"><h1>👤 My profile</h1>'
+                    f'<p><b>{_h.escape(u["display_name"])}</b> · role '
+                    f'<b>{u["role"]}</b> · {_h.escape(u["email"])}</p>'
+                    f'<p class="note">Last login: {u.get("last_login_at") or "—"}</p>'
+                    '<h2>My recent activity</h2><table><tr><th>When</th><th>Event</th>'
+                    f'<th>Detail</th></tr>{rows}</table></article>')
 
     # ---- public privacy policy (NO login_required: reviewers/APIs must reach it) ----
     @app.route("/privacy")
@@ -276,8 +348,12 @@ def build_app(password, secret):
         body = tools + arch
         upd = _last_updated(mdir)
         updated = f'<span class="updated">Updated {upd}</span>' if upd else ""
+        _u = current_user()
+        uchip = (f'<a class="uchip" href="/me">{_h_esc(_u["display_name"])} · '
+                 f'{_u["role"]}</a>' if _u else "")
         return page("Reports", PORTAL
                     .replace("{{UPDATED}}", updated)
+                    .replace("{{USER}}", uchip)
                     .replace("{{BODY}}", body))
 
     # ---- single report (name may include a pod/ or embroidery/ prefix) ----
@@ -383,9 +459,69 @@ def build_app(password, secret):
             return page("Keyword Run", bar + '<article class="md"><p class="empty">'
                         f'Could not build the workspace for "{_html.escape(q)}": '
                         f'{_html.escape(str(exc)[:200])}</p></article>')
+        pr = bool(getattr(workspace.build_workspace, "_last", {}).get("publish_ready"))
+        _log("WORKSPACE_BUILD", module="workspace", keyword=q,
+             product_mode=opts.get("supplier_type"),
+             summary=f"publish_ready={pr}")
+        # Manager approval bar (only for OWNER/ADMIN/MANAGER; never publishes).
+        approve = ""
+        u = current_user()
+        if u and auth.can_approve(u["role"]):
+            if pr:
+                approve = (
+                    '<section class="ws"><h2>✅ Manager approval</h2>'
+                    '<p>All checks pass and the manager sign-off is complete. You '
+                    'may approve this listing <b>for manual publishing</b> — the '
+                    'tool still never publishes; you list it yourself on Etsy.</p>'
+                    '<form method="post" action="/run/approve" class="toolbar">'
+                    f'<input type="hidden" name="q" value="{_html.escape(q)}">'
+                    '<input name="note" placeholder="Approval note (optional)">'
+                    '<button class="primary" name="decision" value="APPROVED">'
+                    'Approve for manual publish</button>'
+                    '<button name="decision" value="REJECTED">Reject</button>'
+                    '</form><p class="note">MANAGER_APPROVED_FOR_MANUAL_PUBLISH is '
+                    'recorded in the activity log. PUBLISH_AUTOMATION: false.</p></section>')
+            else:
+                approve = ('<section class="ws"><h2>✅ Manager approval</h2>'
+                           '<p class="empty">Not approvable yet — PUBLISH_READY is '
+                           'false. Complete the sign-off + failed checks above.</p>'
+                           '</section>')
         head = (bar + f'<h1 style="margin:.1em 0 0">Keyword run — '
                 f'{_html.escape(q)}</h1>')
-        return page(f"Run: {q}", head + ws + WORKSPACE_JS)
+        return page(f"Run: {q}", head + ws + approve + WORKSPACE_JS)
+
+    @app.route("/run/approve", methods=["POST"])
+    @require_perm("listing.approve")
+    def run_approve():
+        import html as _html
+        from src import workspace, appdb
+        u = current_user()
+        q = (request.form.get("q") or "").strip()[:80]
+        decision = "APPROVED" if request.form.get("decision") == "APPROVED" else "REJECTED"
+        note = (request.form.get("note") or "").strip()[:300]
+        # Re-verify the gate server-side before recording an approval (never trust
+        # the client). Approval requires a genuinely publish-ready run.
+        ready = False
+        try:
+            workspace.build_workspace(q, _run_inputs()[1])
+            ready = bool(workspace.build_workspace._last.get("publish_ready"))
+        except (SystemExit, Exception):  # noqa: BLE001
+            ready = False
+        if decision == "APPROVED" and not ready:
+            return page("Approval blocked", _bar() + '<article class="md"><h1>Blocked'
+                        '</h1><p class="empty">Cannot approve: this run is not '
+                        'PUBLISH_READY. Nothing was recorded.</p></article>')
+        appdb.execute("INSERT INTO approvals (workspace_id, keyword, decision, "
+                      "by_user_id, by_email, note, created_at) VALUES (?,?,?,?,?,?,?)",
+                      ("", q, decision, u["user_id"], u["email"], note,
+                       activity.datetime.utcnow().isoformat(timespec="seconds")))
+        _log("MANAGER_APPROVE" if decision == "APPROVED" else "MANAGER_REJECT",
+             module="workspace", keyword=q, summary=note or decision)
+        return page("Decision recorded", _bar() + '<article class="md"><h1>'
+                    f'{"✅ Approved for manual publish" if decision=="APPROVED" else "Rejected"}'
+                    f'</h1><p>Keyword: <b>{_html.escape(q)}</b>. Recorded by '
+                    f'{_html.escape(u["email"])}. <b>PUBLISH_AUTOMATION: false</b> — '
+                    'publish it yourself on Etsy.</p></article>')
 
     @app.route("/run/save")
     @login_required
@@ -397,6 +533,8 @@ def build_app(password, secret):
         try:
             ws = workspace.build_workspace(q, opts)
             folder = workspace.save_run(q, opts, ws)
+            _log("WORKSPACE_SAVE", module="workspace", keyword=q,
+                 product_mode=opts.get("supplier_type"))
             msg = (f'Saved to <code>{_html.escape(str(folder))}</code>. It will '
                    'sync/appear under Reports.')
         except (SystemExit, Exception) as exc:  # noqa: BLE001
@@ -423,6 +561,9 @@ def build_app(password, secret):
             except (SystemExit, Exception) as exc:  # noqa: BLE001
                 body = (f"<h1>{role.title()} report</h1><p>Could not build it: "
                         f"{_html.escape(str(exc)[:200])}</p>")
+        if q:
+            _log(f"PDF_EXPORT_{role.upper()}", module="export", keyword=q,
+                 product_mode=opts.get("supplier_type"))
         title = _html.escape(f"{role.title()} report — {q}")
         return Response(PRINT_BASE.replace("{{TITLE}}", title)
                         .replace("{{BODY}}", body), mimetype="text/html")
@@ -763,6 +904,7 @@ def build_app(password, secret):
             try:
                 f.save(str(path))
                 so.import_csv(source, str(path))
+                _log("SUPPLIER_CSV_UPLOAD", module="suppliers", action=source)
             except Exception:  # noqa: BLE001
                 pass
         return redirect(url_for("suppliers"))
@@ -827,7 +969,12 @@ def build_app(password, secret):
     @login_required
     def feedback_add():
         from src import feedback as fb
-        fb.add({k: (request.form.get(k) or "").strip()[:300] for k in fb.FIELDS})
+        d = {k: (request.form.get(k) or "").strip()[:300] for k in fb.FIELDS}
+        fb.add(d)
+        _ev = ("FEEDBACK_UPDATE_DAY7" if d.get("day_7_views") else
+               "FEEDBACK_UPDATE_DAY3" if d.get("day_3_views") else "FEEDBACK_ADD")
+        _log(_ev, module="feedback", keyword=d.get("keyword"),
+             product_mode=d.get("product_mode"))
         return redirect(url_for("feedback"))
 
     @app.route("/feedback/del/<int:fid>")
@@ -938,6 +1085,7 @@ def build_app(password, secret):
                         'in the Command Center on the <a href="/">home page</a>, then '
                         'click 🕵️ Spy — the mode is carried through.</p></article>')
         from src import interactive
+        _log("SPY_SEARCH", module="spy", keyword=q, product_mode=mode)
         try:
             return _render_tool(f"Spy: {q}", interactive.spy(q, mode))
         except (SystemExit, Exception) as exc:  # noqa: BLE001
@@ -1190,6 +1338,269 @@ def build_app(password, secret):
         return page("Team Workflow",
                     bar + f'<article class="md">{html}</article>' + COPY_JS)
 
+    # ======================= TEAM MANAGEMENT =======================
+    def _bar():
+        return '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
+
+    def _user_options(sel=None):
+        from src import auth as _a
+        return "".join(
+            f'<option value="{u["user_id"]}"'
+            + (" selected" if sel == u["user_id"] else "") + ">"
+            f'{_h_esc(u["display_name"])} ({u["role"]})</option>'
+            for u in _a.list_users() if u["status"] == "ACTIVE")
+
+    def _h_esc(s):
+        import html as _h
+        return _h.escape(str(s or ""))
+
+    @app.route("/team")
+    @login_required
+    def team_hub():
+        u = current_user()
+        cards = ['<a class="toolcard" href="/me/tasks"><b>✅ My Tasks</b>'
+                 '<span>What you\'re assigned</span></a>']
+        if auth.has_perm(u["role"], "tasks.assign"):
+            cards.append('<a class="toolcard" href="/admin/tasks"><b>📋 Team Tasks</b>'
+                         '<span>Assign + track everyone\'s work</span></a>')
+        if auth.has_perm(u["role"], "tasks.review"):
+            cards.append('<a class="toolcard" href="/admin/reviews"><b>🔍 Review Queue</b>'
+                         '<span>Approve / reject submitted work</span></a>')
+        if auth.has_perm(u["role"], "logs.view_all"):
+            cards.append('<a class="toolcard" href="/admin/activity"><b>📈 Activity Log</b>'
+                         '<span>Who did what in the dashboard</span></a>')
+        if auth.has_perm(u["role"], "users.manage"):
+            cards.append('<a class="toolcard" href="/admin/users"><b>👥 User Management</b>'
+                         '<span>Create / edit / disable team members</span></a>')
+        cards.append('<a class="toolcard" href="/me"><b>👤 My Profile</b>'
+                     '<span>Your role + recent activity</span></a>')
+        return page("Team", _bar() + '<article class="md"><h1>👥 Team</h1>'
+                    f'<p>Signed in as <b>{_h_esc(u["display_name"])}</b> ({u["role"]}).'
+                    '</p></article><div class="toolgrid">' + "".join(cards) + '</div>')
+
+    # ---- My Tasks ----
+    @app.route("/me/tasks")
+    @login_required
+    def my_tasks():
+        from src import tasks as tk
+        u = current_user()
+        rows = tk.list_tasks(assigned_to=u["user_id"])
+        items = ""
+        for t in rows:
+            opts = "".join(f'<option{" selected" if t["status"]==s else ""}>{s}</option>'
+                           for s in tk.STATUSES)
+            items += ('<div class="saveditem"><div class="sihead">'
+                      f'<b>{_h_esc(t["title"])}</b> '
+                      f'<span class="pill">{_h_esc(t["priority"])}</span> '
+                      f'<span class="pill">{_h_esc(t["task_type"])}</span></div>'
+                      f'<div class="note">{_h_esc(t.get("related_keyword"))} · due '
+                      f'{_h_esc(t.get("due_date") or "—")} · review '
+                      f'{_h_esc(t["review_status"])}</div>'
+                      '<form method="post" action="/me/tasks/status" class="toolbar">'
+                      f'<input type="hidden" name="task_id" value="{t["task_id"]}">'
+                      f'<select name="status">{opts}</select>'
+                      '<button class="primary" type="submit">Update</button></form></div>')
+        return page("My Tasks", _bar() + '<article class="md"><h1>✅ My Tasks</h1>'
+                    + (items or '<p class="empty">No tasks assigned to you.</p>')
+                    + '</article>')
+
+    @app.route("/me/tasks/status", methods=["POST"])
+    @login_required
+    def my_task_status():
+        from src import tasks as tk
+        u = current_user()
+        tid = int(request.form.get("task_id") or 0)
+        t = tk.get_task(tid)
+        if t and t["assigned_to_user_id"] == u["user_id"]:
+            tk.update_task(tid, status=request.form.get("status"))
+            _log("TASK_STATUS_CHANGE", module="tasks", entity_type="task",
+                 entity_id=tid, summary=request.form.get("status"))
+        return redirect(url_for("my_tasks"))
+
+    # ---- Team Tasks (assign) ----
+    @app.route("/admin/tasks")
+    @require_perm("tasks.assign")
+    def team_tasks():
+        from src import tasks as tk
+        fstatus = request.args.get("status") or None
+        rows = tk.list_tasks(status=fstatus)
+        by_id = {u["user_id"]: u for u in auth.list_users()}
+        items = ""
+        for t in rows:
+            who = by_id.get(t["assigned_to_user_id"], {}).get("display_name", "—")
+            items += ('<tr><td>' + _h_esc(t["title"]) + '</td><td>' + _h_esc(who)
+                      + '</td><td>' + _h_esc(t["task_type"]) + '</td><td>'
+                      + _h_esc(t["priority"]) + '</td><td>' + _h_esc(t["status"])
+                      + '</td><td>' + _h_esc(t.get("related_keyword")) + '</td></tr>')
+        types = "".join(f"<option>{x}</option>" for x in tk.TASK_TYPES)
+        prios = "".join(f"<option>{x}</option>" for x in tk.PRIORITIES)
+        form = ('<form method="post" action="/admin/tasks/create" class="gradeform">'
+                '<label>Title<input name="title" required></label>'
+                f'<label>Assign to<select name="assigned_to">{_user_options()}</select></label>'
+                f'<label>Type<select name="task_type">{types}</select></label>'
+                f'<label>Priority<select name="priority">{prios}</select></label>'
+                '<label>Keyword<input name="related_keyword"></label>'
+                '<label>Due date<input name="due_date" placeholder="YYYY-MM-DD"></label>'
+                '<button class="primary" type="submit">Create + assign task</button></form>')
+        return page("Team Tasks", _bar() + '<article class="md"><h1>📋 Team Tasks</h1>'
+                    + form + '<table><tr><th>Title</th><th>Assignee</th><th>Type</th>'
+                    '<th>Priority</th><th>Status</th><th>Keyword</th></tr>'
+                    + (items or '<tr><td colspan=6>No tasks yet.</td></tr>')
+                    + '</table></article>')
+
+    @app.route("/admin/tasks/create", methods=["POST"])
+    @require_perm("tasks.assign")
+    def team_task_create():
+        from src import tasks as tk
+        u = current_user()
+        assignee = int(request.form.get("assigned_to") or 0) or None
+        t = tk.create_task(
+            title=(request.form.get("title") or "").strip()[:200],
+            assigned_to_user_id=assignee, assigned_by_user_id=u["user_id"],
+            task_type=request.form.get("task_type"),
+            priority=request.form.get("priority"),
+            related_keyword=(request.form.get("related_keyword") or "").strip()[:120],
+            due_date=(request.form.get("due_date") or "").strip()[:20])
+        _log("TASK_CREATE", module="tasks", entity_type="task", entity_id=t["task_id"],
+             summary=t["title"])
+        _log("TASK_ASSIGN", module="tasks", entity_type="task", entity_id=t["task_id"],
+             summary=f"-> user {assignee}")
+        return redirect(url_for("team_tasks"))
+
+    # ---- Review Queue ----
+    @app.route("/admin/reviews")
+    @require_perm("tasks.review")
+    def reviews():
+        from src import tasks as tk
+        rows = tk.review_queue()
+        items = ""
+        for t in rows:
+            items += ('<div class="saveditem"><div class="sihead">'
+                      f'<b>{_h_esc(t["title"])}</b> '
+                      f'<span class="pill">{_h_esc(t["task_type"])}</span></div>'
+                      f'<div class="note">{_h_esc(t.get("related_keyword"))}</div>'
+                      '<form method="post" action="/admin/reviews/act" class="toolbar">'
+                      f'<input type="hidden" name="task_id" value="{t["task_id"]}">'
+                      '<input name="notes" placeholder="Review notes">'
+                      '<button class="primary" name="decision" value="APPROVED">Approve</button>'
+                      '<button name="decision" value="NEEDS_FIX">Needs fix</button>'
+                      '<button name="decision" value="REJECTED">Reject</button>'
+                      '</form></div>')
+        return page("Review Queue", _bar() + '<article class="md"><h1>🔍 Review Queue</h1>'
+                    '<p>Work submitted as READY_FOR_REVIEW.</p>'
+                    + (items or '<p class="empty">Nothing waiting for review.</p>')
+                    + '</article>')
+
+    @app.route("/admin/reviews/act", methods=["POST"])
+    @require_perm("tasks.review")
+    def reviews_act():
+        from src import tasks as tk
+        u = current_user()
+        tid = int(request.form.get("task_id") or 0)
+        decision = request.form.get("decision") or "APPROVED"
+        tk.review_task(tid, u["user_id"], decision, request.form.get("notes") or "")
+        _log("TASK_REVIEW_APPROVE" if decision == "APPROVED" else "TASK_REVIEW_REJECT",
+             module="tasks", entity_type="task", entity_id=tid, summary=decision)
+        return redirect(url_for("reviews"))
+
+    # ---- User Management (OWNER/ADMIN) ----
+    @app.route("/admin/users")
+    @require_perm("users.manage")
+    def admin_users():
+        rows = ""
+        for u in auth.list_users():
+            role_sel = "".join(f'<option{" selected" if u["role"]==r else ""}>{r}</option>'
+                               for r in auth.ROLES)
+            rows += ('<tr><td>' + _h_esc(u["email"]) + '</td><td>' + _h_esc(u["display_name"])
+                     + '</td><td><form method="post" action="/admin/users/role" class="inlineform">'
+                     f'<input type="hidden" name="email" value="{_h_esc(u["email"])}">'
+                     f'<select name="role" onchange="this.form.submit()">{role_sel}</select></form></td>'
+                     '<td>' + _h_esc(u["status"]) + '</td><td>' + _h_esc(u.get("last_login_at") or "—")
+                     + '</td><td>'
+                     f'<a class="cbtn" href="/admin/users/disable?email={_h_esc(u["email"])}">disable</a>'
+                     '</td></tr>')
+        roles_opt = "".join(f"<option>{r}</option>" for r in auth.ROLES)
+        form = ('<form method="post" action="/admin/users/create" class="gradeform">'
+                '<label>Email<input name="email" type="email" required></label>'
+                '<label>Display name<input name="display_name" required></label>'
+                '<label>Temporary password<input name="password" required></label>'
+                f'<label>Role<select name="role">{roles_opt}</select></label>'
+                '<button class="primary" type="submit">Create user</button></form>')
+        return page("User Management", _bar() + '<article class="md"><h1>👥 User Management</h1>'
+                    + form + '<table><tr><th>Email</th><th>Name</th><th>Role</th>'
+                    '<th>Status</th><th>Last login</th><th></th></tr>' + rows
+                    + '</table><p class="note">Reset a password from the CLI: '
+                    '<code>py main.py auth reset-password --email x --password New123!</code></p>'
+                    '</article>')
+
+    @app.route("/admin/users/create", methods=["POST"])
+    @require_perm("users.manage")
+    def admin_users_create():
+        u = current_user()
+        try:
+            auth.create_user(request.form.get("email"), request.form.get("password"),
+                             (request.form.get("display_name") or "").strip()[:80],
+                             request.form.get("role") or "VIEWER",
+                             created_by=u["email"], must_change=True)
+            _log("TASK_CREATE", module="users", action="create_user",
+                 summary=request.form.get("email"))
+        except Exception:  # noqa: BLE001
+            pass
+        return redirect(url_for("admin_users"))
+
+    @app.route("/admin/users/role", methods=["POST"])
+    @require_perm("users.manage")
+    def admin_users_role():
+        target = request.form.get("email")
+        # only OWNER may change another OWNER
+        tu = auth.get_user_by_email(target or "")
+        if tu and tu["role"] == "OWNER" and current_user()["role"] != "OWNER":
+            return redirect(url_for("admin_users"))
+        try:
+            auth.set_role(target, request.form.get("role"))
+        except Exception:  # noqa: BLE001
+            pass
+        return redirect(url_for("admin_users"))
+
+    @app.route("/admin/users/disable")
+    @require_perm("users.manage")
+    def admin_users_disable():
+        target = request.args.get("email") or ""
+        tu = auth.get_user_by_email(target)
+        if tu and tu["role"] == "OWNER":
+            return redirect(url_for("admin_users"))   # never disable an OWNER here
+        auth.disable_user(target)
+        return redirect(url_for("admin_users"))
+
+    # ---- Activity Log ----
+    @app.route("/admin/activity")
+    @require_perm("logs.view_all")
+    def admin_activity():
+        f_user = request.args.get("user") or None
+        f_type = request.args.get("type") or None
+        rows = activity.list_events(
+            user_id=int(f_user) if (f_user or "").isdigit() else None,
+            event_type=f_type, keyword=request.args.get("kw") or None, limit=300)
+        body = "".join(
+            '<tr><td>' + _h_esc(r["timestamp"]) + '</td><td>' + _h_esc(r["user_email"])
+            + '</td><td>' + _h_esc(r["user_role"]) + '</td><td>' + _h_esc(r["event_type"])
+            + '</td><td>' + _h_esc(r.get("keyword") or r.get("module") or "")
+            + '</td><td>' + ("✓" if r["success"] else "✗") + '</td></tr>' for r in rows)
+        return page("Activity Log", _bar() + '<article class="md"><h1>📈 Activity Log</h1>'
+                    '<p><a class="cbtn" href="/admin/activity/export">Export CSV</a> · '
+                    'showing the latest 300 events (dashboard actions only — no '
+                    'keystrokes, screens, or private data).</p>'
+                    '<table><tr><th>When</th><th>User</th><th>Role</th><th>Event</th>'
+                    '<th>Detail</th><th>OK</th></tr>' + body + '</table></article>')
+
+    @app.route("/admin/activity/export")
+    @require_perm("logs.view_all")
+    def admin_activity_export():
+        path, n = activity.export_csv("data/exports/activity_log.csv")
+        return page("Export", _bar() + '<article class="md"><h1>Activity exported</h1>'
+                    f'<p>{n} events written to <code>{path}</code> on the server.</p>'
+                    '</article>')
+
     return app
 
 
@@ -1217,20 +1628,27 @@ def run_server(args):
         print("Fix: py -m pip install flask markdown")
         sys.exit(1)
 
-    password = os.getenv("WEB_PASSWORD", "").strip()
-    if not password:
-        print("WEB_PASSWORD is not set - refusing to start without a login.")
-        print("Fix: add a line to your .env file:")
-        print("  WEB_PASSWORD=choose-a-strong-password")
-        sys.exit(1)
-    secret = os.getenv("WEB_SECRET") or os.urandom(24).hex()
+    secret = (os.getenv("APP_SECRET_KEY") or os.getenv("WEB_SECRET")
+              or os.urandom(24).hex())
+    # Per-user login now. Seed the first OWNER from .env on first run so nobody
+    # is locked out; after that, manage users with `py main.py auth ...`.
+    from src import auth
+    auth.appdb.init_db()
+    seeded = auth.seed_admin_from_env()
+    if seeded:
+        print(f"Seeded first OWNER account: {seeded['email']}")
+    if auth.user_count() == 0:
+        print("No users yet. Create the first admin:")
+        print('  py main.py auth create-admin --email you@example.com '
+              '--password "StrongPass123!" --name "You"')
+        print("(or set ADMIN_EMAIL + ADMIN_PASSWORD_INITIAL in .env and restart)")
 
     if host == "0.0.0.0":
         print("WARNING: binding 0.0.0.0 exposes this on your network. Prefer "
               "the default 127.0.0.1 + a Cloudflare Tunnel for teams.")
-    app = build_app(password, secret)
+    app = build_app(os.getenv("WEB_PASSWORD", ""), secret)
     print(f"Etsy Product Manager report portal -> http://{host}:{port}")
-    print("Team logs in with WEB_PASSWORD. Ctrl+C to stop.")
+    print("Team members log in with their own email + password. Ctrl+C to stop.")
     app.run(host=host, port=port, threaded=True)
 
 
@@ -1501,6 +1919,14 @@ border-radius:9px;background:var(--surface);color:var(--ink)}
 .login button{font:inherit;font-weight:700;padding:11px;border:none;border-radius:9px;
 background:var(--accent);color:var(--paper);cursor:pointer}
 .err{color:var(--stop);font-size:.85rem}
+.login .remember{display:flex;align-items:center;gap:8px;font-size:.85rem;color:var(--ink-soft)}
+.login .remember input{width:auto}
+.lognote{margin-top:18px;font-size:.72rem;color:var(--ink-soft);line-height:1.5;text-align:left}
+.uchip{background:var(--accent-bg);color:var(--accent);border-radius:20px;padding:3px 11px;
+font-weight:700;font-size:.72rem;text-decoration:none}
+.inlineform{display:inline}
+.inlineform select{font:inherit;font-size:.8rem;padding:3px 6px;border-radius:6px;
+border:1px solid var(--line);background:var(--surface);color:var(--ink)}
 footer{margin-top:34px;font-family:var(--mono);font-size:.7rem;color:var(--ink-faint);
 text-align:center}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
@@ -1538,12 +1964,17 @@ PRINT_BASE = (
 LOGIN = """
 <div class="wrap"><div class="login">
   <div class="kicker">Etsy Product Manager</div>
-  <h1>Team Reports</h1>
+  <h1>Team Sign in</h1>
   {{ERROR}}
   <form method="post">
-    <input type="password" name="password" placeholder="Password" autofocus>
+    <input type="email" name="email" placeholder="Email" autofocus autocomplete="username">
+    <input type="password" name="password" placeholder="Password" autocomplete="current-password">
+    <label class="remember"><input type="checkbox" name="remember"> Remember me</label>
     <button type="submit">Sign in</button>
   </form>
+  <p class="lognote">This dashboard records work activity inside the Etsy Product
+  Manager system for team workflow, quality review, and task management. It does
+  not track keystrokes, screens, browser history, or anything outside this tool.</p>
 </div></div>
 """
 
@@ -1554,7 +1985,7 @@ PORTAL = """
       <div class="kicker">Etsy Product Manager</div>
       <h1>Team Reports</h1>
     </div>
-    <div class="hright">{{UPDATED}}<a class="logout" href="/cheatsheet">Cheat Sheet</a><a class="logout" href="/logout">Sign out</a></div>
+    <div class="hright">{{UPDATED}}{{USER}}<a class="logout" href="/team">Team</a><a class="logout" href="/cheatsheet">Cheat Sheet</a><a class="logout" href="/logout">Sign out</a></div>
   </header>
   {{BODY}}
   <footer>Reports are prepared on the research machine and synced here.</footer>

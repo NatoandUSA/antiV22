@@ -834,6 +834,26 @@ def run_selftest():
               "system-audit", "publish-gate", "test-runner", "supplier-audit",
               "feedback-learning", "dashboard-cleanup", "market-gap")))
 
+    # ---- V25.0: team login + roles + activity log + tasks + manager approval ----
+    from src import auth as _auth, activity as _act, tasks as _tsk
+    _auth_src = Path("src/auth.py").read_text(encoding="utf-8")
+    check("Team login + RBAC (7 roles, manager-only approval, hashed passwords)",
+          len(_auth.ROLES) == 7
+          and _auth.can_approve("MANAGER") and not _auth.can_approve("SELLER")
+          and _auth.has_perm("OWNER", "users.manage")
+          and not _auth.has_perm("SELLER", "users.manage")
+          and callable(_auth.authenticate) and callable(_auth.create_user)
+          and "generate_password_hash" in _auth_src)
+    check("Activity logging (dashboard-only, no secrets) + tasks + Team UI wired",
+          callable(_act.log) and callable(_tsk.create_task) and callable(_tsk.review_task)
+          and "[redacted]" in Path("src/activity.py").read_text(encoding="utf-8")
+          and all(x in _web_src for x in ("/login", "/logout", "/me", "/admin/users",
+                  "/admin/activity", "/admin/tasks", "/admin/reviews", "current_user")))
+    check("Manager approval flow (re-verifies PUBLISH_READY; never auto-publishes)",
+          "/run/approve" in _web_src and "MANAGER_APPROVED_FOR_MANUAL_PUBLISH" in _web_src
+          and 'require_perm("listing.approve")' in _web_src
+          and all(c in _main_src2 for c in ('"auth"', '"activity"', '"task"')))
+
     print("\nSELF-TEST RESULTS")
     for name, cond in results:
         print(f"  {'PASS' if cond else 'FAIL'}  {name}")

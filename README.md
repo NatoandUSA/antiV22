@@ -1,6 +1,29 @@
-# Etsy Product Manager V24.2
+# Etsy Product Manager V25.0
 
-**New in V24.2 — publish gate rebuilt with manager sign-off + release packaging +
+**New in V25.0 — team login, roles, activity tracking, tasks & manager approval.**
+The dashboard is now multi-user. No auto-publishing — publishing stays manual and
+manager-approved.
+
+- **Per-user login** (SQLite `data/app.db`, passwords hashed with Werkzeug — no new
+  dependency). Real `/login` (email + password + remember-me), `/logout`, `/me`,
+  failed-login **lockout** (5 tries → 15 min), 12-hour session timeout, HTTP-only
+  SameSite cookies.
+- **7 roles / RBAC:** OWNER · ADMIN · MANAGER · SELLER · DESIGNER · RESEARCHER ·
+  VIEWER. Only OWNER/ADMIN/MANAGER can approve a listing.
+- **Activity log** (dashboard actions only — never keystrokes/screens/secrets):
+  who logged in, searched, used Spy, built a workspace, checked suppliers, exported
+  a PDF, updated feedback, approved/rejected. `Team → Activity Log` + CSV export.
+- **Team tasks + Review Queue:** assign work, track status, approve/needs-fix/reject.
+- **Manager approval:** approve a run *for manual publishing* — re-verified
+  server-side against PUBLISH_READY; `MANAGER_APPROVED_FOR_MANUAL_PUBLISH` is
+  logged; a known-brand can never be approved; `PUBLISH_AUTOMATION: false` always.
+- **CLI:** `auth create-admin|create-user|list-users|disable-user|reset-password`,
+  `activity list|export`, `task create|list|update`. Guide: `docs/USER_LOGIN_GUIDE.md`.
+
+First run: set `ADMIN_EMAIL` + `ADMIN_PASSWORD_INITIAL` + `APP_SECRET_KEY` in
+`.env` (owner auto-seeded), or `py main.py auth create-admin ...`.
+
+**V24.2 — publish gate rebuilt with manager sign-off + release packaging +
 schema validation + audit hardening.**
 
 - **Manager sign-off closes the publish gate (safely).** Before, `PUBLISH_READY`

@@ -437,6 +437,77 @@ def cmd_validate(cmd, args):
     sys.exit(0 if ok else 1)
 
 
+def cmd_auth(cmd, args):
+    """User management: create-admin / create-user / list-users / disable-user /
+    reset-password."""
+    from src import auth
+    auth.appdb.init_db()
+    sub = (args[0].lower() if args else "")
+    kv, _ = _flags(args[1:] if args else [])
+    try:
+        if sub == "create-admin":
+            u = auth.create_user(kv["email"], kv["password"], kv.get("name", "Admin"),
+                                 "OWNER", "cli")
+            print(f"Created OWNER: {u['email']}")
+        elif sub == "create-user":
+            u = auth.create_user(kv["email"], kv["password"], kv.get("name", "User"),
+                                 kv.get("role", "VIEWER"), "cli")
+            print(f"Created {u['role']}: {u['email']}")
+        elif sub == "list-users":
+            for u in auth.list_users():
+                print(f"  {u['email']:<30} {u['role']:<10} {u['status']:<9} "
+                      f"last={u.get('last_login_at') or '-'}")
+        elif sub == "disable-user":
+            auth.disable_user(kv["email"]); print(f"Disabled: {kv['email']}")
+        elif sub == "reset-password":
+            auth.reset_password(kv["email"], kv["password"])
+            print(f"Password reset for: {kv['email']}")
+        else:
+            _usage_exit('Usage: python main.py auth create-admin|create-user|'
+                        'list-users|disable-user|reset-password '
+                        '--email x --password y [--name "..."] [--role SELLER]')
+    except KeyError as e:
+        _usage_exit(f"missing required flag: {e}")
+    except ValueError as e:
+        print(f"Error: {e}"); sys.exit(1)
+
+
+def cmd_activity(cmd, args):
+    from src import activity
+    sub = (args[0].lower() if args else "list")
+    kv, _ = _flags(args[1:] if args else [])
+    if sub == "export":
+        path, n = activity.export_csv(kv.get("output", "data/exports/activity_log.csv"))
+        print(f"Exported {n} events -> {path}")
+    else:
+        for r in activity.list_events(limit=int(kv.get("limit", 50))):
+            print(f"  {r['timestamp']}  {r['user_email']:<24} {r['event_type']:<22} "
+                  f"{r.get('keyword') or r.get('module') or ''}")
+
+
+def cmd_task(cmd, args):
+    from src import tasks, auth
+    auth.appdb.init_db()
+    sub = (args[0].lower() if args else "list")
+    kv, _ = _flags(args[1:] if args else [])
+    if sub == "create":
+        assignee = auth.get_user_by_email(kv.get("assign-to", ""))
+        t = tasks.create_task(
+            title=kv.get("title", "Untitled"),
+            assigned_to_user_id=assignee["user_id"] if assignee else None,
+            task_type=kv.get("type"), priority=kv.get("priority", "MEDIUM"),
+            related_keyword=kv.get("keyword", ""))
+        print(f"Created task #{t['task_id']}: {t['title']} "
+              f"-> {kv.get('assign-to', 'unassigned')}")
+    elif sub == "update":
+        t = tasks.update_task(int(kv.get("task-id", 0)), status=kv.get("status"))
+        print(f"Task #{kv.get('task-id')} -> {t['status']}" if t else "Task not found")
+    else:
+        for t in tasks.list_tasks():
+            print(f"  #{t['task_id']:<4} {t['status']:<16} {t['priority']:<7} "
+                  f"{t['task_type'] or '':<16} {t['title']}")
+
+
 def cmd_daily_run(cmd, args):
     from src import ops
     ops.daily_run()
@@ -541,6 +612,9 @@ COMMANDS = {
     "launchpad": cmd_launchpad,
     "package": cmd_package,
     "validate": cmd_validate,
+    "auth": cmd_auth,
+    "activity": cmd_activity,
+    "task": cmd_task,
 }
 
 # Commands that reach the live YTrends/Printify APIs. For YTrends-backed ones
