@@ -345,7 +345,32 @@ def build_app(password, secret):
                     + ('<div class="reports">' + "".join(daily) + "</div>" if daily else "")
                     + ('<div class="reports">' + "".join(detail) + "</div>" if detail else "")
                     + '</details>')
-        body = tools + arch
+        # Always-visible reminder: the member's open tasks, pinned at the top.
+        mytask_strip = ""
+        _mu = current_user()
+        if _mu:
+            from src import tasks as _tk
+            mine = _tk.my_open(_mu["user_id"])
+            if mine:
+                od = sum(1 for t in mine if _tk.is_overdue(t))
+                chips = "".join(
+                    f'<a class="tkchip pr-{t["priority"].lower()}'
+                    + (" od" if _tk.is_overdue(t) else "") + '" href="/me/tasks">'
+                    + _h_esc(t["title"][:32]) + '</a>' for t in mine[:3])
+                more = (f'<a class="tkchip more" href="/me/tasks">+{len(mine)-3} more</a>'
+                        if len(mine) > 3 else "")
+                odtxt = f' · <b class="odtext">{od} overdue</b>' if od else ""
+                review = ""
+                if auth.has_perm(_mu["role"], "tasks.review"):
+                    rq = len(_tk.review_queue())
+                    if rq:
+                        review = f' · <a href="/admin/reviews"><b>{rq} to review</b></a>'
+                mytask_strip = (
+                    '<div class="mytasks"><div class="mtlabel">✅ My tasks: '
+                    f'<b>{len(mine)}</b> open{odtxt}{review}</div>'
+                    f'<div class="mtchips">{chips}{more}</div>'
+                    '<a class="mtall" href="/me/tasks">Open →</a></div>')
+        body = mytask_strip + tools + arch
         upd = _last_updated(mdir)
         updated = f'<span class="updated">Updated {upd}</span>' if upd else ""
         _u = current_user()
@@ -1410,24 +1435,53 @@ def build_app(password, secret):
         from src import tasks as tk
         u = current_user()
         rows = tk.list_tasks(assigned_to=u["user_id"])
-        items = ""
-        for t in rows:
-            opts = "".join(f'<option{" selected" if t["status"]==s else ""}>{s}</option>'
-                           for s in tk.STATUSES)
-            items += ('<div class="saveditem"><div class="sihead">'
-                      f'<b>{_h_esc(t["title"])}</b> '
-                      f'<span class="pill">{_h_esc(t["priority"])}</span> '
-                      f'<span class="pill">{_h_esc(t["task_type"])}</span></div>'
-                      f'<div class="note">{_h_esc(t.get("related_keyword"))} · due '
-                      f'{_h_esc(t.get("due_date") or "—")} · review '
-                      f'{_h_esc(t["review_status"])}</div>'
-                      '<form method="post" action="/me/tasks/status" class="toolbar">'
-                      f'<input type="hidden" name="task_id" value="{t["task_id"]}">'
-                      f'<select name="status">{opts}</select>'
-                      '<button class="primary" type="submit">Update</button></form></div>')
+        overdue = [t for t in rows if tk.is_overdue(t)]
+        oid = {t["task_id"] for t in overdue}
+        buckets = [
+            ("🔴 Overdue", overdue),
+            ("⚪ To do", [t for t in rows if t["status"] == "TODO" and t["task_id"] not in oid]),
+            ("🔵 In progress", [t for t in rows if t["status"] in ("IN_PROGRESS", "BLOCKED") and t["task_id"] not in oid]),
+            ("🕓 Awaiting review", [t for t in rows if t["status"] == "READY_FOR_REVIEW" and t["task_id"] not in oid]),
+        ]
+
+        def card(t):
+            actions = "".join(
+                '<form method="post" action="/me/tasks/status" class="inlineform">'
+                f'<input type="hidden" name="task_id" value="{t["task_id"]}">'
+                f'<input type="hidden" name="status" value="{tgt}">'
+                f'<button class="tkbtn{" primary" if prim else ""}" type="submit">{lbl}</button>'
+                '</form>' for (lbl, tgt, prim) in tk.member_actions(t["status"]))
+            due = (t.get("due_date") or "")[:10]
+            duehtml = (f' · <span class="due{" od" if tk.is_overdue(t) else ""}">due {_h_esc(due)}</span>'
+                       if due else "")
+            guide = tk.TYPE_GUIDE.get(t["task_type"], "")
+            rev = ""
+            if t["review_status"] != "NOT_REVIEWED":
+                rev = (f'<div class="note">Review: <b>{_h_esc(t["review_status"])}</b>'
+                       + (f' — {_h_esc(t.get("review_notes"))}' if t.get("review_notes") else "")
+                       + '</div>')
+            return ('<div class="tkcard pr-' + (t["priority"] or "medium").lower() + '">'
+                    '<div class="tkhead"><b>' + _h_esc(t["title"]) + '</b>'
+                    f'<span class="pill pr-{(t["priority"] or "medium").lower()}">{_h_esc(t["priority"])}</span></div>'
+                    f'<div class="note">{_h_esc(t.get("task_type") or "")}'
+                    + (f' · {_h_esc(t.get("related_keyword"))}' if t.get("related_keyword") else "")
+                    + duehtml + '</div>'
+                    + (f'<div class="tkguide">🎯 {_h_esc(guide)}</div>' if guide else "")
+                    + rev
+                    + (f'<div class="tkactions">{actions}</div>' if actions else "")
+                    + '</div>')
+
+        body = ""
+        for label, items in buckets:
+            if items:
+                body += (f'<h2 class="tkgroup">{label} <span class="count">{len(items)}'
+                         '</span></h2>' + "".join(card(t) for t in items))
+        if not body:
+            body = '<p class="empty">No open tasks — you\'re all caught up. 🎉</p>'
         return page("My Tasks", _bar() + '<article class="md"><h1>✅ My Tasks</h1>'
-                    + (items or '<p class="empty">No tasks assigned to you.</p>')
-                    + '</article>')
+                    '<p class="note">Your assigned work, most urgent first. Click '
+                    '<b>Start</b> → <b>Submit for review</b> as you go.</p>'
+                    + body + '</article>')
 
     @app.route("/me/tasks/status", methods=["POST"])
     @login_required
@@ -1447,36 +1501,47 @@ def build_app(password, secret):
     @require_perm("tasks.assign")
     def team_tasks():
         from src import tasks as tk
-        fstatus = request.args.get("status") or None
-        rows = tk.list_tasks(status=fstatus)
+        rows = tk.list_tasks()
         by_id = {u["user_id"]: u for u in auth.list_users()}
-        items = ""
-        for t in rows:
-            who = by_id.get(t["assigned_to_user_id"], {}).get("display_name", "—")
-            items += ('<tr><td>' + _h_esc(t["title"]) + '</td><td>' + _h_esc(who)
-                      + '</td><td>' + _h_esc(t["task_type"]) + '</td><td>'
-                      + _h_esc(t["priority"]) + '</td><td>' + _h_esc(t["status"])
-                      + '</td><td>' + _h_esc(t.get("related_keyword")) + '</td></tr>')
-        # a pre-fill (e.g. from a Launchpad "Assign task" link: ?keyword=...&type=...)
+        # pre-fill from a Launchpad / run "Assign task" link (?keyword=...&type=...)
         pk = _h_esc(request.args.get("keyword") or "")
         ptype = request.args.get("type") or ""
         types = "".join(f'<option{" selected" if x == ptype else ""}>{x}</option>'
                         for x in tk.TASK_TYPES)
         prios = "".join(f"<option>{x}</option>" for x in tk.PRIORITIES)
-        title_pre = f"{pk} — " if pk else ""
-        form = ('<form method="post" action="/admin/tasks/create" class="gradeform">'
-                f'<label>Title<input name="title" value="{title_pre}" required></label>'
+        form = ('<details class="tknew"' + (" open" if pk else "") + '>'
+                '<summary>➕ New task</summary>'
+                '<form method="post" action="/admin/tasks/create" class="gradeform">'
+                f'<label>Title<input name="title" value="{(pk + " — ") if pk else ""}" required></label>'
                 f'<label>Assign to<select name="assigned_to">{_user_options()}</select></label>'
                 f'<label>Type<select name="task_type">{types}</select></label>'
                 f'<label>Priority<select name="priority">{prios}</select></label>'
                 f'<label>Keyword<input name="related_keyword" value="{pk}"></label>'
                 '<label>Due date<input name="due_date" placeholder="YYYY-MM-DD"></label>'
-                '<button class="primary" type="submit">Create + assign task</button></form>')
+                '<button class="primary" type="submit">Create + assign task</button>'
+                '</form></details>')
+        # a tidy status board matching the workflow flow
+        board = [("⚪ To do", ("TODO",)), ("🔵 In progress", ("IN_PROGRESS", "BLOCKED")),
+                 ("🕓 Awaiting review", ("READY_FOR_REVIEW",)),
+                 ("✅ Done", ("APPROVED", "DONE", "REJECTED"))]
+        cols = ""
+        for label, statuses in board:
+            cards = [t for t in rows if t["status"] in statuses]
+            body = ""
+            for t in cards:
+                who = by_id.get(t["assigned_to_user_id"], {}).get("display_name", "—")
+                od = " od" if tk.is_overdue(t) else ""
+                body += ('<div class="tkcard pr-' + (t["priority"] or "medium").lower() + '">'
+                         '<b>' + _h_esc(t["title"][:44]) + '</b>'
+                         f'<div class="note{od}">{_h_esc(who)} · {_h_esc(t.get("task_type") or "")}'
+                         + (f' · due {_h_esc((t.get("due_date") or "")[:10])}' if t.get("due_date") else "")
+                         + '</div></div>')
+            cols += (f'<div class="lpcol"><h3>{label} <span class="count">{len(cards)}'
+                     f'</span></h3>{body or "<p class=note>—</p>"}</div>')
         return page("Team Tasks", _bar() + '<article class="md"><h1>📋 Team Tasks</h1>'
-                    + form + '<table><tr><th>Title</th><th>Assignee</th><th>Type</th>'
-                    '<th>Priority</th><th>Status</th><th>Keyword</th></tr>'
-                    + (items or '<tr><td colspan=6>No tasks yet.</td></tr>')
-                    + '</table></article>')
+                    '<p class="note">Assign work by workflow stage and watch it move '
+                    'left → right. Members update their own status; you review at the end.</p>'
+                    + form + '</article><div class="lpboard">' + cols + '</div>')
 
     @app.route("/admin/tasks/create", methods=["POST"])
     @require_perm("tasks.assign")
@@ -1792,6 +1857,35 @@ padding:0 6px;font-size:.72rem;color:#fff;background:#B45309;vertical-align:midd
 .lpcard b{font-size:.86rem;display:block}
 .ckrow{flex-direction:row!important;align-items:center;gap:8px;font-weight:400!important}
 .ckrow input{width:auto!important}
+/* team tasks */
+.mytasks{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;
+background:var(--accent-bg);border:1px solid var(--accent);border-radius:12px;
+padding:11px 16px;margin:0 0 16px}
+.mtlabel{font-size:.9rem}.mtlabel .odtext{color:#99271F}
+.mtchips{display:flex;flex-wrap:wrap;gap:6px;flex:1}
+.tkchip{font-size:.76rem;font-weight:700;background:var(--surface);border:1px solid var(--line-strong);
+border-left:3px solid var(--ink-soft);border-radius:7px;padding:3px 9px;color:var(--ink);text-decoration:none}
+.tkchip.more{border-left-color:var(--line-strong);color:var(--ink-soft)}
+.tkchip.od{border-left-color:#99271F}
+.tkchip.pr-urgent{border-left-color:#99271F}.tkchip.pr-high{border-left-color:#B45309}
+.tkchip.pr-medium{border-left-color:#3B6E8F}.tkchip.pr-low{border-left-color:#6E6455}
+.mtall{font-weight:700;color:var(--accent);text-decoration:none;font-size:.85rem}
+.tkgroup{font-size:1.02rem;margin:20px 0 8px}.tkgroup .count{background:var(--accent-bg);
+color:var(--accent);border-radius:10px;padding:0 7px;font-size:.72rem}
+.tkcard{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--ink-soft);
+border-radius:11px;padding:11px 14px;margin-bottom:9px;box-shadow:var(--shadow)}
+.tkcard.pr-urgent{border-left-color:#99271F}.tkcard.pr-high{border-left-color:#B45309}
+.tkcard.pr-medium{border-left-color:#3B6E8F}.tkcard.pr-low{border-left-color:#6E6455}
+.tkhead{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.pill.pr-urgent{background:#99271F;color:#fff}.pill.pr-high{background:#B45309;color:#fff}
+.pill.pr-medium{background:#3B6E8F;color:#fff}.pill.pr-low{background:#6E6455;color:#fff}
+.tkguide{font-size:.82rem;color:var(--ink-soft);margin:6px 0}
+.due.od,.note.od{color:#99271F;font-weight:700}
+.tkactions{display:flex;gap:8px;margin-top:9px;flex-wrap:wrap}
+.tkbtn{font:inherit;font-size:.82rem;font-weight:700;padding:7px 13px;border-radius:8px;
+border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);cursor:pointer}
+.tkbtn.primary{background:var(--accent);color:var(--paper);border-color:var(--accent)}
+.tknew{margin:6px 0 14px}.tknew summary{cursor:pointer;font-weight:700;color:var(--accent)}
 /* workspace */
 .ws{background:var(--surface);border:1px solid var(--line);border-radius:14px;
 padding:18px 20px;margin:14px 0;box-shadow:var(--shadow)}

@@ -11,6 +11,36 @@ PRIORITIES = ["LOW", "MEDIUM", "HIGH", "URGENT"]
 STATUSES = ["TODO", "IN_PROGRESS", "BLOCKED", "READY_FOR_REVIEW", "APPROVED",
             "REJECTED", "DONE"]
 REVIEW_STATUSES = ["NOT_REVIEWED", "APPROVED", "NEEDS_FIX", "REJECTED"]
+OPEN_STATUSES = ("TODO", "IN_PROGRESS", "BLOCKED", "READY_FOR_REVIEW")
+
+# What "done" means for each stage — shown on the member's task so assigning and
+# reporting always line up with the workflow section.
+TYPE_GUIDE = {
+    "KEYWORD_RESEARCH": "Find + shortlist viable keywords (demand vs competition).",
+    "SPY_RESEARCH": "Run Spy: who wins, their price/angle, and the gap to exploit.",
+    "SUPPLIER_CHECK": "Confirm product URL, base + shipping cost, material, processing time.",
+    "COMPETITOR_AUDIT": "Fill the competitor audit: top rivals, what they do well, what to beat.",
+    "TRADEMARK_CHECK": "Verify the keyword + tags on USPTO; flag anything risky.",
+    "LISTING_DRAFT": "Write title + 13 clean tags + description (draft only).",
+    "DESIGN_BRIEF": "Produce the design brief + POD/embroidery prompt.",
+    "FIRST_IMAGE": "Deliver a hero image that beats rivals: readable, personalization visible, gift context.",
+    "MOCKUP": "Add lifestyle + gift-in-use mockups and a size/detail shot.",
+    "PDF_EXPORT": "Export the role PDF and attach/share it.",
+    "FEEDBACK_DAY3": "Log the Day-3 numbers (views, favorites, carts).",
+    "FEEDBACK_DAY7": "Log the Day-7 numbers and apply the recommendation.",
+    "MANAGER_REVIEW": "Review the submitted work and approve or send back.",
+    "FIX_REQUIRED": "Apply the requested fix, then resubmit for review.",
+}
+
+# The member's next step(s) for a status: (label, target_status, is_primary).
+def member_actions(status):
+    return {
+        "TODO": [("Start", "IN_PROGRESS", True)],
+        "IN_PROGRESS": [("Submit for review", "READY_FOR_REVIEW", True),
+                        ("Block", "BLOCKED", False)],
+        "BLOCKED": [("Resume", "IN_PROGRESS", True)],
+        "READY_FOR_REVIEW": [("Reopen", "IN_PROGRESS", False)],
+    }.get(status, [])
 
 
 def _now():
@@ -88,6 +118,21 @@ def review_task(task_id, reviewer_id, review_status, notes=""):
                   "status=COALESCE(?, status), updated_at=? WHERE task_id=?",
                   (review_status, reviewer_id, notes, new_status, _now(), task_id))
     return get_task(task_id)
+
+
+def is_overdue(t):
+    from datetime import date
+    due = (t.get("due_date") or "").strip()
+    return bool(due) and t["status"] in OPEN_STATUSES and due[:10] < date.today().isoformat()
+
+
+def my_open(user_id):
+    """A user's still-open tasks, urgent/overdue first."""
+    rows = [t for t in list_tasks(assigned_to=user_id) if t["status"] in OPEN_STATUSES]
+    rows.sort(key=lambda t: (not is_overdue(t),
+                             {"URGENT": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
+                             .get(t["priority"], 2)))
+    return rows
 
 
 def review_queue():

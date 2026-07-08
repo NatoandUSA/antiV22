@@ -857,6 +857,11 @@ def run_selftest():
           "task_overdue" in Path("src/alerts.py").read_text(encoding="utf-8")
           and 'href="/admin/tasks?keyword=' in _web_src        # Launchpad assign link
           and "Assign a task for this product" in _web_src)     # run-page assign bar
+    check("Professional task UI: home reminder strip + grouped My-Tasks + type guide",
+          callable(getattr(_tsk, "my_open", None)) and callable(getattr(_tsk, "member_actions", None))
+          and isinstance(_tsk.TYPE_GUIDE, dict) and len(_tsk.TYPE_GUIDE) >= 10
+          and 'class="mytasks"' in _web_src           # home reminder strip
+          and "tkguide" in _web_src and "member_actions" in _web_src)
 
     print("\nSELF-TEST RESULTS")
     for name, cond in results:

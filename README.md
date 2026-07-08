@@ -1,6 +1,15 @@
-# Etsy Product Manager V25.1
+# Etsy Product Manager V25.2
 
-**New in V25.1 — overdue-task alerts + one-click Assign-task.** Tasks past their
+**New in V25.2 — a professional, tidy task experience.** Every member now sees a
+**"My tasks"** reminder strip pinned to the **top of the home dashboard** (open
+count + overdue in red). **My Tasks** is grouped (🔴 Overdue → To do → In progress
+→ Awaiting review) with priority colours, a **"what 'done' means"** line per task
+type, and one-click **Start → Submit for review** buttons. **Team Tasks** is a tidy
+**status board** (To do / In progress / Awaiting review / Done) with the create
+form tucked into a collapsible **➕ New task**. Assign and report both key off the
+task type = workflow stage.
+
+**V25.1 — overdue-task alerts + one-click Assign-task.** Tasks past their
 due date now show up automatically in the 🔔 Alerts panel (and clear when done).
 Managers can assign a task in one click from a **🚀 Launchpad** card or from the
 **"Assign a task for this product"** bar on any workspace run (keyword pre-filled).
