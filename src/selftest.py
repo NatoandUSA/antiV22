@@ -505,6 +505,16 @@ def run_selftest():
           and callable(_mcp.trending_keywords)
           and callable(_mcp.market_snapshot))
 
+    # ---- V26.3: paginate the capped surfaces so pages aren't starved of keywords
+    _mcp_src = Path("src/ytrends_mcp.py").read_text(encoding="utf-8")
+    _iv_src_v263 = Path("src/interactive.py").read_text(encoding="utf-8")
+    check("Trending/Opportunities/Gems paginate past the ~10-row server cap",
+          "def _gather(" in _mcp_src
+          and 'return _gather("ytrends_find_trending_keywords"' in _mcp_src
+          and 'return _gather("ytrends_scout_opportunities"' in _mcp_src
+          and "validation" in _mcp_src          # poison-row recovery kept
+          and "mcp.trending_keywords(limit=60)" in _iv_src_v263)
+
     from src import crosscheck as _cc
     check("cross-check sources present (Google Trends + Pinterest + X)",
           set(_cc.status()) == {"Google Trends", "Pinterest", "X / Twitter"}

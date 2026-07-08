@@ -316,7 +316,7 @@ def _hidden_block(hidden, key, show_all):
 
 
 def trending(mode=None, show_all=False):
-    raw = [t for t in mcp.trending_keywords(limit=90)
+    raw = [t for t in mcp.trending_keywords(limit=60)
            if matches_mode((t.get("tag") or "").lower(), mode)]
     picks, hidden = _split_fit(raw, "tag", mode)
     L = [f"# Trending now — {MODE_LABEL.get(mode)}", "",
@@ -360,7 +360,7 @@ def _cluster_block(picks, key="tag"):
 
 
 def opportunities(mode=None, show_all=False):
-    raw = [r for r in mcp.scout_opportunities(limit=90)
+    raw = [r for r in mcp.scout_opportunities(limit=60)
            if matches_mode((r.get("tag") or "").lower(), mode)]
     picks, hidden = _split_fit(raw, "tag", mode)
     L = [f"# Opportunities — {MODE_LABEL.get(mode)}", "",

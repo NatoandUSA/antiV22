@@ -247,6 +247,45 @@ def _list_call(tool, key, limit, **args):
     return []
 
 
+def _gather(tool, key, limit, step=10, **args):
+    """These surfaces CAP each call at ~10 rows and IGNORE a big `limit` (the
+    server pages its data), so asking for 90 still returns 10. We walk `offset`
+    to collect up to `limit`, dedup by tag, and stop as soon as a page adds
+    nothing new (end of data). Every page is cached per day, so repeat loads are
+    free. Mirrors the pagination already used by browse_new_listings.
+
+    Robustness: some pages contain a record that fails the server's OWN output
+    schema (e.g. a tier=0 row) -> the whole page errors. Because the bad row can
+    be at the *start* of a page, trimming the limit can't drop it, so we step the
+    offset forward past it and carry on instead of aborting the whole gather."""
+    out, seen = [], set()
+    offset, guard = 0, 0
+    while len(out) < limit and guard < 24:
+        guard += 1
+        try:
+            rows = _rows(call(tool, limit=step, offset=offset, **args), key)
+        except YTrendsMCPError as exc:
+            if "validation" in str(exc).lower():
+                offset += 2          # skip past the poison row, keep gathering
+                continue
+            raise
+        if not rows:
+            break
+        new = 0
+        for r in rows:
+            tg = (r.get("tag") or "").strip().lower()
+            if tg and tg in seen:
+                continue
+            if tg:
+                seen.add(tg)
+            out.append(r)
+            new += 1
+        offset += step
+        if new == 0:
+            break
+    return out[:limit]
+
+
 def market_snapshot(country=None):
     p = call("ytrends_market_snapshot",
              **({"country": country} if country else {}))
@@ -255,12 +294,12 @@ def market_snapshot(country=None):
 
 def trending_keywords(limit=25, search=None):
     args = {"search": search} if search else {}
-    return _list_call("ytrends_find_trending_keywords", "tags", limit, **args)
+    return _gather("ytrends_find_trending_keywords", "tags", limit, **args)
 
 
 def hidden_gems(limit=25, search=None):
     args = {"search": search} if search else {}
-    return _list_call("ytrends_find_hidden_gems", "tags", limit, **args)
+    return _gather("ytrends_find_hidden_gems", "tags", limit, **args)
 
 
 def hot_listings(limit=15, keyword=None, search=None):
@@ -278,7 +317,7 @@ def trend_calendar(window="next_90d", limit=15):
 
 
 def scout_opportunities(limit=25, **filters):
-    return _list_call("ytrends_scout_opportunities", "results", limit, **filters)
+    return _gather("ytrends_scout_opportunities", "results", limit, **filters)
 
 
 def browse_new_listings(limit=50, keyword=None, search=None):

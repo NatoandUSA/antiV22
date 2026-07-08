@@ -1,6 +1,16 @@
-# Etsy Product Manager V26.2
+# Etsy Product Manager V26.3
 
-**New in V26.2 — clusters that actually group, on both keyword pages.**
+**New in V26.3 — 4–5× more keywords per page (root-cause fix).**
+The YTrends API hands data out ~10 rows at a time and **ignores a big `limit`** —
+so asking for 90 still returned 10, and after filtering junk you saw ~5. The tool
+now **paginates** these surfaces (walking `offset`, deduping, skipping the odd
+server-side "poison" row), so Trending/Opportunities pull ~60 and, after filtering,
+show **40+ launch-ready keywords** with **substantial clusters** (e.g. Bag ×12,
+Shirt ×7) instead of one tiny pair. First load of the day costs a few seconds;
+every load after is served from the daily cache. Market Pulse + harvest get the
+same depth. This was a *tool* limit, not a data-source limit.
+
+**V26.2 — clusters that actually group, on both keyword pages.**
 - **🧩 Product clusters on Trending AND Opportunities:** related keywords now
   collapse into one product idea keyed on the **product noun** — three "…bag"
   keywords become a single **Bag** idea; `summer/travel/bridesmaid pouch` → **Pouch**.
