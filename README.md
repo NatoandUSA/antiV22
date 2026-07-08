@@ -1,6 +1,16 @@
-# Etsy Product Manager V25.3
+# Etsy Product Manager V26.0
 
-**New in V25.3 — "due soon" heads-up.** Before a task is actually overdue, tasks
+**New in V26.0 — product-fit quality filter + smarter seasonal timing.** Trending
+and Opportunities now **hide junk** — shop handles (`haticemediumstudio`),
+spell/psychic niches, trademark/brand terms, digital-only terms, and broad seeds —
+each with a reason, behind a **"Show risky / review"** toggle. The seasonal
+calendar now labels each event's **launch status** (PREP_NOW / PREP_EARLY /
+LATE_TEST_ONLY / NEXT_YEAR_PREP) with a **range dropdown**, so a passed window
+isn't shown as a fresh chance. Workflow is now a clean role→action→output **table**
+(+ Vietnamese). See `docs/UPGRADE_DECISION_LOG.md` for what was built vs. deferred
+(most of the requested modules already existed) and `docs/GITHUB_REFERENCE_RESEARCH.md`.
+
+**V25.3 — "due soon" heads-up.** Before a task is actually overdue, tasks
 due **today or tomorrow** now show a soft **🟠 Due soon** reminder — in the home
 "My tasks" strip (orange), as its own group on My Tasks, and as an info alert.
 It clears automatically once the task is done or rescheduled (and upgrades to the

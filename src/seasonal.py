@@ -75,8 +75,19 @@ def _next_date(dates, today):
     return fut[0] if fut else None
 
 
+def _launch_status(days_until, launch_by, today):
+    """Where we stand vs. the ideal launch-by date (peak − ~6 weeks)."""
+    if days_until > 150:
+        return "NEXT_YEAR_PREP"      # far off — plan, don't rush
+    if launch_by >= today:
+        return "PREP_NOW" if days_until <= 90 else "PREP_EARLY"
+    # past the ideal launch-by but the peak is still ahead
+    return "LATE_TEST_ONLY"
+
+
 def upcoming_holidays(today=None, horizon_days=180, mode=None):
-    """Curated events whose peak is within the horizon, soonest first."""
+    """Curated events whose peak is within the horizon, soonest first. Each event
+    carries a launch_status so passed/late windows aren't shown as fresh chances."""
     today = today or date.today()
     out = []
     for name, dates, kws, products in HOLIDAYS:
@@ -86,12 +97,13 @@ def upcoming_holidays(today=None, horizon_days=180, mode=None):
         days = (peak - today).days
         if days > horizon_days:
             continue
+        launch_by = peak - timedelta(days=PREP_DAYS)
         product = products.get(mode) if mode in ("pod", "embroidery") else \
             f"{products['pod']}  ·  {products['embroidery']}"
         out.append({
             "event": name, "peak": peak, "days_until": days,
-            "launch_by": peak - timedelta(days=PREP_DAYS),
-            "keywords": kws, "product": product})
+            "launch_by": launch_by, "keywords": kws, "product": product,
+            "launch_status": _launch_status(days, launch_by, today)})
     out.sort(key=lambda e: e["peak"])
     return out
 
@@ -131,25 +143,35 @@ def _money(v):
         return "-"
 
 
-def calendar_plan(mode=None, today=None):
-    """Full 'what to launch next, timed' plan — Markdown."""
+RANGES = {"7d": 7, "30d": 30, "60d": 60, "90d": 90, "6mo": 180, "year": 366}
+_STATUS_TIP = {"PREP_NOW": "✅ prep + launch now", "PREP_EARLY": "🕒 plan ahead",
+               "LATE_TEST_ONLY": "⚠️ past ideal launch-by — small test only",
+               "NEXT_YEAR_PREP": "📌 next-year prep"}
+
+
+def calendar_plan(mode=None, today=None, days=180):
+    """Full 'what to launch next, timed' plan — Markdown. `days` = horizon range."""
     today = today or date.today()
     mlabel = {"pod": "Print on Demand", "embroidery": "Embroidery"}.get(
         mode, "All lines")
+    rlabel = {7: "next 7 days", 30: "next 30 days", 60: "next 60 days",
+              90: "next 90 days", 180: "next 6 months", 366: "full year"}.get(days, "next 6 months")
     L = [f"# 📅 Seasonal calendar — what to launch next ({mlabel})", "",
          f"_As of {today}. **Launch by** each date so listings have ~6 weeks to "
-         "rank before the peak. Verify every keyword's trademark before listing._",
-         "", "## Upcoming selling events (next 6 months)", "",
-         "| Event | Peak | Days away | 🚀 Launch by | Suggested product | Keyword angles |",
-         "|---|---|---|---|---|---|"]
-    hols = upcoming_holidays(today, mode=mode)
+         "rank before the peak. Passed / late windows are labelled so you don't "
+         "chase a missed one. Verify every keyword's trademark before listing._",
+         "", f"## Upcoming selling events ({rlabel})", "",
+         "| Event | Peak | Days away | 🚀 Launch by | Status | Suggested product | Keyword angles |",
+         "|---|---|---|---|---|---|---|"]
+    hols = upcoming_holidays(today, horizon_days=days, mode=mode)
     if hols:
         for e in hols:
+            st = e.get("launch_status", "")
             L.append(f"| **{e['event']}** | {e['peak']} | {e['days_until']}d "
-                     f"| {e['launch_by']} | {e['product']} "
+                     f"| {e['launch_by']} | {_STATUS_TIP.get(st, st)} | {e['product']} "
                      f"| {', '.join(e['keywords'])} |")
     else:
-        L.append("| _No major events in the next 6 months_ | | | | | |")
+        L.append(f"| _No major events in the {rlabel}_ | | | | | | |")
 
     live = _live_events(mode)
     L += ["", "## Live rising keywords right now (from the index)", "",

@@ -698,7 +698,7 @@ def run_selftest():
           and all(e["launch_by"] < e["peak"] for e in _hols)
           and all(e.get("keywords") and e.get("product") for e in _hols)
           and len(_se.HOLIDAYS) >= 10
-          and "interactive.calendar(mode)" in _web_src)
+          and "interactive.calendar(mode" in _web_src)
 
     # ---- V23.0: sales-execution system — offer gate, feedback loop, learning, ops ----
     _oh, _osc, _of = _ws.offer_builder("chenille name bag",
@@ -864,6 +864,29 @@ def run_selftest():
           and isinstance(_tsk.TYPE_GUIDE, dict) and len(_tsk.TYPE_GUIDE) >= 10
           and 'class="mytasks"' in _web_src           # home reminder strip
           and "tkguide" in _web_src and "member_actions" in _web_src)
+
+    # ---- V26.0: product-fit quality filter + seasonal launch-status ----
+    from src import product_fit as _pf, seasonal as _sea
+    check("Product-fit filter hides junk (shop names / spells / brands / digital / seeds)",
+          not _pf.classify("haticemediumstudio")["launchable"]
+          and _pf.classify("best job spell")["status"] == "POLICY_RISK"
+          and _pf.classify("fathers day pokemon")["status"] == "TRADEMARK_RISK"
+          and _pf.classify("svg bundle")["status"] == "DIGITAL_FIT"
+          and _pf.classify("gift for her")["status"] == "BROAD_SEED_ONLY"
+          and _pf.classify("usa raccoon shirt")["launchable"]
+          and _pf.classify("chenille name bag")["status"] == "EMBROIDERY_FIT")
+    check("Trending/Opportunities apply product-fit + risky toggle",
+          "product-fit" in _iv_src_now.lower() and "_split_fit" in _iv_src_now
+          and "Show risky / review" in _web_src and "_risk_toggle" in _web_src)
+    _hh = _sea.upcoming_holidays(today=_date(2026, 7, 8), horizon_days=366, mode="pod")
+    check("Seasonal calendar: launch-status labels + range (no missed windows as fresh)",
+          all("launch_status" in h for h in _hh)
+          and any(h["launch_status"] == "LATE_TEST_ONLY" for h in _hh)
+          and isinstance(_sea.RANGES, dict) and "Status" in _sea.calendar_plan("pod", _date(2026, 7, 8)))
+    check("Workflow shown as a table; decision + reference docs present",
+          "| Step | Team Role | Action |" in Path("WORKFLOW.md").read_text(encoding="utf-8")
+          and Path("docs/UPGRADE_DECISION_LOG.md").exists()
+          and Path("docs/GITHUB_REFERENCE_RESEARCH.md").exists())
 
     print("\nSELF-TEST RESULTS")
     for name, cond in results:

@@ -290,50 +290,79 @@ def should_sell(kw):
     return "\n".join(L)
 
 
-def trending(mode=None):
-    picks = [t for t in mcp.trending_keywords(limit=45)
-             if matches_mode((t.get("tag") or "").lower(), mode)][:20]
+def _split_fit(rows, key, mode, want=20):
+    """Classify rows by product-fit; return (launchable[:want], hidden)."""
+    from src import product_fit as pf
+    good, hidden = [], []
+    for r in rows:
+        r["_fit"] = pf.classify(r.get(key) or "", mode)
+        (good if r["_fit"]["launchable"] else hidden).append(r)
+    return good[:want], hidden
+
+
+def _hidden_block(hidden, key, show_all):
+    if not hidden:
+        return []
+    L = ["", f"_🔎 {len(hidden)} off-fit / risky ideas hidden — shop names, "
+         "spells/psychic, brands, digital, and broad seeds. Toggle **Show risky / "
+         "review** to see them._"]
+    if show_all:
+        L += ["", "## Needs review / risky (NOT launch-ready)", "",
+              "| Keyword | Status | Why it's not a launch idea |", "|---|---|---|"]
+        for r in hidden[:25]:
+            c = r["_fit"]
+            L.append(f"| {_clean(r.get(key))} | {c['status']} | {_clean(c['reason'])} |")
+    return L
+
+
+def trending(mode=None, show_all=False):
+    raw = [t for t in mcp.trending_keywords(limit=60)
+           if matches_mode((t.get("tag") or "").lower(), mode)]
+    picks, hidden = _split_fit(raw, "tag", mode)
     L = [f"# Trending now — {MODE_LABEL.get(mode)}", "",
-         "_Rising keywords in the live index. Market intel — verify trademark._", "",
-         "| Keyword | Momentum | Competition | Conv | Avg price | Trademark |",
-         "|---|---|---|---|---|---|"]
+         "_Rising keywords, **product-fit filtered** (junk hidden). Verify trademark._",
+         "", "| Keyword | Fit | Momentum | Competition | Conv | Avg price | TM |",
+         "|---|---|---|---|---|---|---|"]
     for t in picks:
         tag = _clean(t.get("tag"))
         risk, _ = tm_check(tag.lower())
-        L.append(f"| {tag} | {t.get('momentum_score', '-')} "
+        L.append(f"| {tag} | {t['_fit']['product_type'] or 'ok'} "
+                 f"| {t.get('momentum_score', '-')} "
                  f"| {_clean(t.get('competition_level'))} "
                  f"| {_pct(t.get('avg_conversion_rate'))} "
                  f"| {_money(t.get('avg_price'))} | {risk} |")
     if not picks:
-        L.append("_No trending keywords for this line right now._")
-    return "\n".join(L)
+        L.append("_No launch-ready trending keywords for this line right now._")
+    return "\n".join(L + _hidden_block(hidden, "tag", show_all))
 
 
-def opportunities(mode=None):
-    picks = [r for r in mcp.scout_opportunities(limit=50)
-             if matches_mode((r.get("tag") or "").lower(), mode)][:20]
+def opportunities(mode=None, show_all=False):
+    raw = [r for r in mcp.scout_opportunities(limit=60)
+           if matches_mode((r.get("tag") or "").lower(), mode)]
+    picks, hidden = _split_fit(raw, "tag", mode)
     L = [f"# Opportunities — {MODE_LABEL.get(mode)}", "",
-         "_Sweet-spot niches: low competition + high opportunity score. "
-         "Verify trademark._", "",
-         "| Keyword | Opportunity | Momentum | Sellers | Conv | Avg price | Trademark |",
-         "|---|---|---|---|---|---|---|"]
+         "_Launch-ready, **product-fit** ideas only (shop names, spells, brands, "
+         "digital + broad seeds filtered out). Verify trademark._", "",
+         "| Keyword | Fit | Opportunity | Momentum | Sellers | Conv | Avg price | TM |",
+         "|---|---|---|---|---|---|---|---|"]
     for r in picks:
         tag = _clean(r.get("tag"))
         risk, _ = tm_check(tag.lower())
-        L.append(f"| {tag} | {r.get('opportunity_score', '-')} "
+        L.append(f"| {tag} | {r['_fit']['product_type'] or 'ok'} "
+                 f"| {r.get('opportunity_score', '-')} "
                  f"| {r.get('momentum_score', '-')} | {_int(r.get('sellers'))} "
                  f"| {_pct(r.get('avg_conversion_rate'))} "
                  f"| {_money(r.get('avg_price_usd'))} | {risk} |")
     if not picks:
-        L.append("_No opportunities for this line right now._")
-    return "\n".join(L)
+        L.append("_No launch-ready opportunities for this line right now._")
+    return "\n".join(L + _hidden_block(hidden, "tag", show_all))
 
 
-def calendar(mode=None):
+def calendar(mode=None, days=180):
     """Upcoming holiday/e-com calendar + live rising keywords + launch-by dates
-    and product ideas. Delegates to src.seasonal."""
+    and product ideas, within `days`. Delegates to src.seasonal."""
     from src import seasonal
-    return seasonal.calendar_plan(mode)
+    return seasonal.calendar_plan(mode, days=days)
 
 
 _SPARK = "▁▂▃▄▅▆▇█"

@@ -1,102 +1,79 @@
-# AUDIT REPORT — Etsy Product Manager V25.0
+# AUDIT REPORT — Etsy Product Manager V26.0
 
-_Team login, roles, activity tracking, tasks & manager approval. English only.
+_Deep review + selective upgrade: product-fit quality filter, seasonal launch
+timing, workflow table. English-only (workflow bilingual by prior request).
 Nothing in this tool publishes to Etsy._
 
----
+See `docs/UPGRADE_DECISION_LOG.md` for what was built vs. deferred (most requested
+modules already existed) and `docs/GITHUB_REFERENCE_RESEARCH.md` for patterns studied.
 
-## 1. Stack audit
+## 1. Areas checked
 
-Flask app (`src/web.py` `build_app`) + CLI (`main.py`) + JSON/CSV data. Added
-**SQLite** (`data/app.db`) via stdlib `sqlite3` (no new dependency) for auth /
-activity / tasks, and hashed passwords with **Werkzeug** (already a Flask
-dependency — no install). Existing commands and saved runs are unaffected.
+| Area checked | Result | Bugs found | Bugs fixed | Remaining risk |
+|---|---|---|---|---|
+| selftest / pytest | ✅ ALL CHECKS PASSED · 85 passed | 0 | — | none |
+| Trending / Opportunities quality | ⚠️→✅ junk (shop names, spells, brands, digital, seeds) showed as opportunities | 1 (no product-fit filter) | **fixed** — `product_fit` filters + reason + toggle | risky items still viewable via toggle (by design) |
+| Seasonal calendar timing | ⚠️→✅ passed windows weren't clearly flagged | 1 (no launch-status label) | **fixed** — launch_status + range | curated event dates; extend the table over time |
+| Spy (POD / Embroidery / Both) | ✅ mode-aware + reverse engine | 0 | — | none |
+| Supplier match (POD / Embroidery) | ✅ mode-correct; conservative | 0 | — | no POD supplier CSV loaded yet |
+| Publish gate + manager sign-off | ✅ PUBLISH_READY only via sign-off; HIGH TM hard-block | 0 | — | none |
+| Auth / roles / RBAC | ✅ 7 roles; seller blocked from admin | 0 | — | set APP_SECRET_KEY on VPS |
+| Tasks / My Tasks / Team board / review queue | ✅ grouped, overdue + due-soon | 0 | — | dedicated calendar view deferred |
+| Activity log | ✅ dashboard-only, no secrets | 0 | — | none |
+| Feedback loop + learning | ✅ Day-3/7 + private learning | 0 | — | needs real logged data to compound |
+| PDF exports (4 roles) | ✅ print-ready | 0 | — | none |
+| daily-run + cron | ✅ pulls + refreshes + summary, no publish | 0 | — | cron installs on VPS |
+| Release package | ✅ no `.env`/secrets/caches | 0 | — | rotate any exposed keys |
 
-## 2. What was added
+## 2. This round — what changed
 
-- **Auth (`src/auth.py`, `src/appdb.py`):** users table, Werkzeug pbkdf2 hashing,
-  7 roles + a permission matrix, `authenticate()` with failed-login **lockout**
-  (5 → 15 min), `seed_admin_from_env()`.
-- **Activity (`src/activity.py`):** dashboard-only event logging (redacts anything
-  that looks like a password/token/cookie), list + CSV export + today summary.
-- **Tasks (`src/tasks.py`):** task + review CRUD (types / priority / status /
-  review status), review queue.
-- **Web:** real `/login` (email + password + remember + privacy notice),
-  `/logout`, `/me`, per-user sessions (HTTP-only, SameSite=Lax, 12-h timeout),
-  `require_perm` RBAC, Team pages (`/team`, `/me/tasks`, `/admin/tasks`,
-  `/admin/reviews`, `/admin/users`, `/admin/activity`), user chip + Team link in
-  the header, and a **manager approval** flow on a run.
-- **Activity instrumentation:** login/logout, WORKSPACE_BUILD/SAVE, SPY_SEARCH,
-  FEEDBACK_ADD/UPDATE, PDF_EXPORT_*, SUPPLIER_CSV_UPLOAD, TASK_*, MANAGER_APPROVE/
-  REJECT, DAILY_RUN_START/COMPLETE/FAILED.
-- **CLI:** `auth create-admin|create-user|list-users|disable-user|reset-password`,
-  `activity list|export`, `task create|list|update`.
-- **Docs:** `docs/USER_LOGIN_GUIDE.md`, `.env.example` (APP_SECRET_KEY, ADMIN_EMAIL,
-  ADMIN_PASSWORD_INITIAL). Healthcheck extended with auth checks.
+- **`src/product_fit.py`** — classifies every term: POD/EMBROIDERY/JEWELRY/ACRYLIC
+  fit, or SHOP_NAME_LIKELY / POLICY_RISK / TRADEMARK_RISK / DIGITAL_FIT /
+  BROAD_SEED_ONLY / NEEDS_REVIEW — each with a reason. Wired into Trending +
+  Opportunities: junk hidden by default, a **"Show risky / review"** toggle reveals
+  it. Verified: `haticemediumstudio`, `best job spell`, `fathers day pokemon`,
+  `svg bundle`, `gift for her` all correctly hidden; real products launchable.
+- **Seasonal calendar** — each event now carries a `launch_status` (PREP_NOW /
+  PREP_EARLY / LATE_TEST_ONLY / NEXT_YEAR_PREP) + a **range dropdown**
+  (30d/60d/90d/6mo/year). Passed windows are labelled, not shown as fresh chances.
+- **Workflow** — rebuilt as a clean role→action→output **table** (+ Vietnamese).
+- Docs: `UPGRADE_DECISION_LOG.md`, `GITHUB_REFERENCE_RESEARCH.md`.
+- Tests: `tests/test_product_fit.py` (product-fit + calendar status); selftest checks.
 
-## 3. Safety / privacy
+## 3. Commands tested
 
-- Passwords are **hashed, never plaintext** and never logged.
-- Activity records **only dashboard actions** — no keystrokes, screens, browser
-  history, passwords, cookies, or tokens (redaction guard in `activity._clean`).
-- The login page states the tracking scope.
-- Manager approval **re-verifies PUBLISH_READY server-side** before recording, a
-  known brand can never be approved, and `PUBLISH_AUTOMATION` stays **false** —
-  approval only means "allowed for manual publishing".
-- `.env` is never in the release package; only `.env.example` ships.
+`selftest` (ALL CHECKS PASSED) · `pytest` (85 passed) · `healthcheck` · the 5
+`workspace build` scenarios (taylor swift → BLOCKED, all publish-ready=false) ·
+both `supplier match` · `daily-run`. Trending/Opportunities verified to hide junk.
 
-## 4. Tests run / results
+## 4. Deferred (documented, not built this round)
 
-- `pytest -q` → **75 passed** (added `tests/test_auth.py` — hashing, login
-  success/fail, lockout, RBAC, disable, activity-no-secrets, task create/update/
-  review, publish-automation-false; updated `tests/test_routes.py` to log in a
-  real user).
-- `py main.py selftest` → **ALL CHECKS PASSED** (added team-login / activity /
-  approval checks).
-- `py main.py healthcheck` → user DB + admin + **hashed passwords** + activity/
-  task tables + **no publish automation** all PASS (session-secret WARN only when
-  APP_SECRET_KEY unset).
-- Live web flow (test client): anon → `/login`; owner reaches all Team pages;
-  **seller → `/admin/users` = 403**; task assigned by owner appears in seller's My
-  Tasks; bad login re-shows the form; events logged.
-- **Backward compat:** `workspace build`, `daily-run`, `supplier match`, and all
-  CLI commands still work; saved runs unaffected.
+Keyword Discovery 2.0 full multi-source merge, opportunity cluster engine,
+dedicated Team Calendar view, a standalone private-advantage score — all either
+overlap existing features or add complexity/clutter for modest value (see the
+decision log). None block team use.
 
-## 5. Database tables
-
-`users`, `activity_logs`, `tasks`, `login_attempts`, `approvals` (in `data/app.db`,
-gitignored).
-
-## 6. New commands
-
-`auth create-admin / create-user / list-users / disable-user / reset-password` ·
-`activity list / export` · `task create / list / update`.
-
-## 7. Remaining risks / not done (deliberate, phase 2)
-
-- **Per-section "Assign task" buttons** inside each workspace section and the
-  **productivity summary cards** — additive UI, safer to layer on the proven core.
-- **CSRF tokens** on POST forms (currently mitigated by SameSite=Lax + login gate);
-  a full token needs `flask-wtf`. Documented.
-- **Password-reset UI** (CLI reset works; self-service reset is phase 2).
-- Set `APP_SECRET_KEY` in `.env` on the VPS so sessions survive restarts.
-- Legacy single shared-password login is removed; everyone re-logs in with their
-  own email (one-time).
-
-## 8. Final readiness status
+## 5. Final readiness status
 
 ```
-AUTH_READY               : true
-ROLE_PERMISSION_READY    : true
-ACTIVITY_LOG_READY       : true
-TASK_SYSTEM_READY        : true
-MANAGER_REVIEW_READY     : true
-DASHBOARD_LOGIN_READY    : true
-DAILY_RUN_STILL_WORKS    : true
-PUBLISH_AUTOMATION       : false   (always — approval = allowed for manual publish)
+SYSTEM_READY_FOR_TEAM_USE : true
+DASHBOARD_READY           : true
+KEYWORD_RESEARCH_READY    : true   (now product-fit filtered)
+PRODUCT_FIT_FILTER_READY  : true   (new)
+OPPORTUNITY_CLUSTER_READY : false  (deferred — see decision log #6)
+SPY_READY                 : true
+SUPPLIER_MODULE_READY     : true
+TEAM_MANAGEMENT_READY     : true
+TASK_CALENDAR_READY       : partial (deadlines + overdue/due-soon; dedicated calendar view deferred)
+ACTIVITY_LOG_READY        : true
+REVIEW_QUEUE_READY        : true
+FEEDBACK_LOOP_READY       : true
+PDF_EXPORT_READY          : true
+DAILY_AUTORUN_READY       : true
+PUBLISH_AUTOMATION        : false  (always)
 ```
 
-**Deploy:** on the VPS, add `APP_SECRET_KEY` + `ADMIN_EMAIL` +
-`ADMIN_PASSWORD_INITIAL` to `.env`, `git pull`, `sudo systemctl restart etsy-web`.
-The owner is seeded on first start; add the rest of the team via **Team → User
-Management** or `py main.py auth create-user`.
+**Recommendation:** ready for daily team use. The product-fit filter is the headline
+win — Trending/Opportunities now surface makeable products, not shop names or
+spells. Next-best additions (if you want them): the opportunity cluster engine and
+a dedicated team calendar view.

@@ -1071,14 +1071,26 @@ def build_app(password, secret):
         except (SystemExit, Exception) as exc:  # noqa: BLE001
             return _tool_error(title, exc)
 
-    def _mode_tool(fn, title):
+    def _risk_toggle(endpoint, mode, show_all):
+        params = ([f"mode={mode}"] if mode else []) + ([] if show_all else ["show=all"])
+        href = f"/{endpoint}" + ("?" + "&".join(params) if params else "")
+        label = "✅ Show launch-ready only" if show_all else "🔎 Show risky / review items"
+        return f'<div class="risktoggle"><a class="pullbtn" href="{href}">{label}</a></div>'
+
+    def _mode_tool(fn, title, filterable=False):
         m = request.args.get("mode")
         mode = m if m in ("pod", "embroidery") else None
         endpoint = request.path.strip("/")
+        show_all = request.args.get("show") == "all"
         from src import interactive
         try:
-            return _render_tool(title, fn(interactive, mode),
-                                switch=_mode_switch(endpoint, mode))
+            switch = _mode_switch(endpoint, mode)
+            if filterable:
+                switch += _risk_toggle(endpoint, mode, show_all)
+                out = fn(interactive, mode, show_all)
+            else:
+                out = fn(interactive, mode)
+            return _render_tool(title, out, switch=switch)
         except (SystemExit, Exception) as exc:  # noqa: BLE001
             return _tool_error(title, exc)
 
@@ -1095,22 +1107,34 @@ def build_app(password, secret):
     @app.route("/trending")
     @login_required
     def trending():
-        return _mode_tool(lambda iv, m: iv.trending(m), "Trending now")
+        return _mode_tool(lambda iv, m, s: iv.trending(m, s), "Trending now", filterable=True)
 
     @app.route("/opportunities")
     @login_required
     def opportunities():
-        return _mode_tool(lambda iv, m: iv.opportunities(m), "Opportunities")
+        return _mode_tool(lambda iv, m, s: iv.opportunities(m, s), "Opportunities", filterable=True)
 
     @app.route("/calendar")
     @login_required
     def calendar():
+        from src import interactive, seasonal
         m = request.args.get("mode")
         mode = m if m in ("pod", "embroidery") else None
-        from src import interactive
+        rng = request.args.get("range") or "6mo"
+        days = seasonal.RANGES.get(rng, 180)
+        # range dropdown (links, keeps the current mode)
+        mq = f"mode={mode}&" if mode else ""
+        rlabels = [("30d", "30 days"), ("60d", "60 days"), ("90d", "90 days"),
+                   ("6mo", "6 months"), ("year", "Full year")]
+        rrow = "".join(
+            f'<a class="pullbtn{" primary" if rng == rk else ""}" '
+            f'href="/calendar?{mq}range={rk}">{rl}</a>' for rk, rl in rlabels)
+        rangebar = ('<div class="pullbar"><div class="pulltxt"><b>Range</b>'
+                    '<span>How far ahead to plan</span></div>'
+                    f'<div class="pullbtns">{rrow}</div></div>')
         try:
-            return _render_tool("Seasonal calendar", interactive.calendar(mode),
-                                switch=_mode_switch("calendar", mode))
+            return _render_tool("Seasonal calendar", interactive.calendar(mode, days),
+                                switch=_mode_switch("calendar", mode) + rangebar)
         except (SystemExit, Exception) as exc:  # noqa: BLE001
             return _tool_error("Seasonal calendar", exc)
 
@@ -1829,6 +1853,7 @@ border-radius:10px;background:var(--accent);color:var(--paper);font-weight:700;c
 /* auto-pull bar + feed */
 .pullbar{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;
 background:var(--accent-bg);border:1px solid var(--accent);border-radius:12px;padding:13px 16px;margin:12px 0}
+.risktoggle{margin:-4px 0 14px}
 .pulltxt{display:flex;flex-direction:column;gap:2px}
 .pulltxt b{font-size:.98rem}.pulltxt span{font-size:.8rem;color:var(--ink-soft)}
 .pullbtns{display:flex;gap:8px;flex-wrap:wrap}

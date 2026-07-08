@@ -1,90 +1,48 @@
 # 🧭 Team Workflow — from idea to live listing
-# 🧭 Quy trình nhóm — từ ý tưởng đến listing đăng bán
 
-> 🌐 **This page is bilingual (English + Vietnamese)** to help the team follow the
-> process. Every other page stays in English.
-> *🇻🇳 Trang này song ngữ (Anh + Việt) để hỗ trợ nhóm làm theo quy trình. Các trang
-> khác vẫn bằng tiếng Anh.*
+> Everything is a button in the dashboard. The data refreshes itself at 6 AM.
+> **No auto-publishing** — a listing goes live only when a manager approves it and
+> a person publishes it manually on Etsy.
 
-**The short version:** open the dashboard, pick a mode, and move left-to-right
-through the three sections — **🔍 Find → 📚 Collect → 🚀 Ship**. Everything is a
-button. The data refreshes itself every morning at 6 AM, so you're always looking
-at fresh numbers.
+## The workflow, step by step
 
-*🇻🇳 **Tóm tắt nhanh:** mở dashboard, chọn chế độ sản phẩm, và đi từ trái sang phải
-qua ba phần — **🔍 Tìm → 📚 Thu thập → 🚀 Đăng bán**. Mọi thứ đều là nút bấm. Dữ
-liệu tự làm mới mỗi sáng lúc 6 giờ, nên bạn luôn xem số liệu mới nhất.*
+| Step | Team Role | Action | Tool Section | Output | Publish allowed? |
+|---|---|---|---|---|---|
+| 1 | Researcher | Find product clusters | Trending / Opportunities / Spy | Saved idea | No |
+| 2 | Researcher | Validate keyword + competitors | Spy / Competitor Audit | Research notes | No |
+| 3 | Researcher | Check supplier fit | Supplier Information | Supplier status | No |
+| 4 | Designer | Prepare first image + design | First Image Battle / Design Prompt | Design task | No |
+| 5 | Seller | Build listing draft | Listing Builder | Title, 13 tags, description | No |
+| 6 | Manager | Review the publish gate | Review Queue / Publish Gate | Approve or reject | Manual only if ready |
+| 7 | Seller | Publish manually on Etsy | Etsy (outside the tool) | Listing live | Manual only |
+| 8 | Seller / Manager | Track Day-3 + Day-7 results | Feedback Loop | Keep / Fix / Kill / Scale | No auto-publish |
+| 9 | Manager | Learn from the result | Learning / Profit / Alerts | Better future scoring | No |
 
-> **Start each session:** open **etsy.theglobalserviceteam.site**, log in, and pick
-> your **Product mode** (Print on Demand or Embroidery) at the top.
-> *🇻🇳 **Bắt đầu mỗi phiên:** mở **etsy.theglobalserviceteam.site**, đăng nhập, và
-> chọn **Chế độ sản phẩm** (Print on Demand hoặc Embroidery/thêu) ở trên cùng.*
+## Golden rules
 
----
-
-## 1️⃣ FIND — what should we make today? / TÌM — hôm nay nên làm sản phẩm gì?
-*Uses the **🔍 Find opportunities** section. — 🇻🇳 Dùng phần **🔍 Tìm cơ hội**.*
-
-1. **📈 Trending now** — scan rising keywords in your mode.
-   *🇻🇳 Xem các từ khoá đang lên trong chế độ của bạn.*
-2. **💎 Opportunities** — the low-competition sweet spots (best effort-to-reward).
-   *🇻🇳 Các ngách ít cạnh tranh, dễ ăn nhất (ít công sức, phần thưởng cao).*
-3. **📅 Seasonal calendar** — check what's coming and its **launch-by date** so you're not too late.
-   *🇻🇳 Lịch mùa vụ — xem dịp sắp tới và **hạn chót cần đăng** để không bị trễ.*
-4. **🕵️ Spy** a promising keyword — see who's already winning and whether the niche is locked up.
-   *🇻🇳 **Spy** (do thám) một từ khoá tiềm năng — xem ai đang thắng và ngách đã bị chiếm chưa.*
-
-➡️ **Output:** a shortlist of keywords worth pursuing.
-*🇻🇳 **Kết quả:** danh sách ngắn các từ khoá đáng theo đuổi.*
+| Rule | |
+|---|---|
+| 🔒 Never publish unless **PUBLISH_READY = true** | Publishing is always a manual, manager-approved human step. |
+| ✅ Everything is a button | The team never needs the terminal. |
+| 🕕 Data refreshes at 6 AM | You always see fresh numbers. |
+| 👀 Study competitors for structure only | Never copy artwork, titles, or tags — make your own. |
 
 ---
 
-## 2️⃣ VALIDATE & COLLECT — is it worth it? / THẨM ĐỊNH & THU THẬP — có đáng làm không?
-*Uses the **⚡ Command Center** (top) + the **📚 Your library** section.
-— 🇻🇳 Dùng **⚡ Command Center** (đầu trang) + phần **📚 Thư viện của bạn**.*
+## 🇻🇳 Quy trình nhóm — từ ý tưởng đến listing (bản tiếng Việt)
 
-5. Drop the keyword into the **⚡ Command Center** → **Build full workspace**. You get it all on one page: **verdict (GO / NO-GO), scores, a listing draft, a design prompt, and the publish gate.**
-   *🇻🇳 Nhập từ khoá vào **⚡ Command Center** → **Build full workspace**. Bạn nhận tất cả trên một trang: **kết luận (NÊN / KHÔNG NÊN), điểm số, bản nháp listing, prompt thiết kế, và cổng kiểm duyệt đăng bán.***
-   - Quicker checks: **Should I sell?**, **Analyze**, **Expand** (related keywords).
-     *🇻🇳 Kiểm tra nhanh: **Should I sell?** (có nên bán?), **Analyze** (phân tích), **Expand** (từ khoá liên quan).*
-6. **🏪 Saved shops / 📌 Saved listings** → click **Auto-pull** to study winners already selling — *learn the structure, never copy.* **🔬 Saved research** keeps your past lookups.
-   *🇻🇳 **🏪 Saved shops / 📌 Saved listings** → bấm **Auto-pull** để học các shop/listing đang bán chạy — *học cấu trúc, tuyệt đối không sao chép.* **🔬 Saved research** lưu các lần tra cứu trước.*
-7. **🏭 Suppliers** → confirm you can actually make / source it (catalog + costs).
-   *🇻🇳 **🏭 Suppliers** (nhà cung cấp) → xác nhận bạn thực sự làm / nguồn được (danh mục + chi phí).*
+| Bước | Vai trò | Hành động | Mục trên dashboard | Kết quả | Được đăng? |
+|---|---|---|---|---|---|
+| 1 | Researcher | Tìm cụm sản phẩm | Trending / Opportunities / Spy | Ý tưởng đã lưu | Không |
+| 2 | Researcher | Thẩm định từ khoá + đối thủ | Spy / Competitor Audit | Ghi chú nghiên cứu | Không |
+| 3 | Researcher | Kiểm tra nhà cung cấp | Supplier Information | Trạng thái NCC | Không |
+| 4 | Designer | Chuẩn bị ảnh đầu + thiết kế | First Image Battle / Design Prompt | Task thiết kế | Không |
+| 5 | Seller | Dựng bản nháp listing | Listing Builder | Tiêu đề, 13 thẻ, mô tả | Không |
+| 6 | Manager | Duyệt cổng đăng bán | Review Queue / Publish Gate | Duyệt hoặc từ chối | Chỉ thủ công khi đạt |
+| 7 | Seller | Đăng THỦ CÔNG trên Etsy | Etsy (ngoài công cụ) | Listing lên sàn | Chỉ thủ công |
+| 8 | Seller / Manager | Theo dõi Ngày 3 + Ngày 7 | Feedback Loop | Giữ / Sửa / Dừng / Nhân rộng | Không tự đăng |
+| 9 | Manager | Học từ kết quả | Learning / Profit / Alerts | Chấm điểm tốt hơn | Không |
 
-➡️ **Output:** a validated product with a draft listing + supplier confirmed.
-*🇻🇳 **Kết quả:** một sản phẩm đã thẩm định, có bản nháp listing + nhà cung cấp đã xác nhận.*
-
----
-
-## 3️⃣ SHIP & LEARN — build it, launch it, react / ĐĂNG BÁN & HỌC HỎI — làm, đăng, phản ứng
-*Uses the **🚀 Execute & improve** section. — 🇻🇳 Dùng phần **🚀 Thực thi & cải thiện**.*
-
-8. **📋 Listing Analyzer** — paste the draft (title + 13 tags + description) → **SEO / Trust / Image scores + a publish gate.** Fix until the gate passes.
-   *🇻🇳 **📋 Listing Analyzer** — dán bản nháp (tiêu đề + 13 thẻ + mô tả) → **điểm SEO / Độ tin cậy / Hình ảnh + cổng đăng bán.** Sửa đến khi cổng đạt.*
-9. **Publish MANUALLY on Etsy — only when it shows `PUBLISH_READY = true`.** The tool never auto-publishes; the trademark check is built into every result.
-   *🇻🇳 **Đăng THỦ CÔNG trên Etsy — chỉ khi hiển thị `PUBLISH_READY = true`.** Công cụ không bao giờ tự đăng; kiểm tra nhãn hiệu (trademark) có sẵn trong mọi kết quả.*
-10. After it's live, log the real numbers in **📉 Sales feedback** → get a Day-3 / Day-7 **KEEP / CHANGE / KILL / SCALE** verdict.
-    *🇻🇳 Sau khi lên sàn, nhập số liệu thật vào **📉 Sales feedback** → nhận kết luận Ngày 3 / Ngày 7: **GIỮ / SỬA / DỪNG / NHÂN RỘNG**.*
-
-➡️ **Output:** a live listing + a data-driven decision on what's next.
-*🇻🇳 **Kết quả:** một listing đang bán + quyết định dựa trên dữ liệu cho bước tiếp theo.*
-
----
-
-## 🔁 The loop / Vòng lặp
-**SCALE** winners (more variants of what sold) · **KILL** losers · feed what you learned back into **step 1** tomorrow.
-
-*🇻🇳 **NHÂN RỘNG** sản phẩm thắng (thêm biến thể của cái đã bán được) · **DỪNG** sản phẩm thua · đưa bài học quay lại **bước 1** vào ngày mai.*
-
----
-
-## ⭐ Golden rules / Quy tắc vàng
-1. **Never publish** unless `PUBLISH_READY = true` — publishing is always a manual human decision.
-   *🇻🇳 **Không bao giờ đăng** trừ khi `PUBLISH_READY = true` — việc đăng luôn là quyết định thủ công của con người.*
-2. **Everything is a button** — the team never needs the terminal.
-   *🇻🇳 **Mọi thứ đều là nút bấm** — nhóm không bao giờ cần dùng terminal.*
-3. **Data refreshes at 6 AM** — you're always looking at fresh numbers.
-   *🇻🇳 **Dữ liệu làm mới lúc 6 giờ sáng** — bạn luôn xem số liệu mới.*
-4. Study competitors for **structure only — never copy** artwork, titles, or tags.
-   *🇻🇳 Chỉ học **cấu trúc** của đối thủ — **tuyệt đối không sao chép** hình ảnh, tiêu đề, hay thẻ.*
+**Quy tắc vàng:** 🔒 Không bao giờ đăng trừ khi **PUBLISH_READY = true** (luôn thủ
+công, cần Manager duyệt) · ✅ Mọi thứ là nút bấm · 🕕 Dữ liệu làm mới 6 giờ sáng ·
+👀 Chỉ học cấu trúc đối thủ — tuyệt đối không sao chép.
