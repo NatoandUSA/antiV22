@@ -169,8 +169,27 @@ def import_csv(source, file, out=DEFAULT_OUT, country="US"):
     return new
 
 
-def match(product, mode=None, country="US", path=DEFAULT_OUT):
-    """Score supplier products against a product idea. Returns ranked matches."""
+def _mode_ok(mode, pm, ptype):
+    """Does a supplier row's production_mode fit the requested product mode?
+
+    Embroidery must NOT be satisfied by a POD/JEWELRY row and vice-versa — this
+    is the core of mode-correct matching."""
+    pm = (pm or "").upper()
+    if not mode:
+        return ptype in pm
+    mode = mode.upper()
+    if mode == "EMBROIDERY":
+        return "EMBROIDERY" in pm or "CHENILLE" in pm
+    if mode == "POD":
+        return "EMBROIDERY" not in pm  # any non-embroidery supplier can print
+    return ptype in pm or mode in pm   # BOTH / other
+
+
+def match(product, mode=None, country="US", path=DEFAULT_OUT, verbose=True):
+    """Score supplier products against a product idea. Returns ranked matches.
+
+    Mode-correct: in embroidery mode only embroidery/chenille suppliers score the
+    production-fit points; in POD mode embroidery-only suppliers do not."""
     ptype = classify_production_type(product)
     words = {w for w in product.lower().split() if len(w) > 2}
     rows = load_products(path)
@@ -180,13 +199,15 @@ def match(product, mode=None, country="US", path=DEFAULT_OUT):
         pm = (r.get("production_mode") or "").upper()
         s = 0
         s += 40 * (len(words & set(name.split())) / max(len(words), 1)) if words else 0
-        s += 25 if ptype in pm or (mode and mode.upper() in pm) else 0
+        s += 25 if _mode_ok(mode, pm, ptype) else 0
         s += 15 if (r.get("base_cost") or "").strip() else 0
         s += 10 if (r.get("product_url") or "").strip() else 0
         s += 5 if (r.get("personalization_supported") or "").strip() else 0
         s += 5 if (r.get("material") or "").strip() else 0
         scored.append((round(min(100, s)), r))
     scored.sort(key=lambda t: -t[0])
+    if not verbose:
+        return scored
     print(f"\nSUPPLIER MATCH: {product}  (type={ptype}, mode={mode or 'auto'})")
     if not scored:
         print("  no supplier products on file yet — run supplier import-csv / sync "

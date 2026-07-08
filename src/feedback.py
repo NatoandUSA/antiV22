@@ -19,20 +19,24 @@ STORE = PERF_DIR / "listing_feedback.json"
 CSV_STORE = PERF_DIR / "listing_feedback.csv"
 LEGACY = Path("data/feedback.json")   # pre-V23 location, still read if present
 
-# Full tracked schema (what the team can log). Kept practical: the recommender
-# only needs the metric fields; the rest are context for the learning system.
+# Full tracked schema (what the team can log). The recommender only needs the
+# metric fields; the rest are context the learning system uses.
 FIELDS = [
-    "listing_url", "publish_date", "keyword", "product_mode", "supplier",
-    "product_cost", "shipping_cost", "price", "title", "tags",
-    "main_image_version", "mockup_style", "personalization_offer", "bundle_offer",
-    "day_1_impressions", "day_3_views", "day_7_views", "favorites", "carts",
-    "orders", "revenue", "profit", "refund_or_issue", "notes",
+    "listing_url", "run_id", "keyword", "product_mode", "product_type",
+    "supplier", "supplier_status", "product_cost", "shipping_cost", "price",
+    "profit_per_sale", "publish_date", "title", "tags", "main_image_version",
+    "mockup_style", "personalization_offer", "bundle_offer", "processing_time",
+    "day_1_impressions", "day_3_impressions", "day_3_views",
+    "day_7_impressions", "day_7_views", "favorites", "carts", "orders",
+    "revenue", "profit", "refund_or_issue", "weeks_live", "notes",
 ]
 
-# The exact action set the recommender may return.
-ACTIONS = ["KEEP", "CHANGE_MAIN_PHOTO", "CHANGE_TITLE", "CHANGE_TAGS",
-           "RAISE_PRICE", "LOWER_PRICE", "MAKE_VARIANTS", "KILL_LISTING",
-           "SCALE_PRODUCT_LINE"]
+# The exact decision set the recommender may return.
+ACTIONS = ["NEW", "KEEP", "NEEDS_MORE_DATA", "CHANGE_MAIN_PHOTO", "CHANGE_TITLE",
+           "CHANGE_TAGS", "RAISE_PRICE", "LOWER_PRICE", "MAKE_VARIANTS",
+           "KILL_LISTING", "SCALE_PRODUCT_LINE"]
+
+TARGET_MARGIN = 0.35   # below this, a selling listing is "raise price"
 
 
 def _i(v):
@@ -50,10 +54,12 @@ def _f(v):
 
 
 def recommend(m, day=7):
-    """(action, reason) from the real metrics. One action from ACTIONS.
+    """(action, reason) from the real metrics. One decision from ACTIONS.
 
-    Priority ladder, strongest signal first: orders > carts > favorites >
-    views > impressions. `day` picks which view count to read (3 or 7)."""
+    Funnel logic (strongest signal first): orders > carts > favorites > views >
+    impressions. `day` picks which view count to read (3 or 7). KILL_LISTING is
+    reserved for a listing that is still dead after 2 weeks + a title/tag rewrite
+    (set weeks_live >= 2) — a fresh 0-view listing gets CHANGE_TITLE first."""
     imp = _i(m.get("day_1_impressions") or m.get("impressions"))
     v3 = _i(m.get("day_3_views"))
     v7 = _i(m.get("day_7_views") or m.get("views"))
@@ -61,31 +67,44 @@ def recommend(m, day=7):
     favs = _i(m.get("favorites"))
     carts = _i(m.get("carts"))
     orders = _i(m.get("orders"))
+    weeks = _i(m.get("weeks_live"))
     price, cost = _f(m.get("price")), _f(m.get("product_cost")) + _f(m.get("shipping_cost"))
     margin = (price - cost) / price if price else 0.0
 
+    # nothing logged yet -> can't recommend (a logged 0 counts as data).
+    metric_keys = ("day_1_impressions", "impressions", "day_3_views",
+                   "day_7_views", "views", "favorites", "carts", "orders")
+    logged = any(k in m and str(m.get(k)).strip() not in ("", "None")
+                 for k in metric_keys)
+    if not logged:
+        return "NEEDS_MORE_DATA", "no traffic logged yet — enter the Day-1/3/7 numbers"
+
+    if orders >= 3:
+        return "SCALE_PRODUCT_LINE", "repeat sales — make variants + expand the product line"
     if orders >= 1:
-        if margin and margin < 0.35:
-            return "RAISE_PRICE", ("selling, but margin is thin ("
-                                   f"{margin*100:.0f}%) — raise price, then scale")
-        return "SCALE_PRODUCT_LINE", "sales confirmed — make variants + expand the line"
+        if margin and margin < TARGET_MARGIN:
+            return "RAISE_PRICE", (f"selling, but margin is thin ({margin*100:.0f}%) "
+                                   "— raise price or change supplier, then scale")
+        return "MAKE_VARIANTS", "first sale(s) — add variants + a bundle, then scale"
     if carts >= 2:
         return "LOWER_PRICE", "repeated carts, no checkout — price/shipping is the friction"
     if carts >= 1:
         return "CHANGE_MAIN_PHOTO", "cart but no sale — strengthen the hero image + trust signals"
     if favs >= 5:
-        return "MAKE_VARIANTS", "strong saves, no cart — add variants + a bundle/gift option"
+        return "MAKE_VARIANTS", "strong saves, no cart — add variants + a better offer/personalization"
     if favs >= 1:
-        return "CHANGE_MAIN_PHOTO", "a few saves, no cart — first image/offer isn't closing"
-    if views >= 50:
-        return "CHANGE_TITLE", "traffic but no saves — the title promise + thumbnail are weak"
+        return "CHANGE_MAIN_PHOTO", "a few saves, no cart — the first image/offer isn't closing"
+    if views >= 20:
+        return "CHANGE_MAIN_PHOTO", "traffic but no saves — the thumbnail isn't converting"
     if imp >= 100 and views < 10:
         return "CHANGE_TITLE", "shown a lot but few clicks — title/thumbnail CTR is low"
-    if views >= 10:
-        return "CHANGE_TAGS", "some views, no traction — tighten long-tail tags/SEO"
-    if day >= 7 and views == 0:
-        return "KILL_LISTING", "no traffic after 7 days — retire or fully rewrite title+tags+photo"
-    return "KEEP", "too little data yet — recheck at day 7"
+    if views == 0:
+        if day >= 7 and weeks >= 2:
+            return "KILL_LISTING", "still 0 views after 2 weeks + a rewrite — retire it"
+        if day >= 7:
+            return "CHANGE_TITLE", "0 views at day 7 — not indexed/shown; rewrite title + tags"
+        return "NEEDS_MORE_DATA", "day 3 with 0 views — check indexing/tags, recheck at day 7"
+    return "CHANGE_TAGS", "some views, no traction — tighten long-tail tags/SEO"
 
 
 def load():
@@ -101,8 +120,9 @@ def load():
 def _write(rows):
     PERF_DIR.mkdir(parents=True, exist_ok=True)
     STORE.write_text(json.dumps(rows, indent=2), encoding="utf-8")
-    cols = ["id", "added_at"] + FIELDS + ["day3_action", "day3_reason",
-                                          "day7_action", "day7_reason"]
+    cols = (["record_id", "id", "created_at", "updated_at"] + FIELDS
+            + ["day3_action", "day3_reason", "day7_action", "day7_reason",
+               "decision"])
     with CSV_STORE.open("w", newline="", encoding="utf-8") as f:
         wr = csv.DictWriter(f, fieldnames=cols, extrasaction="ignore")
         wr.writeheader()
@@ -143,12 +163,18 @@ def _mirror_to_run(d):
 
 def add(d):
     rows = load()
+    today = str(date.today())
     d["id"] = max([r.get("id", 0) for r in rows], default=0) + 1
-    d["added_at"] = str(date.today())
+    d.setdefault("record_id", f"fb-{today}-{d['id']}")
+    d.setdefault("run_id", f"{today}_{_slug(d.get('keyword'))}" if d.get("keyword") else "")
+    d.setdefault("created_at", today)
+    d["updated_at"] = today
+    d["added_at"] = today   # kept for older callers
     a3, r3 = recommend(d, day=3)
     a7, r7 = recommend(d, day=7)
     d["day3_action"], d["day3_reason"] = a3, r3
     d["day7_action"], d["day7_reason"] = a7, r7
+    d["decision"] = a7
     # keep old keys some callers/tests read
     d["recommendation"], d["rec_reason"] = a7, r7
     rows.append(d)

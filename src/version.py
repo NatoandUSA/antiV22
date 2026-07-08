@@ -1,2 +1,2 @@
 """Single source of truth for the tool version. Use everywhere."""
-VERSION = "V23.0"
+VERSION = "V23.1"

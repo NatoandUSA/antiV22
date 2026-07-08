@@ -344,7 +344,10 @@ def cmd_printify(cmd, args):
         _usage_exit('Usage: python main.py printify "product"  |  '
                     'python main.py printify cost <blueprint_id>')
     from src.printify import search_blueprints, blueprint_costs
-    if args[0] == "cost" and len(args) > 1:
+    if args[0] == "cost":
+        if len(args) < 2 or not args[1].isdigit():
+            _usage_exit('Usage: python main.py printify cost <blueprint_id>  '
+                        '(blueprint_id must be a number, e.g. 1090)')
         blueprint_costs(int(args[1]))
     else:
         search_blueprints(" ".join(args).strip('\'"'))

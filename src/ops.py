@@ -56,11 +56,13 @@ def daily_run():
     summary = {"date": str(date.today()), "published": False, "steps": {}}
 
     def step(name, fn):
+        # Catch SystemExit too: the MCP layer raises it on network/429/401, and a
+        # nightly run must keep going + still write its summary.
         try:
             res = fn()
             summary["steps"][name] = {"ok": True, "detail": res}
             log.info("%s OK: %s", name, res)
-        except Exception as e:  # noqa: BLE001
+        except (SystemExit, Exception) as e:  # noqa: BLE001
             summary["steps"][name] = {"ok": False, "error": str(e)[:200]}
             log.error("%s FAILED: %s", name, e)
             err.error("daily-run %s failed: %s", name, e)

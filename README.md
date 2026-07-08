@@ -1,6 +1,26 @@
-# Etsy Product Manager V23.0
+# Etsy Product Manager V23.1
 
-**New in V23.0 — a sales-execution & private-learning system.** The tool now
+**New in V23.1 — Spy is mode-aware + full-system audit hardening.**
+
+- **🕵️ Spy now respects Product Mode.** The bug where Embroidery mode was
+  silently dropped is fixed: the mode flows form → route → `spy()`. Spy now shows
+  a mode-correct **"Can we make this?"** supplier feasibility check (embroidery
+  suppliers for embroidery, POD for POD), the right design rules (stitch-safe vs
+  print-ready), an embroidery-compatibility read of the winners, and a
+  POD-vs-Embroidery comparison in Both mode. Supplier matching is now mode-correct
+  (embroidery is never satisfied by a POD/jewelry supplier, and vice-versa).
+- **Sales Feedback Loop** extended to the full schema (run_id, Day-1/3/7
+  impressions + views, timestamps) with an 11-value decision set including
+  `NEW` / `NEEDS_MORE_DATA`; a logged `0` is data, missing is `NEEDS_MORE_DATA`.
+- **Audit hardening (fail clearly & safely):** the self-serve tools and the
+  6 AM `daily-run` now catch the MCP `SystemExit` (rate-limit/network) and show a
+  graceful "data source unavailable" notice instead of a 500 / aborting the
+  nightly job. The home page always shows the Command Center (even on a fresh
+  deploy before any report sync). See `AUDIT_REPORT.md`.
+
+Publishing is still always manual, gated on `PUBLISH_READY = true`. (English only.)
+
+**V23.0 — a sales-execution & private-learning system.** The tool now
 tracks results and learns which listings actually sell, so we beat competitors
 who only have the same public keyword data. No auto-publishing — a listing is
 only ever published manually when `PUBLISH_READY = true`.

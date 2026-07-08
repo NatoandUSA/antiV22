@@ -478,11 +478,59 @@ def grade_listing(title, tags_str, desc, kw="", mode=None):
     return "\n".join(L)
 
 
+def _spy_feasibility(kw, mode):
+    """Mode-aware 'can we actually make this?' — supplier match per mode + the
+    design rules for that production method. Embroidery must check embroidery
+    suppliers, POD must check POD suppliers."""
+    from src import supplier_ops as so
+
+    def best(mm):
+        try:
+            scored = so.match(kw, mode=mm, verbose=False)
+        except Exception:  # noqa: BLE001
+            scored = []
+        return scored[0] if scored else None
+
+    def line(mm):
+        b = best(mm)
+        if not b or b[0] <= 0:
+            return (f"- **{mm.upper()}**: no matching supplier products on file — "
+                    "**VALIDATE_SUPPLIER_FIRST** (PUBLISH_READY stays false).")
+        sc, r = b
+        band = ("strong" if sc >= 90 else "usable" if sc >= 70
+                else "weak" if sc >= 50 else "too weak")
+        warn = "" if sc >= 50 else " — ⚠️ VALIDATE_SUPPLIER_FIRST"
+        return (f"- **{mm.upper()}**: best supplier **{_clean(r.get('supplier_name')) or '?'}** "
+                f"({r.get('supplier_status', '')}) — match {sc}/100 ({band}){warn}")
+
+    head = {"pod": "POD", "embroidery": "Embroidery",
+            "both": "POD or Embroidery"}[mode]
+    L = [f"## Can we make this in {head}? (supplier feasibility)", ""]
+    L += [line("pod"), line("embroidery")] if mode == "both" else [line(mode)]
+    if mode == "embroidery":
+        L += ["", "**Embroidery design rules:** bold + simple — no gradients, no fine "
+              "detail, ≤ 6 thread colors. Chenille / monogram / name convert; "
+              "photoreal art does not. Confirm embroidery_area + stitch_limit first."]
+    elif mode == "pod":
+        L += ["", "**POD design rules:** high-res, print-ready art with a transparent "
+              "background, inside the print area. Confirm print_method + mockups."]
+    else:
+        L += ["", "**Both:** Embroidery = premium price, stitch-safe art only, slower "
+              "production. POD = cheaper, faster, full-colour. Pick per margin + design."]
+    return L + [""]
+
+
 def spy(kw, mode=None):
-    """Competitor intelligence for a keyword — who wins, who dominates, who just
-    launched, and the gaps. Learning only: study structure, never copy."""
+    """Competitor intelligence for a keyword — MODE-AWARE. Who wins, who dominates,
+    who just launched, whether we can make it in this mode, and the gaps. Learning
+    only: study structure, never copy."""
     kw = kw.strip()
-    L = [f"# 🕵️ Spy — {kw}", "",
+    m = (mode or "").lower()
+    if m not in ("pod", "embroidery", "both"):
+        m = "embroidery" if matches_mode(kw.lower(), "embroidery") else "pod"
+    label = {"pod": "Print on Demand", "embroidery": "Embroidery",
+             "both": "POD vs Embroidery"}[m]
+    L = [f"# 🕵️ Spy — {kw} · {label}", "",
          "_Competitor intelligence for **learning only**. Study structure + the "
          "gaps — never copy artwork, titles, descriptions, or photos._", ""]
 
@@ -510,6 +558,9 @@ def spy(kw, mode=None):
     L += ["", f"- Saturation: **{sat or 'unknown'}** · new sellers entering: "
           f"**{_pct(comp.get('new_entrant_rate'))}** · {read}", ""]
 
+    # Mode-aware: can we actually make + supply this in the chosen mode?
+    L += _spy_feasibility(kw, m)
+
     try:
         rk = mcp.research_keyword(kw)
         listings = (rk.get("top_listings") if isinstance(rk, dict) else None) or []
@@ -532,6 +583,15 @@ def spy(kw, mode=None):
     else:
         L.append("_No winning listings returned for this keyword._")
 
+    if m in ("embroidery", "both") and listings:
+        emb_ok = sum(1 for r in listings[:8]
+                     if matches_mode((str(r.get("title") or "") + " "
+                                      + " ".join(str(t) for t in (r.get("tags") or []))
+                                      ).lower(), "embroidery"))
+        L += ["", f"_Embroidery read: **{emb_ok} of {min(len(listings), 8)}** top "
+              "listings look embroidery/monogram/stitch-friendly — the rest are POD "
+              "art you should NOT reproduce as embroidery._"]
+
     from collections import Counter
     freq = Counter()
     for r in listings:
@@ -546,11 +606,17 @@ def spy(kw, mode=None):
 
     L += ["", "## Who just launched (new entrants — what's fresh)", ""]
     try:
-        ne = mcp.call("ytrends_browse_new_listings", search=kw, limit=8,
+        _seed = f"embroidered {kw}" if m == "embroidery" else kw
+        ne = mcp.call("ytrends_browse_new_listings", search=_seed, limit=12,
                       listing_age_days_max=45, response_format="concise")
         ne = (ne.get("data", {}) or {}).get("listings", []) if isinstance(ne, dict) else []
     except Exception:  # noqa: BLE001
         ne = []
+    if m == "embroidery":   # keep only embroidery-compatible new entrants
+        ne = [r for r in ne
+              if matches_mode((str(r.get("title") or "") + " "
+                               + str(r.get("primary_tag") or "")).lower(), "embroidery")]
+    ne = ne[:8]
     if ne:
         L += ["| New listing | Price | Age | Sold 24h |", "|---|---|---|---|"]
         for r in ne[:8]:
@@ -569,6 +635,15 @@ def spy(kw, mode=None):
     gaps.append("Beat their first image — bolder, clearer, gift-in-use hero shot.")
     gaps.append("Front-load a specific long-tail; most of their titles are broad.")
     gaps.append("Consider a bundle / set the top shops don't offer.")
+    if m == "embroidery":
+        gaps.append("Most rivals here are POD prints — a real stitched/chenille "
+                    "version is a premium angle they can't match cheaply.")
+    elif m == "pod":
+        gaps.append("Ship faster + cheaper than embroidery rivals with a clean POD "
+                    "print at a sharper price.")
+    else:
+        gaps.append("Test BOTH: a cheap POD version for volume and a premium "
+                    "embroidery version for margin — see which the niche rewards.")
     L += ["- " + g for g in gaps]
     L += ["", "_Original designs + your own copy only. This is to understand the "
           "market structure and find gaps — not to copy any seller's work._"]

@@ -1094,6 +1094,10 @@ def build_workspace(kw, opts=None):
         f'<b>{cww_score}/100</b></span>'
         f'<span class="chip {"cg-ok" if lr_score >= 85 else "cg-no"}">Launch-ready '
         f'<b>{lr_score}/100</b></span>'
+        f'<span class="chip {"cg-ok" if fib_score >= 75 else "cg-no"}">First image '
+        f'<b>{fib_score}/100</b></span>'
+        f'<span class="chip {"cg-ok" if offer_score >= 70 else "cg-no"}">Offer '
+        f'<b>{offer_score}/100</b></span>'
         f'<span class="chip">Mode <b>{req_mode.upper()}</b></span>'
         f'<span class="chip {"cg-ok" if ready else "cg-no"}">Publish-ready '
         f'<b>{"yes" if ready else "no"}</b></span>'
@@ -1250,6 +1254,9 @@ def manager_report(G):
            if G['lr_reasons'] else "<p>Launch-ready.</p>")
         + f"<p>First-image score: {G['fib_score']}/100 · "
         f"Offer strength: {G['offer_score']}/100.</p>"
+        + (("<h2>🔒 Our private sales data</h2><ul>"
+            + "".join(f"<li>{_esc(n)}</li>" for n in G.get("learn_notes", []))
+            + "</ul>") if G.get("learn_notes") else "")
         + "<h2>Source confidence</h2><ul>" + src + "</ul>"
         + (f"<p class='warn'>DATA_CHECK_REQUIRED: "
            f"{'; '.join(_esc(f) for f in G['data_flags'])}</p>" if G['data_flags'] else "")

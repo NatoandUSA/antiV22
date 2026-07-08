@@ -580,9 +580,12 @@ def run_selftest():
               "suggest_fields")) and isinstance(_ws.ROLE_REPORTS, dict)
           and all(x in _web_src for x in ("/run/export/", "runedit", "PRINT_BASE")))
 
-    check("competitor Spy tool wired (/spy + shop-level intel)",
+    check("competitor Spy tool wired + MODE-aware (/spy passes product mode)",
           callable(getattr(_iv, "spy", None))
-          and all(x in _web_src for x in ('href="/spy"', 'formaction="/spy"')))
+          and all(x in _web_src for x in ('href="/spy?mode=', 'formaction="/spy"'))
+          # /spy route reads the mode and passes it through to spy()
+          and 'interactive.spy(q, mode)' in _web_src
+          and "_spy_feasibility" in Path("src/interactive.py").read_text(encoding="utf-8"))
 
     from src import saved as _sv
     check("saved shops + listings learning library wired",
@@ -619,7 +622,7 @@ def run_selftest():
           and "import-csv" in _main_src and '"workspace"' in _main_src)
     check("supplier library + CSV upload + Sales Feedback loop wired",
           callable(getattr(_fbk, "add", None)) and callable(_fbk.recommend)
-          and _fbk.recommend({"orders": 1})[0] == "SCALE_PRODUCT_LINE"
+          and _fbk.recommend({"orders": 3})[0] == "SCALE_PRODUCT_LINE"
           and all(x in _web_src for x in ("/suppliers", "/suppliers/upload",
                                           "/feedback", "/feedback/add")))
 
@@ -712,10 +715,13 @@ def run_selftest():
     check("Sales Feedback Loop: rich schema + Day-3/7 action set + data/performance",
           len(_fbk.FIELDS) >= 20
           and all(a in _fbk.ACTIONS for a in (
-              "KEEP", "CHANGE_MAIN_PHOTO", "CHANGE_TITLE", "CHANGE_TAGS",
-              "RAISE_PRICE", "LOWER_PRICE", "MAKE_VARIANTS", "KILL_LISTING",
-              "SCALE_PRODUCT_LINE"))
-          and _fbk.recommend({"day_7_views": 0}, day=7)[0] == "KILL_LISTING"
+              "NEW", "KEEP", "NEEDS_MORE_DATA", "CHANGE_MAIN_PHOTO", "CHANGE_TITLE",
+              "CHANGE_TAGS", "RAISE_PRICE", "LOWER_PRICE", "MAKE_VARIANTS",
+              "KILL_LISTING", "SCALE_PRODUCT_LINE"))
+          and _fbk.recommend({}, day=7)[0] == "NEEDS_MORE_DATA"
+          and _fbk.recommend({"day_7_views": 0}, day=7)[0] == "CHANGE_TITLE"
+          and _fbk.recommend({"day_7_views": 0, "weeks_live": 2}, day=7)[0] == "KILL_LISTING"
+          and _fbk.recommend({"orders": 1}, day=7)[0] == "MAKE_VARIANTS"
           and _fbk.recommend({"carts": 3}, day=7)[0] == "LOWER_PRICE"
           and "data/performance" in str(_fbk.STORE).replace("\\", "/"))
 
@@ -742,6 +748,20 @@ def run_selftest():
           and "export/researcher" in _ws_src           # PDF button in the workspace
           and "Archive — reports" not in _web_src
           and 'href="/cheatsheet"' in _web_src)
+
+    # ---- V23.1: audit hardening — graceful failure + fresh-deploy home ----
+    _ops_src = Path("src/ops.py").read_text(encoding="utf-8")
+    check("graceful failure: tool routes + daily-run catch SystemExit (MCP down/429)",
+          _web_src.count("except (SystemExit, Exception)") >= 9
+          and "except (SystemExit, Exception)" in _ops_src)
+    check("home shows Command Center on a fresh deploy (no early-return blank page)",
+          'active = keys[0] if keys else "pod"' in _web_src
+          and "No reports published yet. The operator" not in _web_src)
+    check("Spy is mode-correct: embroidery supplier fit excludes POD/jewelry",
+          callable(getattr(_so, "_mode_ok", None))
+          and _so._mode_ok("embroidery", "EMBROIDERY", "TSHIRT") is True
+          and _so._mode_ok("embroidery", "JEWELRY", "TSHIRT") is False
+          and _so._mode_ok("pod", "EMBROIDERY", "TSHIRT") is False)
 
     print("\nSELF-TEST RESULTS")
     for name, cond in results:

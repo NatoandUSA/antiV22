@@ -1,165 +1,145 @@
-# AUDIT REPORT — Etsy Product Manager V23.0
+# AUDIT REPORT — Etsy Product Manager V23.1
 
-_Full system audit after the sales-execution + private-learning upgrade._
+_Full-system audit + Spy embroidery fix + hardening._
 _English only. Nothing in this tool publishes to Etsy._
 
 ---
 
-## 1. Summary
+## 1. What was checked
 
-The tool was upgraded from a keyword/listing builder into a **sales-execution and
-learning system** and then audited end to end. All automated checks pass
-(`py main.py selftest` → **ALL CHECKS PASSED**, `pytest` → all green). The six
-required test cases behave correctly, the daily 6:00 AM auto-run works and never
-publishes, and the health check is green except cron (which only installs on the
-Linux VPS, not this Windows dev box).
+- **Spy pipeline** end to end: UI form → `/spy` route → `interactive.spy()` →
+  supplier matching → design rules → output, in POD / Embroidery / Both modes.
+- **Every module** listed for review: `main.py`, `src/web.py`,
+  `src/interactive.py`, `src/feedback.py`, `src/learning.py`,
+  `src/supplier_ops.py`, `src/supplier_pull.py`, `src/daily.py`,
+  `src/listing_factory.py`, `src/crosscheck.py`, `src/gtrends.py`, `src/ops.py`
+  (read in full by a dedicated audit pass).
+- **All dashboard routes** (14) via a Flask test client.
+- **All buttons / links** map to real routes; all command handlers match their
+  targets.
+- **Data save/load**: saved runs, feedback CSV/JSON, learning JSON, supplier CSV.
+- **PDF exports** for all four roles. **healthcheck / daily-run / cron.**
 
-One deliberate deviation from the written spec: it asked for **bilingual
-English/Vietnamese PDFs**, but the standing instruction (repeated in the same
-request) is **English only**. English-only wins — no Vietnamese was built. Flag
-this if the intent was actually bilingual.
+## 2. Bugs found
 
-**Bottom line:** ready for daily team use as a research → draft → track → learn
-system. It never auto-publishes; publishing stays a manual human step gated on
-`PUBLISH_READY = true`.
-
-## 2. What was checked
-
-- Backend modules, imports, and command routing (`main.py`, `src/*`)
-- Publish-ready / verdict / score gate logic (safety-critical)
-- Sales Feedback Loop, private learning system, supplier module
-- Dashboard routes + buttons (Flask test client, all 200)
-- Data pipeline folders + saved-run artifacts (JSON validity)
-- Daily auto-run, health check, cron helpers, logging
-- Role PDF exports (Manager / Seller / Designer / Researcher)
-
-## 3. Bugs found
-
-| # | Severity | Bug |
+| # | Sev | Bug |
 |---|---|---|
-| 1 | High | **Offer Strength Score existed only as text — it did not gate.** SELL NOW and the publish gate ignored it, so a weak offer could pass. |
-| 2 | Medium | SELL NOW did not require **First-Image ≥ 75** even though the score was computed. |
-| 3 | Medium | Sales Feedback Loop used a thin schema and a non-standard action set; it wrote to `data/feedback.json`, not `data/performance/`. |
-| 4 | Medium | No private-learning feedback into scoring — logged outcomes were not reused. |
-| 5 | Low | Home page still showed the big "Archive — reports & exports" card the spec wanted removed; no Cheat Sheet card. |
-| 6 | Low | Saved runs did not write `supplier_check.json`, `sales_forecast.json`, `product_line_expansion.json`, `publish_gate.json`, `feedback_tracking.json`. |
-| 7 | Low | Two self-test assertions used the wrong string format (cron cron-syntax vs `HH:MM`, and a button located in the wrong module). Test-only, no runtime impact. |
+| 1 | HIGH | **Spy ignored Product Mode.** `spy(kw, mode)` accepted a mode but never used it, and the `/spy` route called `spy(q)` with no mode — so choosing Embroidery did nothing. |
+| 2 | HIGH | **Supplier match wasn't mode-correct.** In embroidery mode a POD/jewelry row could earn the production-fit points (and vice-versa). |
+| 3 | MED | **MCP `SystemExit` escaped the tool routes.** The MCP layer raises `SystemExit` (not `Exception`) on network error / HTTP 429 / 401. The self-serve routes only caught `Exception`, so a rate-limit → raw **500** for the team (Spy, Should-I-sell, Trending, Opportunities, Calendar, Draft, auto-pull). |
+| 4 | MED | **`daily-run` aborted on MCP `SystemExit`** before writing its summary, defeating the "always writes a summary + logs" design of the 6 AM job. |
+| 5 | MED | **Fresh-deploy home page was blank.** Before the first report sync, `index()` early-returned "No reports yet" and hid the entire Command Center + all live tools. |
+| 6 | LOW | `printify cost abc` and `web --port xyz` raised raw `ValueError` tracebacks instead of a clear usage message. |
+| 7 | LOW | Bare `python main.py` raises `FileNotFoundError` if `keywords.csv` is deleted (legacy path; the file ships with the repo). |
 
-## 4. Bugs fixed
+## 3. Bugs fixed
 
-- **#1/#2** — `offer_builder` now returns a 0–100 **Offer Strength Score** (7
-  factors). `strict_verdict` SELL NOW now requires **overall ≥ 75, competition ≥
-  55, no data flags, Can-We-Win ≥ 70, Launch-Readiness ≥ 85, First-Image ≥ 75,
-  Offer-Strength ≥ 70**. `publish_gate` also fails on offer < 70.
-- **#3** — `src/feedback.py` rewritten: full schema (URL, dates, mode, supplier,
-  costs, price, title, image/mockup/offer, Day-1 impressions, Day-3/7 views,
-  favorites, carts, orders, revenue, profit, refund). Day-3 **and** Day-7
-  recommendations from the exact action set (KEEP / CHANGE_MAIN_PHOTO /
-  CHANGE_TITLE / CHANGE_TAGS / RAISE_PRICE / LOWER_PRICE / MAKE_VARIANTS /
-  KILL_LISTING / SCALE_PRODUCT_LINE). Saves to
-  `data/performance/listing_feedback.{json,csv}` and mirrors
-  `feedback_tracking.json` into the matching saved run.
-- **#4** — new `src/learning.py` maintains 5 pattern files
-  (`winner/failed/image/tag/supplier`). Every logged outcome updates them; each
-  new run reads them and **nudges the Can-We-Win score** (a keyword/tag that has
-  sold for us raises it; a refund-prone supplier lowers it) with a visible
-  "🔒 Our private sales data" note.
-- **#5** — Archive card removed from home; daily reports tucked into a small
-  collapsible. Added a **Cheat Sheet** card.
-- **#6** — `save_run` now writes all listed artifacts; every file validated as
-  JSON in testing.
-- **#7** — assertions corrected; self-test green.
+- **#1 Spy is now mode-aware.** Mode flows `form (supplier_type) → /spy route →
+  spy(q, mode)`. `spy()` shows the mode in the header, a mode-correct **supplier
+  feasibility** section (`supplier_ops.match(kw, mode)`), the right **design
+  rules** (embroidery = stitch-safe ≤6 colors / POD = print-ready), an
+  **embroidery-compatibility count** of the top listings, mode-scoped **new
+  entrants**, mode-specific **gaps**, and a **POD-vs-Embroidery** comparison in
+  Both mode. The home Spy card + Command Center button both carry the mode.
+- **#2** New `supplier_ops._mode_ok()` — embroidery is satisfied only by
+  EMBROIDERY/CHENILLE rows; POD excludes embroidery rows. Verified in self-test.
+- **#3** All self-serve tool routes now `except (SystemExit, Exception)` → the
+  graceful "data source unavailable" notice instead of a 500.
+- **#4** `daily_run()`'s `step()` catches `SystemExit` too, so one failing step
+  is logged and the run still writes `daily_summary_*.json`.
+- **#5** `index()` no longer early-returns; the Command Center + tools always
+  render (default mode POD), with the daily-report archive shown only when synced.
+- **#6** `printify cost` and `web --port` validate numeric input and print a
+  clear usage message.
+- **#7** Left as-is (legacy; file present) and documented under Remaining risks.
 
-## 5. Remaining risks
+## 4. Tests run
 
-- **Supplier matching is intentionally conservative.** For "chenille name bag" it
-  returns `SUPPLIER_PARTIAL` (50/100) — it will not mark a supplier
-  `SUPPLIER_CONFIRMED` without complete fields, so publish stays blocked until a
-  human confirms. This is by design, not a bug.
-- **Shop "age" and "add-to-cart" are proxies** — Etsy/YTrends do not expose a
-  shop-registration date or cart counts. The tool uses listing-age and
-  favorites/conversion and says so; do not read them as literal.
-- **Live data depends on the YTrends MCP.** If it is unreachable, live tools fail
-  fast with a clear message rather than faking numbers.
-- **cron** installs only on the Linux VPS; on Windows the command prints the exact
-  line + a Task Scheduler hint.
+- `py main.py selftest` → **ALL CHECKS PASSED** (added mode-correct-supplier,
+  graceful-failure, fresh-deploy-home, and mode-aware-Spy checks).
+- `pytest -q` → **all passed**.
 
-## 6. Commands tested
+## 5. Commands tested
 
 | Command | Result |
 |---|---|
-| `py main.py selftest` | **ALL CHECKS PASSED** |
-| `pytest -q` | all passed |
-| `py main.py workspace build --keyword "usa raccoon shirt" --mode pod` | WATCH · publish_ready=false · supplier NEED_SUPPLIER_DETAILS |
-| `... "chenille name bag" --mode embroidery` | WATCH · fib 74 blocks · supplier required |
-| `... "custom travel pouch" --mode both` | SKIP · both-mode compare shown |
-| `... "taylor swift hoodie" --mode pod` | **BLOCKED** (trademark HIGH) · no publish path |
-| `... "gift for her" --mode both` | WATCH · better-angle generator · no publish |
-| `py main.py supplier match --product "chenille name bag" --mode embroidery` | 50/100 SUPPLIER_PARTIAL |
-| `py main.py daily-run` | harvest OK (1030 kw) · autopull OK · summary written · **no publish** |
-| `py main.py healthcheck` | all PASS except cron (WARN on Windows) |
-| `py main.py cron status` / `cron install --time "06:00"` | prints status + exact cron line |
+| `workspace build "usa raccoon shirt" --mode pod` | WATCH · publish_ready=false · NEED_SUPPLIER_DETAILS |
+| `workspace build "chenille name bag" --mode embroidery` | WATCH · fib gate · embroidery supplier path |
+| `workspace build "custom travel pouch" --mode both` | SKIP · POD-vs-Embroidery compare |
+| `workspace build "gift for her" --mode both` | WATCH · better-angle generator · no publish |
+| `workspace build "taylor swift hoodie" --mode pod` | **BLOCKED** (trademark) · no publish path |
+| `supplier match "chenille name bag" --mode embroidery` | 50/100 embroidery supplier (SUPPLIER_PARTIAL) |
+| `supplier match "usa raccoon shirt" --mode pod` | 25/100 (no POD supplier on file → VALIDATE_SUPPLIER_FIRST) |
+| `daily-run` | harvest + autopull + summary written · **no publish** |
+| `healthcheck` | all PASS except cron (WARN on Windows) |
 
-## 7. Dashboard pages tested (Flask test client, all HTTP 200)
+## 6. Dashboard pages tested (Flask test client — all HTTP 200)
 
-Home (`/`), `/shops`, `/listings`, `/calendar`, `/suppliers`, `/feedback`,
-`/grade`, `/cheatsheet`, `/run` (workspace), `/run/export/{manager,seller,
-designer,researcher}`. Home shows the tool cards (Trending, Opportunities, Spy,
-Seasonal calendar, Saved research, Saved shops, Saved listings, Suppliers, Sales
-feedback, Grade, Cheat Sheet) and **no** Archive card.
+`/`, `/cheatsheet`, `/shops`, `/listings`, `/calendar`, `/suppliers`,
+`/feedback`, `/grade`, `/spy` (embroidery / pod / both / no-keyword),
+`/trending`, `/opportunities`, `/run` (all 5 modes),
+`/run/export/{manager,seller,designer,researcher}`.
 
-## 8. Supplier tests
+- Home: **no** "Archive — reports" card, **has** Cheat Sheet card, Spy card
+  carries the mode.
+- All 5 `/run` builds: `publish_ready=false`, **no live publish button**, draft
+  wording present. `taylor swift hoodie` → BLOCKED.
+- All 4 PDF role exports: 200, non-empty.
 
-- `supplier match` (embroidery + POD) runs and classifies mode correctly;
-  chenille → `CHENILLE_PATCH`, returns `SUPPLIER_PARTIAL` when fields are thin.
-- CSV import (ShineOn / Embroidery) and the supplier library UI (open catalog,
-  sync, upload) are wired and covered by self-test.
-- The six catalog `supplier sync` sources (Printify, BurgerPrints, Printway,
-  CatKissFish, PGPrints, Merchize) are registered in
-  `data/suppliers/supplier_sources.json` with open-catalog links; they pull
-  manually (no scraping). Live network sync of each catalog was **not** run in
-  this audit.
+## 7. Spy — the three modes (verified live)
 
-## 9. PDF export tests
+| Mode | Header | Supplier feasibility | Design rules |
+|---|---|---|---|
+| Embroidery (`chenille name bag`) | "· Embroidery" | Embroidery supplier 50/100 | stitch-safe, ≤6 colors |
+| POD (`usa raccoon shirt`) | "· Print on Demand" | no POD supplier → VALIDATE_SUPPLIER_FIRST | print-ready |
+| Both (`custom travel pouch`) | "· POD vs Embroidery" | POD 25 vs Embroidery 50 side-by-side | compare both |
 
-Manager / Seller / Designer / **Researcher** reports build without error and open
-as print-ready HTML pages (browser **Print → Save as PDF**; no external PDF
-dependency). Each shows `PUBLISH_READY` and, when false, **"DRAFT ONLY — DO NOT
-PUBLISH"** with the exact failed checks. **English only** (bilingual PDFs
-intentionally not built).
+## 8. "What if it fails" — verified safe behavior
 
-## 10. Daily 6:00 AM auto-run status
+- **Embroidery with no supplier match** → `VALIDATE_SUPPLIER_FIRST`,
+  `PUBLISH_READY=false`, failed checks listed.
+- **Spy / MCP returns nothing or is rate-limited** → graceful "data source
+  unavailable" notice (no 500); empty sections say so.
+- **Keyword too broad** (`gift`, `gift for her`) → better-angle generator, no
+  publish.
+- **Fewer than 13 clean tags / trademark caution / supplier partial** → publish
+  gate fails with the exact reason; verdict never becomes SELL NOW.
+- **`PUBLISH_READY=false`** → button reads Save Draft; **no** publish instruction.
+- **PDF export error** → the page renders a "could not build it" message, not a
+  crash.
+- **`daily-run` step fails** → logged to `logs/errors.log`, other steps continue,
+  summary still written.
+- **Feedback with no numbers** → `NEEDS_MORE_DATA` (a logged `0` is treated as
+  real data).
 
-`py main.py daily-run` verified end to end: pulls fresh YTuong keywords
-(`data/processed/keyword_data.csv`), refreshes the shop/listing feeds, updates the
-learning summary, writes `data/processed/daily_summary_<date>.json`, logs to
-`logs/daily-run.log`, and **publishes nothing**. Timezone = server local time.
+## 9. Remaining risks
 
-## 11. Cron / systemd status
+- **No real POD supplier on file yet.** The library currently holds Embroidery +
+  ShineOn CSVs, so POD supplier matches score low (correctly → VALIDATE_SUPPLIER_
+  FIRST). Import a POD catalog CSV to raise POD matches.
+- **Two supplier stores exist:** `supplier_ops` (dashboard/Spy) reads
+  `data/suppliers/supplier_products.csv`; the legacy `listing_factory` CLI reads
+  a root `supplier_products.csv`. They can disagree. The dashboard path is the
+  authoritative one; aligning `listing_factory` is a follow-up (low urgency — the
+  workspace supplier status is manual-confirm regardless).
+- **Live data depends on the YTrends MCP.** If it's down, tools now fail *gracefully*.
+- **`keywords.csv`** deletion breaks the legacy bare `python main.py` path only.
+- **cron** installs on the Linux VPS; on Windows it prints the exact line.
 
-Cron is not installed on this Windows dev box (expected). The install command
-prints the exact line for the VPS:
-
-```
-0 6 * * * cd /home/etsy/etsy-agent && /usr/bin/python3 main.py daily-run >> logs/daily-run.log 2>&1 # etsy-agent-daily-run
-```
-
-Install on the VPS with `py main.py cron install --time "06:00"` (or paste the
-line via `crontab -e`). `deploy/vps-build.sh` already runs the same pipeline
-nightly and includes `autopull`.
-
-## 12. Final readiness status
+## 10. Final readiness status
 
 ```
 SYSTEM_READY_FOR_TEAM_USE : true
 DASHBOARD_READY           : true
-PDF_EXPORT_READY          : true    (print-to-PDF, English only)
-SUPPLIER_MODULE_READY     : true    (conservative — confirms only with full fields)
-DAILY_AUTORUN_READY       : true    (cron installs on the VPS)
-PUBLISH_AUTOMATION        : false   (always — publishing is manual, human-gated)
+SPY_READY                 : true   (mode-aware POD / Embroidery / Both, verified)
+SUPPLIER_MODULE_READY     : true   (mode-correct; conservative — confirms only with full fields)
+FEEDBACK_LOOP_READY       : true   (full schema, Day-3/7 decisions, learning-fed)
+PDF_EXPORT_READY          : true   (print-to-PDF, 4 roles, English only)
+DAILY_AUTORUN_READY       : true   (robust to MCP outages; installs on the VPS)
+PUBLISH_AUTOMATION        : false  (always — publishing is manual, human-gated)
 ```
 
-**Recommendation:** cleared for daily team use. Run `py main.py cron install
---time "06:00"` on the VPS to schedule the auto-run. Keep publishing manual: only
-list when the workspace shows `PUBLISH_READY = true` and a human has confirmed the
-supplier, trademark, and first image.
+**Recommendation:** ready for daily team use. On the VPS: `git pull` +
+`sudo systemctl restart etsy-web`. Keep publishing manual — only list when the
+workspace shows `PUBLISH_READY = true` and a human has confirmed supplier,
+trademark, and the first image.

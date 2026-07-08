@@ -151,17 +151,15 @@ def build_app(password, secret):
     @app.route("/")
     @login_required
     def index():
+        # The Command Center + live tools are MCP-backed and operator-independent,
+        # so they ALWAYS render — even on a fresh deploy before the first report
+        # sync. Only the (optional) daily-report archive depends on synced modes.
         modes = _available_modes()
-        if not modes:
-            body = ('<p class="empty">No reports published yet. The operator '
-                    'syncs them from the research machine — check back soon.</p>')
-            return page("Reports", PORTAL.replace("{{UPDATED}}", "")
-                        .replace("{{BODY}}", body))
         keys = [m[0] for m in modes]
         active = request.args.get("mode", "")
         if active not in keys:
-            active = keys[0]
-        sub = {m[0]: m[2] for m in modes}[active]
+            active = keys[0] if keys else "pod"
+        sub = {m[0]: m[2] for m in modes}.get(active, "")
         mdir = LATEST / sub if sub else LATEST
 
         tabs = ""
@@ -171,10 +169,11 @@ def build_app(password, secret):
                 f'href="/?mode={m[0]}">{m[1]}</a>' for m in modes) + "</div>"
 
         daily = [_card(sub, f, rid, t, d) for rid, f, t, d in REPORTS
-                 if (mdir / f).exists()]
+                 if modes and (mdir / f).exists()]
         detail = [_card(sub, f, "&bull;", t, d) for f, t, d in DETAIL_REPORTS
-                  if (mdir / f).exists()]
-        active_label = {m[0]: m[1] for m in modes}.get(active, active)
+                  if modes and (mdir / f).exists()]
+        active_label = ({m[0]: m[1] for m in modes}.get(active, active)
+                        if modes else "Print on Demand")
         # --- Instant Product Command Center: one keyword -> full workspace ---
         tools = (
             '<h2 class="grouph">⚡ Instant Product Command Center</h2>'
@@ -214,8 +213,8 @@ def build_app(password, secret):
             f'</b><span>Rising keywords in {active_label}</span></a>'
             f'<a class="toolcard" href="/opportunities?mode={active}"><b>💎 '
             'Opportunities</b><span>Low-competition sweet spots</span></a>'
-            '<a class="toolcard" href="/spy"><b>🕵️ Spy</b>'
-            '<span>Who wins + who dominates a niche</span></a>'
+            f'<a class="toolcard" href="/spy?mode={active}"><b>🕵️ Spy</b>'
+            '<span>Mode-aware: who wins + can we make it in this mode</span></a>'
             f'<a class="toolcard" href="/calendar?mode={active}"><b>📅 Seasonal calendar</b>'
             '<span>Upcoming holidays + launch-by dates + keywords</span></a>'
             '<a class="toolcard" href="/research"><b>🔬 Saved research</b>'
@@ -312,7 +311,7 @@ def build_app(password, secret):
                 results = ('<article class="md"><p class="empty">The live data '
                            f'source is unavailable right now: {_html.escape(str(exc)[:200])}'
                            '</p></article>')
-            except Exception as exc:  # noqa: BLE001
+            except (SystemExit, Exception) as exc:  # noqa: BLE001
                 results = ('<article class="md"><p class="empty">Could not '
                            f'analyze "{val}": {_html.escape(str(exc)[:200])}'
                            '</p></article>')
@@ -346,7 +345,7 @@ def build_app(password, secret):
             return page("Keyword Run", bar + '<article class="md"><p class="empty">'
                         f'Live data unavailable: {_html.escape(str(exc)[:200])}'
                         '</p></article>')
-        except Exception as exc:  # noqa: BLE001
+        except (SystemExit, Exception) as exc:  # noqa: BLE001
             return page("Keyword Run", bar + '<article class="md"><p class="empty">'
                         f'Could not build the workspace for "{_html.escape(q)}": '
                         f'{_html.escape(str(exc)[:200])}</p></article>')
@@ -366,7 +365,7 @@ def build_app(password, secret):
             folder = workspace.save_run(q, opts, ws)
             msg = (f'Saved to <code>{_html.escape(str(folder))}</code>. It will '
                    'sync/appear under Reports.')
-        except Exception as exc:  # noqa: BLE001
+        except (SystemExit, Exception) as exc:  # noqa: BLE001
             msg = f'Could not save: {_html.escape(str(exc)[:200])}'
         return page("Run saved",
                     f'<div class="rbar"><a class="back" href="{back}">&larr; Back '
@@ -387,7 +386,7 @@ def build_app(password, secret):
             try:
                 G = workspace.run_data(q, opts)
                 body = workspace.ROLE_REPORTS[role](G)
-            except Exception as exc:  # noqa: BLE001
+            except (SystemExit, Exception) as exc:  # noqa: BLE001
                 body = (f"<h1>{role.title()} report</h1><p>Could not build it: "
                         f"{_html.escape(str(exc)[:200])}</p>")
         title = _html.escape(f"{role.title()} report — {q}")
@@ -532,7 +531,7 @@ def build_app(password, secret):
             rows = autopull.pull_shops(mode=mode, limit=15)
             n = saved.auto_save_shops(rows)
             return redirect(url_for("shops", pulled=n, total=len(rows)))
-        except Exception as exc:  # noqa: BLE001
+        except (SystemExit, Exception) as exc:  # noqa: BLE001
             return _tool_error("Auto-pull shops", exc)
 
     @app.route("/listings")
@@ -661,7 +660,7 @@ def build_app(password, secret):
             rows = autopull.pull_listings(mode=mode, limit=20)
             n = saved.auto_save_listings(rows)
             return redirect(url_for("listings", pulled=n, total=len(rows)))
-        except Exception as exc:  # noqa: BLE001
+        except (SystemExit, Exception) as exc:  # noqa: BLE001
             return _tool_error("Auto-pull listings", exc)
 
     # ---- Supplier library: catalogs (open/sync) + CSV upload (ShineOn/Embroidery) ----
@@ -830,7 +829,7 @@ def build_app(password, secret):
         from src import interactive
         try:
             return _render_tool(f"{title}: {q}", fn(interactive, q))
-        except Exception as exc:  # noqa: BLE001
+        except (SystemExit, Exception) as exc:  # noqa: BLE001
             return _tool_error(title, exc)
 
     def _mode_tool(fn, title):
@@ -839,7 +838,7 @@ def build_app(password, secret):
         from src import interactive
         try:
             return _render_tool(title, fn(interactive, mode))
-        except Exception as exc:  # noqa: BLE001
+        except (SystemExit, Exception) as exc:  # noqa: BLE001
             return _tool_error(title, exc)
 
     @app.route("/should-sell")
@@ -870,13 +869,28 @@ def build_app(password, secret):
         from src import interactive
         try:
             return _render_tool("Seasonal calendar", interactive.calendar(mode))
-        except Exception as exc:  # noqa: BLE001
+        except (SystemExit, Exception) as exc:  # noqa: BLE001
             return _tool_error("Seasonal calendar", exc)
 
     @app.route("/spy")
     @login_required
     def spy():
-        return _kw_tool(lambda iv, q: iv.spy(q), "Spy")
+        import html as _html
+        raw = (request.args.get("q") or "").strip()[:80]
+        q = "".join(c for c in raw if c.isalnum() or c in " '&-.").strip()
+        m = (request.args.get("supplier_type") or request.args.get("mode") or "").lower()
+        mode = m if m in ("pod", "embroidery", "both") else None
+        if not q:
+            bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
+            return page("Spy", bar + '<article class="md"><h1>🕵️ Spy</h1>'
+                        '<p class="empty">Pick a <b>Product Mode</b> and type a keyword '
+                        'in the Command Center on the <a href="/">home page</a>, then '
+                        'click 🕵️ Spy — the mode is carried through.</p></article>')
+        from src import interactive
+        try:
+            return _render_tool(f"Spy: {q}", interactive.spy(q, mode))
+        except (SystemExit, Exception) as exc:  # noqa: BLE001
+            return _tool_error("Spy", exc)
 
     @app.route("/grade", methods=["GET", "POST"])
     @login_required
@@ -895,7 +909,7 @@ def build_app(password, secret):
                 rendered = md.markdown(out, extensions=["tables", "fenced_code",
                                                         "sane_lists"])
                 result_html = (f'<article class="md">{rendered}</article>' + COPY_JS)
-            except Exception as exc:  # noqa: BLE001
+            except (SystemExit, Exception) as exc:  # noqa: BLE001
                 result_html = ('<p class="empty">Could not grade: '
                                f'{_html.escape(str(exc)[:200])}</p>')
         form = (
@@ -967,6 +981,9 @@ def run_server(args):
         if args[i] == "--host" and i + 1 < len(args):
             host = args[i + 1]; i += 2; continue
         if args[i] == "--port" and i + 1 < len(args):
+            if not args[i + 1].isdigit():
+                print(f"--port must be a number, got '{args[i + 1]}'.")
+                sys.exit(2)
             port = int(args[i + 1]); i += 2; continue
         print(f"Unknown option: {args[i]}"); sys.exit(2)
 
