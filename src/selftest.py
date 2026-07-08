@@ -513,7 +513,13 @@ def run_selftest():
           and 'return _gather("ytrends_find_trending_keywords"' in _mcp_src
           and 'return _gather("ytrends_scout_opportunities"' in _mcp_src
           and "validation" in _mcp_src          # poison-row recovery kept
-          and "mcp.trending_keywords(limit=60)" in _iv_src_v263)
+          and "mcp.trending_keywords(limit=PULL)" in _iv_src_v263)
+    _ops_src = Path("src/ops.py").read_text(encoding="utf-8")
+    check("Deep pull (100) + display cap (50) + daily-run cache pre-warm",
+          "PULL = 100" in _iv_src_v263 and "SHOW = 50" in _iv_src_v263
+          and "def warm_cache(" in _iv_src_v263
+          and "warm_keyword_cache" in _ops_src
+          and callable(__import__("src.interactive", fromlist=["warm_cache"]).warm_cache))
 
     from src import crosscheck as _cc
     check("cross-check sources present (Google Trends + Pinterest + X)",

@@ -100,11 +100,19 @@ def daily_run():
         alerts.generate()          # re-scan state and raise/clear alerts
         return alerts.summary()
 
+    def _warm():
+        # Pre-fetch the paginated Trending/Opportunities/Gems surfaces into the
+        # per-day cache so the team's first dashboard load is instant, not a
+        # 10-page live pull. Mode-independent, so one pass covers every line.
+        from src import interactive
+        return interactive.warm_cache()
+
     step("harvest_keywords", _harvest)
     step("autopull_feeds", _autopull)
     step("track_snapshots", _track)
     step("learning_summary", _learn)
     step("refresh_alerts", _alerts)
+    step("warm_keyword_cache", _warm)
 
     out = Path("data/processed") / f"daily_summary_{date.today()}.json"
     out.write_text(json.dumps(summary, indent=2), encoding="utf-8")

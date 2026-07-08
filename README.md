@@ -1,6 +1,14 @@
-# Etsy Product Manager V26.3
+# Etsy Product Manager V26.4
 
-**New in V26.3 — 4–5× more keywords per page (root-cause fix).**
+**New in V26.4 — deeper lists + instant first load.**
+- **Deeper pull:** Trending/Opportunities now pull **100** and show up to **50**
+  launch-ready keywords (was 60/30), so clusters get even richer.
+- **Pre-warmed cache:** the daily run now pre-fetches these surfaces into the
+  per-day cache (`warm_keyword_cache` step), so the team's **first** dashboard load
+  of the day is instant instead of a multi-second live pull. Run `py main.py
+  daily-run` on the fetching machine (or let cron do it at 06:00).
+
+**V26.3 — 4–5× more keywords per page (root-cause fix).**
 The YTrends API hands data out ~10 rows at a time and **ignores a big `limit`** —
 so asking for 90 still returned 10, and after filtering junk you saw ~5. The tool
 now **paginates** these surfaces (walking `offset`, deduping, skipping the odd

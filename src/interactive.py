@@ -12,6 +12,13 @@ from src.trademark import check as tm_check
 MODE_LABEL = {"pod": "Print on Demand", "embroidery": "Embroidery",
               None: "All lines"}
 
+# How deep to pull the (server-paginated) keyword surfaces, and how many
+# launch-ready ideas to show/cluster per page. The raw pull is mode-independent
+# (mode filtering happens after fetch), so warm_cache() warms all three modes at
+# once. Deep pull + per-day cache: only the first load of the day pays for it.
+PULL = 100
+SHOW = 50
+
 
 def _f(v):
     try:
@@ -290,7 +297,7 @@ def should_sell(kw):
     return "\n".join(L)
 
 
-def _split_fit(rows, key, mode, want=30):
+def _split_fit(rows, key, mode, want=SHOW):
     """Classify rows by product-fit; return (launchable[:want], hidden)."""
     from src import product_fit as pf
     good, hidden = [], []
@@ -316,7 +323,7 @@ def _hidden_block(hidden, key, show_all):
 
 
 def trending(mode=None, show_all=False):
-    raw = [t for t in mcp.trending_keywords(limit=60)
+    raw = [t for t in mcp.trending_keywords(limit=PULL)
            if matches_mode((t.get("tag") or "").lower(), mode)]
     picks, hidden = _split_fit(raw, "tag", mode)
     L = [f"# Trending now — {MODE_LABEL.get(mode)}", "",
@@ -360,7 +367,7 @@ def _cluster_block(picks, key="tag"):
 
 
 def opportunities(mode=None, show_all=False):
-    raw = [r for r in mcp.scout_opportunities(limit=60)
+    raw = [r for r in mcp.scout_opportunities(limit=PULL)
            if matches_mode((r.get("tag") or "").lower(), mode)]
     picks, hidden = _split_fit(raw, "tag", mode)
     L = [f"# Opportunities — {MODE_LABEL.get(mode)}", "",
@@ -381,6 +388,22 @@ def opportunities(mode=None, show_all=False):
     if not picks:
         L.append("_No launch-ready opportunities for this line right now._")
     return "\n".join(L + _hidden_block(hidden, "tag", show_all))
+
+
+def warm_cache():
+    """Pre-fetch the heavy paginated surfaces so the first web load of the day is
+    instant. The raw pull is mode-independent, so one pass warms pod/embroidery/all.
+    Each page is cached per day; a blocked/slow MCP just no-ops (never raises).
+    Called from the daily run — safe to call anytime on the fetching machine."""
+    warmed = {}
+    for name, fn in (("trending", lambda: mcp.trending_keywords(limit=PULL)),
+                     ("opportunities", lambda: mcp.scout_opportunities(limit=PULL)),
+                     ("hidden_gems", lambda: mcp.hidden_gems(limit=PULL))):
+        try:
+            warmed[name] = len(fn())
+        except (SystemExit, Exception):  # noqa: BLE001 - warming must never break the run
+            warmed[name] = 0
+    return "warmed " + ", ".join(f"{k}={v}" for k, v in warmed.items())
 
 
 def calendar(mode=None, days=180):

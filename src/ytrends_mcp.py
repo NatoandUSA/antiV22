@@ -166,8 +166,13 @@ def _ensure_session():
                                              url=MCP_URL))
 
 
-def call(tool, cache=True, response_format="concise", **arguments):
-    """Call an MCP tool, return the parsed payload dict. Cached per day."""
+def call(tool, cache=True, response_format="concise", skip_bad=False, **arguments):
+    """Call an MCP tool, return the parsed payload dict. Cached per day.
+
+    skip_bad=True: when a page fails the server's OWN output validation (a poison
+    row, e.g. tier=0), cache an EMPTY payload under the same key and return it
+    instead of raising. That makes the failure cacheable, so a pre-warmed page
+    load is a cache hit next time rather than a repeated live re-fetch+re-fail."""
     if response_format and "response_format" not in arguments:
         arguments["response_format"] = response_format
     today = str(date.today())
@@ -178,17 +183,29 @@ def call(tool, cache=True, response_format="concise", **arguments):
         if hit is not None:
             return json.loads(hit)
 
+    def _bad(msg):
+        if skip_bad and "validation" in msg.lower():
+            if cache:
+                cache_put(key, today, json.dumps({}))
+            return True
+        return False
+
     _ensure_session()
     resp = _post("tools/call", {"name": tool, "arguments": arguments})
     parsed = _parse(resp)
     result = (parsed or {}).get("result") or {}
 
     if parsed and parsed.get("error"):
-        raise YTrendsMCPError(f"{tool}: {json.dumps(parsed['error'])[:300]}")
+        msg = json.dumps(parsed["error"])
+        if _bad(msg):
+            return {}
+        raise YTrendsMCPError(f"{tool}: {msg[:300]}")
 
     content = result.get("content") or []
     text = content[0].get("text", "") if content else ""
     if result.get("isError"):
+        if _bad(text):
+            return {}
         raise YTrendsMCPError(f"{tool}: {text[:300]}")
 
     try:
@@ -255,23 +272,22 @@ def _gather(tool, key, limit, step=10, **args):
     free. Mirrors the pagination already used by browse_new_listings.
 
     Robustness: some pages contain a record that fails the server's OWN output
-    schema (e.g. a tier=0 row) -> the whole page errors. Because the bad row can
-    be at the *start* of a page, trimming the limit can't drop it, so we step the
-    offset forward past it and carry on instead of aborting the whole gather."""
+    schema (e.g. a tier=0 row) -> the whole page errors. We walk FIXED offsets and
+    use skip_bad so a poison page is cached as empty and skipped (losing ~10 rows
+    of that band, but keeping the walk deterministic + fully cacheable — vital so
+    a pre-warmed page loads from cache instead of re-fetching). A few extra pages
+    compensate for skipped bands; several empties in a row = real end-of-data."""
     out, seen = [], set()
-    offset, guard = 0, 0
-    while len(out) < limit and guard < 24:
-        guard += 1
-        try:
-            rows = _rows(call(tool, limit=step, offset=offset, **args), key)
-        except YTrendsMCPError as exc:
-            if "validation" in str(exc).lower():
-                offset += 2          # skip past the poison row, keep gathering
-                continue
-            raise
+    max_pages = (limit + step - 1) // step + 4
+    empties = 0
+    for i in range(max_pages):
+        rows = _rows(call(tool, limit=step, offset=i * step, skip_bad=True, **args), key)
         if not rows:
-            break
-        new = 0
+            empties += 1
+            if empties >= 3:           # 3 blank pages running = end of data
+                break
+            continue
+        empties = 0
         for r in rows:
             tg = (r.get("tag") or "").strip().lower()
             if tg and tg in seen:
@@ -279,9 +295,7 @@ def _gather(tool, key, limit, step=10, **args):
             if tg:
                 seen.add(tg)
             out.append(r)
-            new += 1
-        offset += step
-        if new == 0:
+        if len(out) >= limit:
             break
     return out[:limit]
 
