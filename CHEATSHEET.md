@@ -43,8 +43,13 @@ auto-published — publishing stays a manual human decision.
 
 ## 🖥️ On the VPS — the few admin commands (run rarely)
 
-SSH in, then `cd ~/etsy-agent`. The daily data refresh already runs itself at
-6 AM, so you'll rarely need these.
+**Connect to the server** (from PowerShell on your PC), then go to the project:
+```bash
+ssh -p 55317 etsy@51.79.200.65
+cd ~/etsy-agent
+```
+Enter your password when asked (it won't show as you type — that's normal). The
+daily data refresh already runs itself at 6 AM, so you'll rarely need the rest.
 
 | Command | Where | What it does |
 |---|---|---|
