@@ -239,6 +239,8 @@ def build_app(password, secret):
             '<span>Paste a title + 13 tags + description → 0–100 + fixes</span></a>'
             '<a class="toolcard" href="/feedback"><b>📉 Sales feedback</b>'
             '<span>Post-launch: keep / change / kill / scale</span></a>'
+            '<a class="toolcard" href="/workflow"><b>📋 Workflow</b>'
+            '<span>How the team works: find → collect → ship</span></a>'
             '<a class="toolcard" href="/cheatsheet"><b>📖 Cheat Sheet</b>'
             '<span>Every command + workflow, in plain English</span></a>'
             '</div>')
@@ -993,6 +995,19 @@ def build_app(password, secret):
         bar = ('<div class="rbar"><a class="back" href="/">&larr; All '
                'reports</a></div>')
         return page("Cheat Sheet",
+                    bar + f'<article class="md">{html}</article>' + COPY_JS)
+
+    # ---- team workflow guide (served from the repo's WORKFLOW.md) ----
+    @app.route("/workflow")
+    @login_required
+    def workflow():
+        p = ROOT / "WORKFLOW.md"
+        if not p.is_file():
+            abort(404)
+        html = md.markdown(p.read_text(encoding="utf-8"),
+                           extensions=["tables", "fenced_code", "sane_lists"])
+        bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
+        return page("Team Workflow",
                     bar + f'<article class="md">{html}</article>' + COPY_JS)
 
     return app
