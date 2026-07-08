@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Market tracker (niche -> array of dated snapshots)",
+  "type": "object",
+  "additionalProperties": {
+    "type": "array",
+    "items": {
+      "type": "object",
+      "required": ["date", "niche"],
+      "properties": {
+        "date": {"type": "string"},
+        "niche": {"type": "string"},
+        "product_mode": {"type": "string"},
+        "demand_24h": {"type": ["integer", "number"]},
+        "listings": {"type": ["integer", "number"]},
+        "sellers": {"type": ["integer", "number"]},
+        "avg_price": {"type": "number"},
+        "opportunity": {"type": ["integer", "number", "string"]},
+        "competition": {"type": "string"},
+        "status": {"type": "string"},
+        "next_action": {"type": "string"}
+      }
+    }
+  }
+}

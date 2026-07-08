@@ -272,10 +272,29 @@ def build_tags(kw, related, opts, mode):
 
 # --------------------------- publish-ready QA gate -------------------------
 
+# The manual checks a MANAGER must confirm (the tool cannot verify these itself).
+# PUBLISH_READY can only become true when every one is explicitly confirmed — so
+# the tool never declares a listing publish-ready on its own. HIGH trademark is a
+# HARD block that no confirmation can clear.
+MANAGER_CHECKS = [
+    ("supplier", "supplier confirmed (product URL + base/shipping cost + material)"),
+    ("competitor_audit", "competitor audit complete"),
+    ("material", "material / size / processing time verified"),
+    ("image", "image / mockup checklist complete"),
+    ("trademark", "trademark verified or manager-approved"),
+]
+
+
 def publish_gate(kw, tags, supplier_ok, risk, data_flags, verdict_cls,
-                 lr=0, fib=0, offer=0):
-    """Strict gate. Returns (ready, failed_checks[])."""
+                 lr=0, fib=0, offer=0, confirms=None):
+    """Strict gate. Returns (ready, failed_checks[]).
+
+    `confirms` is a dict of manager sign-offs (supplier/competitor_audit/material/
+    image/trademark). PUBLISH_READY is true only when all automated checks pass AND
+    every manual item is manager-confirmed. Never auto-publishes."""
+    confirms = confirms or {}
     failed = []
+    # ---- automated checks ----
     if lr < 85:
         failed.append(f"launch readiness {lr}/100 (need ≥ 85)")
     if fib and fib < 75:
@@ -291,17 +310,22 @@ def publish_gate(kw, tags, supplier_ok, risk, data_flags, verdict_cls,
         failed.append(f"{13 - len(clean_safe)} tag(s) need typo/trademark review")
     if any(t["status"].startswith("BLOCKED") for t in tags):
         failed.append("a tag has HIGH trademark risk")
-    if risk in ("HIGH", "CAUTION"):
-        failed.append("primary keyword trademark not verified/approved")
-    if not supplier_ok:
-        failed.append("supplier + product URL + costs not confirmed "
-                      "(NEED_SUPPLIER_DETAILS)")
     if data_flags:
         failed.append("DATA_CHECK_REQUIRED on source data")
-    # always-manual gates for a brand-new draft
-    failed += ["competitor audit manual fields incomplete",
-               "material / size / processing time not verified",
-               "image / mockup checklist not complete"]
+    # ---- trademark: HIGH is a HARD block; CAUTION needs manager approval ----
+    if risk == "HIGH":
+        failed.append("primary keyword is a known trademark/brand — cannot publish")
+    elif risk == "CAUTION" and not confirms.get("trademark"):
+        failed.append("primary keyword trademark not verified/approved (manager)")
+    # ---- manual manager sign-offs ----
+    if not (supplier_ok or confirms.get("supplier")):
+        failed.append("supplier + product URL + costs not confirmed (manager)")
+    if not confirms.get("competitor_audit"):
+        failed.append("competitor audit not confirmed complete (manager)")
+    if not confirms.get("material"):
+        failed.append("material / size / processing time not verified (manager)")
+    if not confirms.get("image"):
+        failed.append("image / mockup checklist not confirmed complete (manager)")
     return (len(failed) == 0), failed
 
 
@@ -405,19 +429,22 @@ def can_we_win(kw, comp, listings, opts, mode, supplier_ok):
     return overall, scores
 
 
-def launch_readiness(supplier_ok, tags, risk, L, opts):
-    """0-100 + status + blocking reasons. Gates PUBLISH_READY (needs >= 85)."""
+def launch_readiness(supplier_ok, tags, risk, L, opts, confirms=None):
+    """0-100 + status + blocking reasons. Gates PUBLISH_READY (needs >= 85). The
+    manual steps (photo/mockup, shipping, production partner) are cleared only by
+    explicit manager sign-off (confirms), so readiness reflects real confirmation."""
+    confirms = confirms or {}
     checks = {
         "Supplier confirmed": supplier_ok,
         "Profit target met": bool(L.get("rec_price")),
         "13 clean tags": sum(1 for t in tags if t["publish_safe"]) == 13,
-        "Photo / mockup ready": False,        # always a manual step
+        "Photo / mockup ready": bool(confirms.get("image")),
         "Competitor advantage ready": True,   # the tool produces the beat plan
-        "Trademark verified": risk == "OK",
+        "Trademark verified": risk == "OK" or bool(confirms.get("trademark")),
         "Description ready": True,
         "Personalization ready": True,
-        "Shipping clarity ready": False,      # manual
-        "Production partner confirmed": False,  # manual
+        "Shipping clarity ready": bool(confirms.get("material")),
+        "Production partner confirmed": bool(confirms.get("supplier")),
     }
     score = _clamp(sum(bool(v) for v in checks.values()) / len(checks) * 100)
     reasons = [k for k, v in checks.items() if not v]
@@ -806,7 +833,11 @@ def _gather(kw, opts=None):
     tags = build_tags(kw, related, opts, mode)
     conv = _f(stats.get("avg_conversion_rate"))
     L = _listing_data(kw, opts, stats, related, mode, tags)
-    supplier_ok = False   # fresh run: supplier needs manual confirmation
+    # Manager sign-offs (checkboxes on the workspace form). PUBLISH_READY can only
+    # become true when the manager explicitly confirms these; default = unconfirmed.
+    confirms = {k: bool(opts.get("confirm_" + k)) for k in
+                ("supplier", "competitor_audit", "material", "image", "trademark")}
+    supplier_ok = confirms["supplier"]   # supplier is confirmed only by the manager
     cww_score, cww_scores = can_we_win(kw, comp, listings, opts, mode, supplier_ok)
     try:
         from src import learning
@@ -815,13 +846,19 @@ def _gather(kw, opts=None):
         cww_score = _clamp(cww_score + learn_delta)
     except Exception:  # noqa: BLE001 - private learning must never break a run
         learn_notes, learn_delta = [], 0
-    lr_score, lr_status, lr_reasons = launch_readiness(supplier_ok, tags, risk, L, opts)
+    private_learning = {
+        "private_learning_boost": max(0, learn_delta),
+        "private_learning_warning": min(0, learn_delta),
+        "private_learning_reason": "; ".join(learn_notes),
+        "notes": learn_notes,
+    }
+    lr_score, lr_status, lr_reasons = launch_readiness(supplier_ok, tags, risk, L, opts, confirms)
     fib_score, fib_pattern, fib_plan = first_image_battle(listings)
     offer_html, offer_score, offer_factors = offer_builder(kw, opts, mode)
     vd = strict_verdict(kw, scores, comp, risk, data_flags, cww_score, lr_score,
                         fib_score, offer_score)
     ready, failed = publish_gate(kw, tags, supplier_ok, risk, data_flags,
-                                 vd["cls"], lr_score, fib_score, offer_score)
+                                 vd["cls"], lr_score, fib_score, offer_score, confirms)
     pod_prompt, emb_prompt, design_risks = design_prompts(kw, opts, mode)
     fc = sales_forecast(stats, L["rec_price"] or L["price_mid"], L["cost_total"],
                         conv, data_flags)
@@ -838,7 +875,8 @@ def _gather(kw, opts=None):
         lr_status=lr_status, lr_reasons=lr_reasons, fib_score=fib_score,
         fib_pattern=fib_pattern, fib_plan=fib_plan, offer_html=offer_html,
         offer_score=offer_score, offer_factors=offer_factors, supplier_ok=supplier_ok,
-        learn_notes=learn_notes,
+        learn_notes=learn_notes, confirms=confirms,
+        private_learning=private_learning,
         suggestions=suggest_fields(kw, stats, related, mode, req_mode))
 
 
@@ -859,6 +897,7 @@ def build_workspace(kw, opts=None):
     lr_score, lr_status, lr_reasons = G["lr_score"], G["lr_status"], G["lr_reasons"]
     fib_score, fib_pattern, fib_plan = G["fib_score"], G["fib_pattern"], G["fib_plan"]
     offer_score = G["offer_score"]
+    confirms = G["confirms"]
 
     def sec(anchor, icon, title, inner):
         return (f'<section class="ws" id="{anchor}"><h2>{icon} {title}</h2>'
@@ -952,11 +991,35 @@ def build_workspace(kw, opts=None):
     # listing builder + publish gate
     save_label = "Publish-ready ✅" if ready else "DRAFT ONLY — DO NOT PUBLISH"
     gate_rows = "".join(f"<li>{_esc(x)}</li>" for x in failed)
+    def _ck(name, label):
+        on = " checked" if confirms.get(name) else ""
+        return (f'<label class="ckrow"><input type="checkbox" name="confirm_{name}" '
+                f'value="1"{on}> {label}</label>')
+    mgr_hidden = (f'<input type="hidden" name="q" value="{_esc(kw)}">'
+                  f'<input type="hidden" name="supplier_type" value="{req_mode}">'
+                  + "".join(f'<input type="hidden" name="{f}" value="{_esc(opts.get(f,""))}">'
+                            for f in ("niche", "target_customer", "occasion", "style",
+                                      "personalization", "product_type")))
+    mgr_form = (
+        '<details class="mgrsignoff"' + (" open" if not ready else "") + '>'
+        '<summary>🔑 Manager sign-off — required before PUBLISH_READY</summary>'
+        '<form method="get" action="/run">' + mgr_hidden
+        + _ck("supplier", "Supplier confirmed (product URL + base/shipping cost + material)")
+        + _ck("competitor_audit", "Competitor audit complete")
+        + _ck("material", "Material / size / processing time verified")
+        + _ck("image", "Image / mockup checklist complete")
+        + _ck("trademark", "Trademark verified or approved "
+              "(a known brand = HIGH can NEVER be cleared)")
+        + '<button class="primary" type="submit">Apply manager sign-off →</button>'
+        '<p class="note">This never publishes. It only recomputes PUBLISH_READY '
+        'after a manager confirms each item — publishing stays a manual action you '
+        'do yourself on Etsy.</p></form></details>')
     listing_html = (
         f'<div class="gate {"g-ok" if ready else "g-no"}">PUBLISH_READY: '
         f'{"true" if ready else "false"} — {save_label}</div>'
         + ("" if ready else '<div class="lbrow"><b>FAILED_PUBLISH_CHECKS</b></div>'
            f'<ul class="check">{gate_rows}</ul>')
+        + mgr_form
         + '<div class="lbrow"><b>SEO title</b>' + _copy_btn("ws-title") + '</div>'
         f'<div class="lbval" id="ws-title">{_esc(L["title"])}</div>'
         + '<div class="lbrow"><b>13 tags (type + status)</b></div>' + _tag_html(tags)
@@ -1153,6 +1216,8 @@ def build_workspace(kw, opts=None):
         "gate_scores": {"can_we_win": cww_score, "launch_readiness": lr_score,
                         "first_image": fib_score, "offer_strength": offer_score,
                         "launch_status": lr_status},
+        "manager_confirms": confirms,
+        "private_learning": G["private_learning"],
         "tags": tags, "listing": {"title": L["title"], "desc": L["desc"],
                                   "supplier": L["supplier"], "cost": L["cost_total"],
                                   "rec_price": L["rec_price"]},

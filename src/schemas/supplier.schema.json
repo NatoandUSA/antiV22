@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Supplier product row (normalized)",
+  "type": "object",
+  "required": ["supplier_id", "product_name", "production_mode", "supplier_status"],
+  "properties": {
+    "supplier_id": {"type": "string"},
+    "supplier_name": {"type": "string"},
+    "product_name": {"type": "string"},
+    "production_mode": {"type": "string"},
+    "product_url": {"type": "string"},
+    "base_cost": {"type": ["string", "number"]},
+    "shipping_cost": {"type": ["string", "number"]},
+    "material": {"type": "string"},
+    "processing_time_min": {"type": ["string", "number"]},
+    "supplier_status": {
+      "type": "string",
+      "enum": ["SUPPLIER_CONFIRMED", "SUPPLIER_PARTIAL", "NEED_SUPPLIER_DETAILS",
+               "CATALOG_URL_ONLY", "PRODUCT_NOT_SUPPORTED"]
+    }
+  },
+  "allOf": [{
+    "if": {"properties": {"supplier_status": {"const": "SUPPLIER_CONFIRMED"}}},
+    "then": {"required": ["product_url", "base_cost", "material"]}
+  }]
+}

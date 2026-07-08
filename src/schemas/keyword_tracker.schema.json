@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Keyword tracker (keyword -> array of dated snapshots)",
+  "type": "object",
+  "additionalProperties": {
+    "type": "array",
+    "items": {
+      "type": "object",
+      "required": ["date", "keyword"],
+      "properties": {
+        "date": {"type": "string"},
+        "keyword": {"type": "string"},
+        "product_mode": {"type": "string"},
+        "demand_24h": {"type": ["integer", "number"]},
+        "conversion": {"type": "number"},
+        "listings": {"type": ["integer", "number"]},
+        "sellers": {"type": ["integer", "number"]},
+        "avg_price": {"type": "number"},
+        "source": {"type": "string"},
+        "source_confidence": {"type": "string"}
+      }
+    }
+  }
+}

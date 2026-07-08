@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Saved workspace run",
+  "type": "object",
+  "required": ["keyword", "product_mode", "verdict", "publish_ready", "gate_scores"],
+  "properties": {
+    "keyword": {"type": "string"},
+    "product_mode": {"type": "string", "enum": ["pod", "embroidery", "both"]},
+    "verdict": {"type": "object"},
+    "publish_ready": {"type": "boolean"},
+    "failed_publish_checks": {"type": "array", "items": {"type": "string"}},
+    "gate_scores": {
+      "type": "object",
+      "properties": {
+        "can_we_win": {"type": "number"},
+        "launch_readiness": {"type": "number"},
+        "first_image": {"type": "number"},
+        "offer_strength": {"type": "number"}
+      }
+    },
+    "tags": {"type": "array"},
+    "supplier_check": {"type": "object"},
+    "sales_forecast": {"type": "object"}
+  },
+  "if": {"properties": {"publish_ready": {"const": true}}},
+  "then": {"properties": {"failed_publish_checks": {"maxItems": 0}}}
+}

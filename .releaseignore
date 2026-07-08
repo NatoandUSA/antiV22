@@ -1,0 +1,25 @@
+# Files/dirs excluded from the delivery package (py main.py package release).
+# .env is ALSO hardcoded-excluded in src/packaging.py so it can never leak.
+.env
+.env.*
+!.env.example
+.git/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.venv/
+logs/
+dist/
+reports/
+data/raw/
+data/processed/
+reports/runs/*/archive_debug_reports/
+*.pyc
+*.log
+*.pem
+*.har
+*.zip
+.DS_Store
+Thumbs.db
+.cloudflared/
+deploy/*.json

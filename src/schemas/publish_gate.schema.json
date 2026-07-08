@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Publish gate result",
+  "description": "Safety invariant: when publish_ready is true, failed_checks MUST be empty.",
+  "type": "object",
+  "required": ["publish_ready", "failed_checks"],
+  "properties": {
+    "publish_ready": {"type": "boolean"},
+    "failed_checks": {"type": "array", "items": {"type": "string"}}
+  },
+  "if": {"properties": {"publish_ready": {"const": true}}},
+  "then": {"properties": {"failed_checks": {"maxItems": 0}}}
+}

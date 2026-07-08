@@ -115,12 +115,19 @@ def generate():
             has7 = str(r.get("day_7_views") or "").strip() not in ("", "None")
             has3 = str(r.get("day_3_views") or "").strip() not in ("", "None")
             title = (r.get("title") or r.get("keyword") or r.get("listing_url") or "listing")[:40]
+            # Day-3 reminder: only while 3-6 days old and not yet logged; clear it
+            # once Day-3 is logged OR the listing has aged into the Day-7 window.
+            if age is not None and 3 <= age < 7 and not has3:
+                add("needs_day3", f"'{title}' is {age}d live — log Day-3 numbers.",
+                    "info", f"fb3-{ref}", "auto")
+            else:
+                resolve_ref(f"fb3-{ref}")
+            # Day-7 reminder: while 7+ days old and not yet logged; clear once logged.
             if age is not None and age >= 7 and not has7:
                 add("needs_day7", f"'{title}' is {age}d live — log Day-7 numbers.",
                     "info", f"fb7-{ref}", "auto")
-            elif age is not None and 3 <= age < 7 and not has3:
-                add("needs_day3", f"'{title}' is {age}d live — log Day-3 numbers.",
-                    "info", f"fb3-{ref}", "auto")
+            else:
+                resolve_ref(f"fb7-{ref}")
             dec = r.get("decision") or r.get("day7_action")
             if dec == "KILL_LISTING":
                 add("should_kill", f"'{title}' → KILL_LISTING per feedback.",
@@ -149,6 +156,19 @@ def resolve_kind(kind):
     changed = False
     for r in rows:
         if r.get("kind") == kind and not r.get("resolved"):
+            r["resolved"] = True
+            r["updated_at"] = str(date.today())
+            changed = True
+    if changed:
+        _save(rows)
+
+
+def resolve_ref(ref):
+    """Auto-resolve any open alert with this ref (its condition cleared)."""
+    rows = _load_raw()
+    changed = False
+    for r in rows:
+        if r.get("ref") == ref and not r.get("resolved"):
             r["resolved"] = True
             r["updated_at"] = str(date.today())
             changed = True

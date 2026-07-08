@@ -1,6 +1,26 @@
-# Etsy Product Manager V24.1
+# Etsy Product Manager V24.2
 
-**New in V24.1 — Spy becomes a Competitor Reverse Engine + a sticky Home button.**
+**New in V24.2 — publish gate rebuilt with manager sign-off + release packaging +
+schema validation + audit hardening.**
+
+- **Manager sign-off closes the publish gate (safely).** Before, `PUBLISH_READY`
+  could never become true (manual checks were hardcoded), so the team always saw
+  "DRAFT ONLY". Now a **manager ticks each item** (supplier · competitor audit ·
+  material/size/processing · image/mockup · trademark) on the workspace, and only
+  then can `PUBLISH_READY` become true. The tool still **never publishes**, and a
+  **known-brand trademark can never be cleared** by any confirmation.
+- **`py main.py package release`** → a clean delivery zip (`.releaseignore` + a
+  hardcoded safety net). **`.env`, `.git`, caches, logs, `*.pem` are never
+  included**; only `.env.example` ships.
+- **`py main.py validate data|run|suppliers|feedback`** + `src/schemas/*.json` —
+  catches invalid JSON, missing headers, <13 tags, a CONFIRMED supplier missing
+  cost/URL, and the PUBLISH_READY-with-failed-checks safety violation.
+- **Bugs fixed:** alerts now auto-resolve (no stale Day-3/7 pile-up), market
+  `opportunity` is now computed, `alerts` CLI is crash-safe.
+- **66 tests** (new publish-gate + route suites) + internal Claude maintenance
+  skills (`.claude/skills/`). See `AUDIT_REPORT.md`.
+
+**V24.1 — Spy becomes a Competitor Reverse Engine + a sticky Home button.**
 
 - **🕵️ Spy + Reverse Engine** — Spy now *decodes each top competitor's playbook*:
   their keyword/tag strategy, price positioning (premium/mid/budget vs the niche

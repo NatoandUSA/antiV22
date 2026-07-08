@@ -350,7 +350,10 @@ def build_app(password, secret):
 
     # ---- KEYWORD RUN WORKSPACE: one keyword -> the whole opportunity ----
     _OPT_FIELDS = ("product_type", "niche", "target_customer", "occasion",
-                   "style", "personalization", "supplier_type")
+                   "style", "personalization", "supplier_type",
+                   # manager sign-off checkboxes (drive PUBLISH_READY)
+                   "confirm_supplier", "confirm_competitor_audit", "confirm_material",
+                   "confirm_image", "confirm_trademark")
 
     def _run_inputs():
         raw = (request.args.get("q") or "").strip()[:80]

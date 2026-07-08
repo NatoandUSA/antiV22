@@ -383,8 +383,8 @@ def cmd_alerts(cmd, args):
     alerts.generate()
     rows = alerts.load()
     print(f"ALERTS ({len(rows)} open)")
-    for r in sorted(rows, key=lambda x: {"critical": 0, "warn": 1}.get(x["level"], 2)):
-        print(f"  [{r['level'].upper():8}] {r['message']}")
+    for r in sorted(rows, key=lambda x: {"critical": 0, "warn": 1}.get(x.get("level"), 2)):
+        print(f"  [{(r.get('level') or 'info').upper():8}] {r.get('message', '')}")
     if not rows:
         print("  none — nothing needs attention.")
 
@@ -416,6 +416,25 @@ def cmd_launchpad(cmd, args):
     for col, n in lp.summary().items():
         if n:
             print(f"  {col:<20} {n}")
+
+
+def cmd_package(cmd, args):
+    """py main.py package release -> a clean delivery zip (no secrets/cache/git)."""
+    sub = (args[0].lower() if args else "release")
+    if sub != "release":
+        _usage_exit('Usage: python main.py package release')
+    from src import packaging
+    from src.version import VERSION
+    packaging.package_release(VERSION)
+
+
+def cmd_validate(cmd, args):
+    """py main.py validate data|run|suppliers|feedback -> schema/data checks."""
+    from src import data_validate
+    target = (args[0].lower() if args else "data")
+    kv, _ = _flags(args[1:] if args else [])
+    ok = data_validate.run(target, path=kv.get("path"))
+    sys.exit(0 if ok else 1)
 
 
 def cmd_daily_run(cmd, args):
@@ -520,6 +539,8 @@ COMMANDS = {
     "track": cmd_track,
     "profit": cmd_profit,
     "launchpad": cmd_launchpad,
+    "package": cmd_package,
+    "validate": cmd_validate,
 }
 
 # Commands that reach the live YTrends/Printify APIs. For YTrends-backed ones

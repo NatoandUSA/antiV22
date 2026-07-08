@@ -805,6 +805,35 @@ def run_selftest():
           "track_snapshots" in _ops_src and "refresh_alerts" in _ops_src
           and "alerts.generate()" in _ops_src)
 
+    # ---- V24.2: manager sign-off gate, release packaging, schema validation ----
+    _FULL = {"supplier": True, "competitor_audit": True, "material": True,
+             "image": True, "trademark": True}
+    _tg = [{"tag": f"t{i}", "publish_safe": True, "status": "OK"} for i in range(13)]
+    check("Manager sign-off gate: PUBLISH_READY reachable only via confirms; HIGH TM hard-blocks",
+          _ws.publish_gate("k", _tg, False, "OK", [], "design", lr=70, fib=80, offer=75, confirms={})[0] is False
+          and _ws.publish_gate("k", _tg, True, "OK", [], "design", lr=100, fib=80, offer=75, confirms=_FULL)[0] is True
+          and _ws.publish_gate("k", _tg, True, "HIGH", [], "design", lr=100, fib=80, offer=75, confirms=_FULL)[0] is False
+          and _ws.launch_readiness(True, _tg, "OK", {"rec_price": 20}, {}, confirms=_FULL)[0] >= 85
+          and "confirm_supplier" in _web_src)
+    from src import packaging as _pk, data_validate as _dv
+    check("Release packaging + data validation commands wired",
+          callable(getattr(_pk, "package_release", None))
+          and ".env" in _pk.ALWAYS_EXCLUDE_FILES
+          and Path(".releaseignore").exists()
+          and callable(getattr(_dv, "run", None))
+          and all(c in _main_src2 for c in ('"package"', '"validate"')))
+    _alsrc = Path("src/alerts.py").read_text(encoding="utf-8")
+    check("JSON schemas present + alerts reminders auto-resolve",
+          all((Path("src/schemas") / f"{n}.schema.json").exists() for n in (
+              "feedback", "supplier", "publish_gate", "keyword_tracker",
+              "market_tracker", "profit_center", "alerts", "workspace"))
+          and callable(getattr(_al, "resolve_ref", None))
+          and 'resolve_ref(f"fb3-' in _alsrc and 'resolve_ref(f"fb7-' in _alsrc)
+    check("Internal Claude skills present (audit / publish-gate / test-runner / ...)",
+          all(Path(f".claude/skills/{s}/SKILL.md").exists() for s in (
+              "system-audit", "publish-gate", "test-runner", "supplier-audit",
+              "feedback-learning", "dashboard-cleanup", "market-gap")))
+
     print("\nSELF-TEST RESULTS")
     for name, cond in results:
         print(f"  {'PASS' if cond else 'FAIL'}  {name}")

@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Listing feedback record",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["id", "created_at"],
+    "properties": {
+      "id": {"type": "integer"},
+      "record_id": {"type": "string"},
+      "run_id": {"type": "string"},
+      "listing_url": {"type": "string"},
+      "keyword": {"type": "string"},
+      "product_mode": {"type": "string"},
+      "supplier": {"type": "string"},
+      "price": {"type": ["string", "number"]},
+      "day_1_impressions": {"type": ["string", "number"]},
+      "day_3_views": {"type": ["string", "number"]},
+      "day_7_views": {"type": ["string", "number"]},
+      "favorites": {"type": ["string", "number"]},
+      "carts": {"type": ["string", "number"]},
+      "orders": {"type": ["string", "number"]},
+      "decision": {
+        "type": "string",
+        "enum": ["NEW", "KEEP", "NEEDS_MORE_DATA", "CHANGE_MAIN_PHOTO",
+                 "CHANGE_TITLE", "CHANGE_TAGS", "RAISE_PRICE", "LOWER_PRICE",
+                 "MAKE_VARIANTS", "KILL_LISTING", "SCALE_PRODUCT_LINE"]
+      },
+      "created_at": {"type": "string"},
+      "updated_at": {"type": "string"}
+    }
+  }
+}

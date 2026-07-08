@@ -124,7 +124,8 @@ def snapshot_market(niche, mode=""):
     if not niche:
         return None
     demand = listings = sellers = 0
-    avg_price = opportunity = competition = 0
+    avg_price = 0
+    opportunity, competition = 0, ""
     try:
         from src import ytrends_mcp as mcp
         rk = mcp.research_keyword(niche)
@@ -137,6 +138,11 @@ def snapshot_market(niche, mode=""):
         competition = comp.get("saturation", "")
     except Exception:  # noqa: BLE001
         pass
+    # Opportunity 0-100: demand per listing, damped by saturation. Higher demand
+    # against fewer listings = more room for a new listing.
+    opportunity = round(min(100, (demand / max(listings, 1)) * 20))
+    opportunity = max(0, opportunity + {"low": 10, "medium": 0, "high": -10}
+                      .get((competition or "").lower(), 0))
     snap = {"date": str(date.today()), "niche": niche, "product_mode": mode,
             "demand_24h": demand, "listings": listings, "sellers": sellers,
             "avg_price": avg_price, "opportunity": opportunity,
