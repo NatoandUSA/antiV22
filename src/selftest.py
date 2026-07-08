@@ -533,6 +533,19 @@ def run_selftest():
           and "agent.db.tmp" in _push_cmds and "mv -f" in _push_cmds
           and "app.db" not in _push_cmds)   # never sync the team logins/tasks db
 
+    # ---- V26.6: --fresh refresh + interval cron (warm) + scheduled laptop sync ----
+    import inspect as _inspect
+    from src import interactive as _iv, ops as _ops2
+    check("warm --fresh forces a live refresh (bypasses the day cache)",
+          "fresh" in _inspect.signature(_iv.warm_cache).parameters
+          and "refresh" in _inspect.signature(_mcp.trending_keywords).parameters)
+    _wl = _ops2.cron_line(every_hours=6, command="warm")
+    check("Cron supports every-N-hours + warm command (VPS auto-refresh)",
+          _wl.startswith("0 */6 * * *") and "main.py warm --fresh" in _wl)
+    check("Laptop auto-run scripts present (warm-sync + Task Scheduler helper)",
+          Path("deploy/warm-sync.ps1").exists()
+          and Path("deploy/schedule-warm.ps1").exists())
+
     from src import crosscheck as _cc
     check("cross-check sources present (Google Trends + Pinterest + X)",
           set(_cc.status()) == {"Google Trends", "Pinterest", "X / Twitter"}

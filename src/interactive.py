@@ -390,20 +390,24 @@ def opportunities(mode=None, show_all=False):
     return "\n".join(L + _hidden_block(hidden, "tag", show_all))
 
 
-def warm_cache():
+def warm_cache(fresh=False):
     """Pre-fetch the heavy paginated surfaces so the first web load of the day is
     instant. The raw pull is mode-independent, so one pass warms pod/embroidery/all.
     Each page is cached per day; a blocked/slow MCP just no-ops (never raises).
-    Called from the daily run — safe to call anytime on the fetching machine."""
+    Called from the daily run — safe to call anytime on the fetching machine.
+
+    fresh=True forces a live re-fetch (overwriting the day's cache) — use it for a
+    scheduled every-N-hours warm so the team sees current data, not this morning's."""
     warmed = {}
-    for name, fn in (("trending", lambda: mcp.trending_keywords(limit=PULL)),
-                     ("opportunities", lambda: mcp.scout_opportunities(limit=PULL)),
-                     ("hidden_gems", lambda: mcp.hidden_gems(limit=PULL))):
+    for name, fn in (("trending", lambda: mcp.trending_keywords(limit=PULL, refresh=fresh)),
+                     ("opportunities", lambda: mcp.scout_opportunities(limit=PULL, refresh=fresh)),
+                     ("hidden_gems", lambda: mcp.hidden_gems(limit=PULL, refresh=fresh))):
         try:
             warmed[name] = len(fn())
         except (SystemExit, Exception):  # noqa: BLE001 - warming must never break the run
             warmed[name] = 0
-    return "warmed " + ", ".join(f"{k}={v}" for k, v in warmed.items())
+    return ("refreshed " if fresh else "warmed ") + ", ".join(
+        f"{k}={v}" for k, v in warmed.items())
 
 
 def calendar(mode=None, days=180):

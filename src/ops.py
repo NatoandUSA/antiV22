@@ -222,15 +222,29 @@ def healthcheck():
 
 
 # ------------------------------------------------------------------ cron ----
-def cron_line(time="06:00", project=None):
-    try:
-        hh, mm = (int(x) for x in time.split(":"))
-    except Exception:  # noqa: BLE001
-        hh, mm = 6, 0
+def cron_line(time="06:00", project=None, every_hours=None, command="daily-run"):
+    """Build the crontab line. Default: `daily-run` once a day at `time`. Pass
+    every_hours=N for a `0 */N * * *` interval, and command="warm" to run the
+    lightweight cache warm (adds --fresh so each run pulls current data)."""
     project = project or os.getcwd()
     py = sys.executable or "python3"
-    return (f"{mm} {hh} * * * cd {project} && {py} main.py daily-run "
-            f">> logs/daily-run.log 2>&1 {CRON_MARKER}")
+    cmd = "warm" if str(command).lower() == "warm" else "daily-run"
+    invoke = "warm --fresh" if cmd == "warm" else "daily-run"
+    logf = "warm.log" if cmd == "warm" else "daily-run.log"
+    if every_hours:
+        try:
+            n = max(1, min(24, int(every_hours)))
+        except Exception:  # noqa: BLE001
+            n = 6
+        sched = f"0 */{n} * * *"
+    else:
+        try:
+            hh, mm = (int(x) for x in time.split(":"))
+        except Exception:  # noqa: BLE001
+            hh, mm = 6, 0
+        sched = f"{mm} {hh} * * *"
+    return (f"{sched} cd {project} && {py} main.py {invoke} "
+            f">> logs/{logf} 2>&1 {CRON_MARKER}")
 
 
 def _crontab_read():
@@ -254,15 +268,17 @@ def _cron_state():
     return False, "", ""
 
 
-def cron_install(time="06:00"):
-    line = cron_line(time)
+def cron_install(time="06:00", every_hours=None, command="daily-run"):
+    line = cron_line(time, every_hours=every_hours, command=command)
+    when = f"every {every_hours}h" if every_hours else f"daily at {time}"
     existing = _crontab_read()
     if existing is None:
         print("crontab not available on this OS (this is a Windows dev box).")
-        print("On the Linux VPS, add this line with `crontab -e`:\n")
+        print(f"On the Linux VPS, add this line with `crontab -e`:\n")
         print("  " + line)
-        print("\nWindows alternative: Task Scheduler -> daily 06:00 -> run "
-              "`py main.py daily-run` in the project folder.")
+        print(f"\nWindows alternative: Task Scheduler -> {when} -> run "
+              f"`py main.py {command}` in the project folder "
+              "(or use deploy/schedule-warm.ps1).")
         return line
     kept = [ln for ln in existing.splitlines() if CRON_MARKER not in ln and ln.strip()]
     kept.append(line)
@@ -271,7 +287,7 @@ def cron_install(time="06:00"):
         p = subprocess.run(["crontab", "-"], input=new, text=True,
                            capture_output=True)
         if p.returncode == 0:
-            print(f"Installed cron: daily at {time}.\n  {line}")
+            print(f"Installed cron: {command} {when}.\n  {line}")
         else:
             print("Could not install crontab automatically. Add manually:\n  " + line)
     except Exception as e:  # noqa: BLE001

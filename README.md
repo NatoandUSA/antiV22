@@ -1,6 +1,17 @@
-# Etsy Product Manager V26.5
+# Etsy Product Manager V26.6
 
-**New in V26.5 — the deep lists now reach the TEAM (VPS), not just the laptop.**
+**New in V26.6 — automatic keyword refresh (no manual runs).**
+- **`py main.py warm --fresh`** — force a live re-pull (bypasses the per-day cache)
+  so a scheduled run gets *current* data, not this morning's copy.
+- **On the VPS (if it can reach the public MCP):** schedule it directly —
+  `.venv/bin/python main.py cron install --every-hours 6 --command warm`. No laptop
+  needed. (The YTrends MCP at `mcp.trends.ytuong.ai` is free/public/60-rpm-per-IP;
+  the old datacenter-IP block was on the *cookie* website API, not the MCP.)
+- **On the laptop (fallback if the VPS is blocked):** `deploy/schedule-warm.ps1`
+  registers a Windows task that runs `deploy/warm-sync.ps1` every N hours
+  (refresh cache + ship `agent.db` to the VPS). Needs passwordless SSH.
+
+**V26.5 — the deep lists now reach the TEAM (VPS), not just the laptop.**
 The live Trending/Opportunities pages read their keywords from a cache in
 `data/agent.db`. The VPS can't fetch YTrends (blocked IP), and the deploy script
 wasn't syncing that cache — so the team saw empty/stale keyword pages while the

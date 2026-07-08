@@ -515,12 +515,14 @@ def cmd_daily_run(cmd, args):
 
 def cmd_warm(cmd, args):
     """Pre-fetch the deep Trending/Opportunities/Gems keyword pages into the daily
-    cache (data/agent.db). Run on the fetching machine (the laptop) so the first
-    dashboard load is instant; the deploy script also syncs that cache to the VPS
-    (whose IP can't reach YTrends), so the team sees the same deep lists."""
+    cache (data/agent.db). Run on the fetching machine so the first dashboard load
+    is instant. --fresh forces a live re-fetch (for a scheduled every-N-hours warm)
+    instead of returning the day's cached copy."""
+    fresh = any(a.lstrip("-").lower() == "fresh" for a in args)
     from src import interactive
-    print("Warming keyword cache (deep pull)...")
-    print("  " + interactive.warm_cache())
+    print("Refreshing keyword cache (live)..." if fresh
+          else "Warming keyword cache (deep pull)...")
+    print("  " + interactive.warm_cache(fresh=fresh))
 
 
 def cmd_healthcheck(cmd, args):
@@ -540,7 +542,9 @@ def cmd_cron(cmd, args):
     sub = (args[0].lower() if args else "status")
     kv, _ = _flags(args[1:] if args else [])
     if sub == "install":
-        ops.cron_install(kv.get("time", "06:00"))
+        ops.cron_install(kv.get("time", "06:00"),
+                         every_hours=kv.get("every-hours"),
+                         command=kv.get("command", "daily-run"))
     else:
         ops.cron_status()
 

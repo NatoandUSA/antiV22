@@ -166,19 +166,24 @@ def _ensure_session():
                                              url=MCP_URL))
 
 
-def call(tool, cache=True, response_format="concise", skip_bad=False, **arguments):
+def call(tool, cache=True, response_format="concise", skip_bad=False,
+         refresh=False, **arguments):
     """Call an MCP tool, return the parsed payload dict. Cached per day.
 
     skip_bad=True: when a page fails the server's OWN output validation (a poison
     row, e.g. tier=0), cache an EMPTY payload under the same key and return it
     instead of raising. That makes the failure cacheable, so a pre-warmed page
-    load is a cache hit next time rather than a repeated live re-fetch+re-fail."""
+    load is a cache hit next time rather than a repeated live re-fetch+re-fail.
+
+    refresh=True: skip the cache READ (force a live fetch) but still WRITE the
+    result, so a scheduled warm --fresh pulls current data and overwrites the
+    day's cache instead of returning this morning's copy."""
     if response_format and "response_format" not in arguments:
         arguments["response_format"] = response_format
     today = str(date.today())
     key = f"mcp:{tool}:{json.dumps(arguments, sort_keys=True)}"
 
-    if cache:
+    if cache and not refresh:
         hit = cache_get(key, today)
         if hit is not None:
             return json.loads(hit)
@@ -264,7 +269,7 @@ def _list_call(tool, key, limit, **args):
     return []
 
 
-def _gather(tool, key, limit, step=10, **args):
+def _gather(tool, key, limit, step=10, refresh=False, **args):
     """These surfaces CAP each call at ~10 rows and IGNORE a big `limit` (the
     server pages its data), so asking for 90 still returns 10. We walk `offset`
     to collect up to `limit`, dedup by tag, and stop as soon as a page adds
@@ -281,7 +286,8 @@ def _gather(tool, key, limit, step=10, **args):
     max_pages = (limit + step - 1) // step + 4
     empties = 0
     for i in range(max_pages):
-        rows = _rows(call(tool, limit=step, offset=i * step, skip_bad=True, **args), key)
+        rows = _rows(call(tool, limit=step, offset=i * step, skip_bad=True,
+                          refresh=refresh, **args), key)
         if not rows:
             empties += 1
             if empties >= 3:           # 3 blank pages running = end of data
@@ -306,14 +312,16 @@ def market_snapshot(country=None):
     return p.get("data", p) if isinstance(p, dict) else {}
 
 
-def trending_keywords(limit=25, search=None):
+def trending_keywords(limit=25, search=None, refresh=False):
     args = {"search": search} if search else {}
-    return _gather("ytrends_find_trending_keywords", "tags", limit, **args)
+    return _gather("ytrends_find_trending_keywords", "tags", limit,
+                   refresh=refresh, **args)
 
 
-def hidden_gems(limit=25, search=None):
+def hidden_gems(limit=25, search=None, refresh=False):
     args = {"search": search} if search else {}
-    return _gather("ytrends_find_hidden_gems", "tags", limit, **args)
+    return _gather("ytrends_find_hidden_gems", "tags", limit,
+                   refresh=refresh, **args)
 
 
 def hot_listings(limit=15, keyword=None, search=None):
@@ -330,8 +338,9 @@ def trend_calendar(window="next_90d", limit=15):
                  "events")
 
 
-def scout_opportunities(limit=25, **filters):
-    return _gather("ytrends_scout_opportunities", "results", limit, **filters)
+def scout_opportunities(limit=25, refresh=False, **filters):
+    return _gather("ytrends_scout_opportunities", "results", limit,
+                   refresh=refresh, **filters)
 
 
 def browse_new_listings(limit=50, keyword=None, search=None):
