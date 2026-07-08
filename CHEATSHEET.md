@@ -1,105 +1,137 @@
-# Etsy Product Manager — Command Cheat Sheet (V23.0)
+# Etsy Product Manager — Command Cheat Sheet (V26.7)
 
-**The short version:** the tool mostly runs itself now. The **VPS refreshes the
-data every day at 6:00 AM on its own**, and your **team uses the dashboard in the
-browser — no terminal, no commands**. You only open a terminal for the occasional
+**The short version:** the tool runs itself. The **VPS refreshes the keyword data
+by itself every 6 hours**, and your **team just uses the dashboard in a browser —
+no terminal, no commands**. Closing your SSH window does **NOT** take the site
+down (it runs as a background service). You only open a terminal for the rare
 admin task below.
 
-**Where you type, and how to start Python:**
+## Where you type — and which Python to use
 
-| Place | How to open it | Python command |
+| Place | How to open it | Python to type |
 |---|---|---|
-| 🌍 **The dashboard** (etsy.theglobalserviceteam.site) | A web browser | *none — you click buttons* |
-| 🖥️ **The VPS** (the server) | SSH, then `cd ~/etsy-agent` | `python` (inside the `.venv`) |
-| 💻 **Your laptop** | PowerShell (Windows) / Terminal (Mac), in the project folder | `py` on Windows · `python3` on Mac |
+| 🌍 **The dashboard** (etsy.theglobalserviceteam.site) | a web browser | *none — you click buttons* |
+| 🖥️ **The VPS** (the server) | SSH, then `cd ~/etsy-agent` | **`.venv/bin/python`** |
+| 💻 **Your laptop** | PowerShell (Windows) / Terminal (Mac) | `py` (Windows) · `python3` (Mac) |
 
-> ⚠️ On the VPS it's `python` (not `py`). On Windows it's `py`. That's the only
-> difference — the commands after it are identical.
+> ⚠️ **On the VPS always use `.venv/bin/python`, never plain `python3`.** Plain
+> `python3` misses the installed packages and fails with `No module named 'dotenv'`.
+> Tip: run `source .venv/bin/activate` once per session, then plain `python` works
+> until you close the window.
+
+---
+
+## 🆘 Reopen the VPS (if you closed this window / after a reboot)
+
+Closing your terminal does **not** stop the dashboard — `etsy-web` and `etsy-tunnel`
+are background services that keep running (and auto-start if the server reboots).
+To get back in and confirm everything is up:
+
+```bash
+# 1. Reconnect (from PowerShell on Windows, or Terminal on Mac)
+ssh -p 55317 etsy@51.79.200.65
+#    (password won't show as you type — that's normal)
+
+# 2. Go to the project
+cd ~/etsy-agent
+
+# 3. Check both services are running (look for "active (running)")
+systemctl status etsy-web --no-pager
+systemctl status etsy-tunnel --no-pager
+
+# 4. If either is NOT running, start/restart them:
+sudo systemctl restart etsy-web etsy-tunnel
+
+# 5. Confirm the site is live — open in any browser:
+#    https://etsy.theglobalserviceteam.site
+```
+
+That's it — the site was almost certainly up the whole time. `q` exits a `status`
+screen; `exit` closes the SSH session (the site stays up).
 
 ---
 
 ## 🌍 The dashboard — what the TEAM uses (no commands, ever)
 
-Your teammates just open the website and click. Everything below is a button, and
-it works 24/7 whether your laptop is on or off:
+Teammates open the website and click. Works 24/7 whether your laptop is on or off:
 
-| On the dashboard | What they do | What they get |
+| On the dashboard | They do | They get |
 |---|---|---|
-| ⚡ **Command Center** | type a keyword + pick a mode | the full workspace: verdict, all scores, listing draft, design prompt, publish gate |
-| **Analyze / Should I sell? / Expand** | a keyword | demand + competition, a GO/NO-GO read, related keywords |
+| ⚡ **Command Center** | type a keyword + pick a mode | full workspace: verdict, scores, listing draft, design prompt, publish gate |
+| **Analyze / Should I sell? / Expand** | a keyword | demand + competition, GO/NO-GO, related keywords |
 | **Build listing** | a keyword | title + 13 tags + description (**draft only**) |
 | 🕵️ **Spy** | a keyword | who's winning + who dominates the niche |
-| 📈 **Trending / 💎 Opportunities** | click (per mode) | rising keywords · low-competition sweet spots |
-| 📅 **Seasonal calendar** | click | upcoming holidays + launch-by dates + keywords |
+| 📈 **Trending / 💎 Opportunities** | click (per mode) | ~50 rising keywords + **product clusters** (build one listing per cluster) |
+| 📅 **Team Calendar** | click | tasks by due date — today / this week / overdue |
+| 📅 **Seasonal calendar** | click | upcoming holidays + launch-by dates |
 | 🏪 **Saved shops / 📌 Saved listings** | click **Auto-pull** | new shops already selling · young winning listings |
-| 📝 **Grade my listing** | paste title+tags+description | a 0–100 score + exact fixes |
-| 🏭 **Suppliers** | open catalog / upload CSV | the supplier library |
-| 📉 **Sales feedback** | log real numbers after a manual publish | a Day-3/7 KEEP / CHANGE / KILL / SCALE action |
+| 📝 **Grade my listing** | paste title+tags+description | 0–100 score + exact fixes |
+| 📉 **Sales feedback** | log real numbers after a manual publish | Day-3/7 KEEP / CHANGE / KILL / SCALE |
 
-Every result has the **trademark check** built in, and nothing is ever
-auto-published — publishing stays a manual human decision.
+Every result has the **trademark check** built in. Nothing is ever auto-published.
 
 ---
 
-## 🖥️ On the VPS — the few admin commands (run rarely)
+## 🖥️ On the VPS — admin commands (run rarely)
 
-**Connect to the server** (from PowerShell on your PC), then go to the project:
+Connect first (see the reopen box above), then `cd ~/etsy-agent`. Remember the
+`.venv/bin/` prefix.
+
+| Command | What it does |
+|---|---|
+| `git pull` | Get the latest code I pushed. |
+| `sudo systemctl restart etsy-web` | Load new code into the live site (~5s). Only needed **after `git pull` changed code**. |
+| `.venv/bin/python main.py warm --fresh` | Refresh the Trending/Opportunities keyword lists **right now** (the team sees current data). Runs itself every 6h. |
+| `.venv/bin/python main.py cron install --every-hours 6 --command warm` | (Re)install the every-6-hour auto-refresh. Do this once. |
+| `.venv/bin/python main.py cron status` | Is the auto-refresh installed? last run? log path? |
+| `.venv/bin/python main.py clean` | **Reclaim disk** — trims old report archives, prunes stale cache, drops caches. Safe anytime. Run monthly. |
+| `.venv/bin/python main.py healthcheck` | Confirms folders, data, dashboard, cron are OK. |
+| `.venv/bin/python main.py daily-run` | Full nightly job: fresh keywords + feeds + warm + summary. **Never publishes.** |
+
+**Check the server's disk / memory** (answer to "is there room?"):
 ```bash
-ssh -p 55317 etsy@51.79.200.65
-cd ~/etsy-agent
+df -h ~            # disk free on your home partition
+free -h            # RAM free
+du -sh ~/etsy-agent/*   # what's using space inside the project
 ```
-Enter your password when asked (it won't show as you type — that's normal). The
-daily data refresh already runs itself at 6 AM, so you'll rarely need the rest.
+If disk is tight, run `.venv/bin/python main.py clean`.
 
-| Command | Where | What it does |
-|---|---|---|
-| `git pull` | VPS | Get the latest code I pushed. Updates the site + this cheat sheet **instantly** (no restart needed for the cheat sheet). |
-| `sudo systemctl restart etsy-web` | VPS | Restart the dashboard **only after a code change** so it loads the new version. ~5 seconds, not a reboot. |
-| `python main.py daily-run` | VPS | **The daily auto-job.** Pulls fresh keywords + refreshes the shop/listing feeds + writes a summary. Runs by itself at 6 AM; run it by hand to refresh now. **Never publishes.** |
-| `python main.py healthcheck` | VPS | Confirms folders, data, dashboard, and cron are all OK. |
-| `python main.py cron status` | VPS | Shows the 6 AM job: installed? last run? log path? |
-| `python main.py cron install --time "06:00"` | VPS | (Re)installs the 6 AM schedule. You already did this once. |
-| `python main.py autopull` | VPS | Just refresh Saved shops + Saved listings now. |
-| `python main.py daily pod` / `daily embroidery` | VPS | Rebuild the read-only daily reports for one line. |
-
-**To update the live site after I push new code:**
+**Update the live site after I push new code:**
 ```bash
-cd ~/etsy-agent
-git pull
-sudo systemctl restart etsy-web    # only needed when code changed
+cd ~/etsy-agent && git pull && sudo systemctl restart etsy-web
 ```
-(If `git pull` ever complains about a local file, run `git stash` then `git pull`.)
+(If `git pull` complains about a local change, run `git stash` then `git pull`.)
 
 ---
 
-## 💻 On your laptop — optional (you don't need this daily anymore)
+## 💻 On your laptop — optional (not needed daily)
 
-Since the VPS refreshes itself at 6 AM, the old "push every day" step is now
-**optional** — use it only when you want an **instant** refresh instead of waiting
-for the morning.
+The VPS refreshes itself, so you rarely need this.
 
-| Command | Where | What it does |
-|---|---|---|
-| `py main.py selftest` | laptop | Health check after any change. Must say **ALL CHECKS PASSED**. Fast, no internet. |
-| `py main.py web` | laptop | Preview the whole dashboard locally in your browser. `Ctrl+C` to stop. |
-| `.\deploy\push-to-vps.ps1` | laptop | **Instant publish** — build the reports and upload now (instead of waiting for 6 AM). Optional. |
-| `py main.py workspace build --keyword "usa raccoon shirt" --mode pod` | laptop | Build one full workspace from the terminal + save it. |
-| `py main.py expand "chenille bag"` | laptop | Deep related-keyword research for one niche. |
+| Command | What it does |
+|---|---|
+| `py main.py selftest` | Health check after any change. Must say **ALL CHECKS PASSED**. Fast, offline. |
+| `py main.py web` | Preview the whole dashboard locally. `Ctrl+C` to stop. |
+| `py main.py warm --fresh` | Refresh the keyword cache on the laptop. |
+| `py main.py clean` | Reclaim disk on the laptop (same as on the VPS). |
+| `py main.py workspace build --keyword "usa raccoon shirt" --mode pod` | Build one full workspace from the terminal. |
+| `.\deploy\push-to-vps.ps1` | Only if you build the **reports** locally — uploads reports + cache to the VPS. |
 
-> A few deep-research commands (`expand`, `discover`, `ideas`, `grow`) use the
-> older cookie-based data source, which is blocked from the server's IP — so run
-> **those** on the laptop. The everyday stuff (`daily`, `harvest`, `autopull`,
-> `daily-run`, the whole dashboard) uses the YTrends MCP, which **works fine on
-> the VPS** — that's why the 6 AM auto-run works.
+> Mac: use `python3` instead of `py`. A few deep-research commands (`expand`,
+> `discover`, `ideas`, `grow`) use the older cookie data source — run those on the
+> laptop. Everyday keyword data uses the public YTrends MCP, which **works on the
+> VPS too** (that's why the 6-hour auto-refresh runs server-side).
 
 ---
 
 ## Golden rules
-1. **The team uses the dashboard; you rarely touch the terminal.** The VPS
-   refreshes itself at 6 AM.
-2. After I push code: on the VPS run `git pull` (+ `sudo systemctl restart
-   etsy-web` if the dashboard code changed).
-3. **Never auto-publish.** A listing is only ever listed **manually**, and only
-   when the workspace shows **PUBLISH_READY = true**.
-4. Run `py main.py selftest` after any change — it must say **ALL CHECKS PASSED**.
-5. Never share your `.env` — it holds your passwords and tokens.
+1. **Team uses the dashboard; you rarely touch the terminal.** The VPS refreshes
+   itself every 6 hours.
+2. **On the VPS, always `.venv/bin/python …`** (never bare `python3`).
+3. After I push code: on the VPS `git pull` (+ `sudo systemctl restart etsy-web`
+   if the site code changed).
+4. **Never auto-publish.** A listing is listed **manually**, only when the
+   workspace shows **PUBLISH_READY = true**.
+5. Run `py main.py selftest` after any change — must say **ALL CHECKS PASSED**.
+6. Run `main.py clean` monthly (either machine) to keep disk lean.
+7. Never share your `.env` — it holds your passwords and tokens.

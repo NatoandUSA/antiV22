@@ -132,6 +132,55 @@ def daily_run():
     return summary
 
 
+# ------------------------------------------------------------------ clean ----
+def clean(keep_runs=5):
+    """Reclaim disk without touching live data. Trims old report archives, prunes
+    stale keyword cache (+VACUUM), and drops regenerable __pycache__/.pytest_cache.
+    Safe anytime, on the laptop or the VPS. Returns a list of what it did."""
+    import shutil
+    from src import db
+    out = []
+
+    runs_dir = Path("reports/runs")
+    if runs_dir.exists():
+        runs = sorted([p for p in runs_dir.iterdir() if p.is_dir()],
+                      key=lambda p: p.name, reverse=True)
+        old = runs[max(0, keep_runs):]
+        for d in old:
+            shutil.rmtree(d, ignore_errors=True)
+        out.append(f"report archives: removed {len(old)}, kept newest "
+                   f"{len(runs) - len(old)}")
+
+    st = Path("reports/selftest")
+    if st.exists():
+        shutil.rmtree(st, ignore_errors=True)
+        out.append("cleared reports/selftest (rebuilt on next selftest)")
+
+    try:
+        n = db.prune_cache(keep_days=3)
+        db.vacuum()
+        out.append(f"keyword cache: pruned {n} stale row(s) + vacuumed agent.db")
+    except Exception as e:  # noqa: BLE001
+        out.append(f"keyword cache prune skipped: {e}")
+
+    # Only OUR __pycache__ (never walk .venv — huge and not ours).
+    pyc = [p for base in ("src", "tests") for p in Path(base).rglob("__pycache__")]
+    if Path("__pycache__").exists():
+        pyc.append(Path("__pycache__"))
+    for d in pyc:
+        shutil.rmtree(d, ignore_errors=True)
+    if Path(".pytest_cache").exists():
+        shutil.rmtree(".pytest_cache", ignore_errors=True)
+    out.append(f"removed {len(pyc)} __pycache__ dir(s) + .pytest_cache")
+
+    for leftover in (Path("data/pdf_test.pdf"), Path("data/pdf_test.md")):
+        if leftover.exists():
+            leftover.unlink()
+            out.append(f"removed leftover {leftover.name}")
+
+    return out
+
+
 # ----------------------------------------------------------- healthcheck ----
 def healthcheck():
     """Return a list of (name, ok, detail). Never prints secret values."""

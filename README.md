@@ -1,6 +1,17 @@
-# Etsy Product Manager V26.6
+# Etsy Product Manager V26.7
 
-**New in V26.6 — automatic keyword refresh (no manual runs).**
+**New in V26.7 — cleanup + disk hygiene + VPS self-fetch confirmed.**
+- **`py main.py clean`** (laptop or VPS) reclaims disk: trims old `reports/runs`
+  archives (kept newest 5), prunes stale keyword cache + `VACUUM`s `agent.db`,
+  drops `__pycache__`/`.pytest_cache`. Freed ~107 MB on first run.
+- The keyword cache now **self-prunes** (keeps ~3 days) on every warm, so
+  `agent.db` can't grow without bound.
+- **Confirmed: the VPS reaches the public MCP directly** — it runs its own
+  every-6h `warm --fresh` cron; the laptop→VPS cache sync is now just a fallback.
+- Cheat sheet rewritten: where-to-run each command, the `.venv/bin/python` rule,
+  and a **"reopen the VPS"** guide.
+
+**V26.6 — automatic keyword refresh (no manual runs).**
 - **`py main.py warm --fresh`** — force a live re-pull (bypasses the per-day cache)
   so a scheduled run gets *current* data, not this morning's copy.
 - **On the VPS (if it can reach the public MCP):** schedule it directly —

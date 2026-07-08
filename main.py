@@ -525,6 +525,21 @@ def cmd_warm(cmd, args):
     print("  " + interactive.warm_cache(fresh=fresh))
 
 
+def cmd_clean(cmd, args):
+    """Reclaim disk: trim old report archives, prune stale keyword cache, drop
+    __pycache__/.pytest_cache. Safe anytime, on the laptop or the VPS.
+    --keep-runs N keeps the newest N report archives (default 5)."""
+    kv, _ = _flags(args)
+    try:
+        keep = int(kv.get("keep-runs", 5))
+    except ValueError:
+        keep = 5
+    from src import ops
+    print("Cleaning (reclaiming disk, no live data touched)...")
+    for line in ops.clean(keep_runs=keep):
+        print("  " + line)
+
+
 def cmd_healthcheck(cmd, args):
     from src import ops
     checks = ops.healthcheck()
@@ -619,6 +634,7 @@ COMMANDS = {
     "autopull": cmd_autopull,
     "daily-run": cmd_daily_run,
     "warm": cmd_warm,
+    "clean": cmd_clean,
     "healthcheck": cmd_healthcheck,
     "cron": cmd_cron,
     "alerts": cmd_alerts,

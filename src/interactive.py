@@ -398,6 +398,11 @@ def warm_cache(fresh=False):
 
     fresh=True forces a live re-fetch (overwriting the day's cache) — use it for a
     scheduled every-N-hours warm so the team sees current data, not this morning's."""
+    try:   # keep agent.db bounded: the VPS warm cron is the natural place to prune
+        from src import db
+        db.prune_cache(keep_days=3)
+    except Exception:  # noqa: BLE001
+        pass
     warmed = {}
     for name, fn in (("trending", lambda: mcp.trending_keywords(limit=PULL, refresh=fresh)),
                      ("opportunities", lambda: mcp.scout_opportunities(limit=PULL, refresh=fresh)),

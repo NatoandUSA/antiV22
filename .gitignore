@@ -20,6 +20,13 @@ social_signals.csv
 *.har
 *.zip
 
+# OS / editor junk (Windows + Mac dev machines)
+.DS_Store
+Thumbs.db
+*.tmp
+*.bak
+*.orig
+
 # Cloudflare tunnel secrets — never commit these
 *.pem
 .cloudflared/

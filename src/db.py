@@ -88,3 +88,23 @@ def cache_put(key, day, payload):
     )
     conn.commit()
     conn.close()
+
+
+def prune_cache(keep_days=3):
+    """Delete api_cache rows older than keep_days. Only *today's* rows are ever
+    read, so older days are dead weight — this keeps data/agent.db from growing
+    without bound. Returns the number of rows removed."""
+    from datetime import date, timedelta
+    cutoff = str(date.today() - timedelta(days=max(0, keep_days)))
+    conn = get_conn()
+    n = conn.execute("DELETE FROM api_cache WHERE day < ?", (cutoff,)).rowcount
+    conn.commit()
+    conn.close()
+    return n
+
+
+def vacuum():
+    """Reclaim freed pages on disk after deletes so the .db file actually shrinks."""
+    conn = get_conn()
+    conn.execute("VACUUM")
+    conn.close()

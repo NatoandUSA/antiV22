@@ -546,6 +546,14 @@ def run_selftest():
           Path("deploy/warm-sync.ps1").exists()
           and Path("deploy/schedule-warm.ps1").exists())
 
+    # ---- V26.7: maintenance/clean keeps disk + agent.db bounded ----
+    from src import db as _db2, ops as _ops3
+    check("Maintenance: `clean` command + cache prune/vacuum (disk stays lean)",
+          callable(getattr(_db2, "prune_cache", None))
+          and callable(getattr(_db2, "vacuum", None))
+          and callable(getattr(_ops3, "clean", None))
+          and '"clean": cmd_clean' in Path("main.py").read_text(encoding="utf-8"))
+
     from src import crosscheck as _cc
     check("cross-check sources present (Google Trends + Pinterest + X)",
           set(_cc.status()) == {"Google Trends", "Pinterest", "X / Twitter"}
