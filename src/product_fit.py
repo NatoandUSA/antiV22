@@ -37,10 +37,12 @@ POD_FIT, EMBROIDERY_FIT, JEWELRY_FIT, ACRYLIC_FIT = \
     "POD_FIT", "EMBROIDERY_FIT", "JEWELRY_FIT", "ACRYLIC_FIT"
 DIGITAL_FIT, SHOP_NAME_LIKELY, POLICY_RISK, TRADEMARK_RISK = \
     "DIGITAL_FIT", "SHOP_NAME_LIKELY", "POLICY_RISK", "TRADEMARK_RISK"
-BROAD_SEED_ONLY, NON_PRODUCT, NEEDS_REVIEW = \
-    "BROAD_SEED_ONLY", "NON_PRODUCT", "NEEDS_REVIEW"
+BROAD_SEED_ONLY, NON_PRODUCT, NEEDS_REVIEW, THEME_FIT = \
+    "BROAD_SEED_ONLY", "NON_PRODUCT", "NEEDS_REVIEW", "THEME_FIT"
 
-LAUNCHABLE = {POD_FIT, EMBROIDERY_FIT, JEWELRY_FIT, ACRYLIC_FIT}
+# THEME_FIT = a design theme (no literal product noun) you can put on any product,
+# e.g. "coastal grandmother", "retro sunset". These ARE launch-worthy.
+LAUNCHABLE = {POD_FIT, EMBROIDERY_FIT, JEWELRY_FIT, ACRYLIC_FIT, THEME_FIT}
 
 
 def _looks_like_shop(kw):
@@ -96,12 +98,15 @@ def classify(keyword, mode=None):
     elif words & POD_NOUNS:
         st, pt = POD_FIT, "pod"
     else:
-        # no product noun at all
-        if words and words <= GENERIC:
+        # No literal product noun. If it's just generic seed words it's too broad;
+        # otherwise it's a DESIGN THEME (put it on any product) — still launchable.
+        non_generic = words - GENERIC
+        if not non_generic:
             return {"status": BROAD_SEED_ONLY, "launchable": False,
                     "product_type": "", "reason": "too broad — a seed, not a specific product"}
-        return {"status": NEEDS_REVIEW, "launchable": False, "product_type": "",
-                "reason": "no clear product type — review + add a product angle"}
+        return {"status": THEME_FIT, "launchable": True, "product_type": "theme",
+                "reason": "design theme — pair it with a POD/embroidery product"
+                + ("; verify trademark" if risk == "CAUTION" else "")}
 
     # broad seed even with a noun? (e.g. just "shirt" / "gift mug")
     if len(words) <= 2 and words <= GENERIC | POD_NOUNS | JEWELRY_NOUNS:

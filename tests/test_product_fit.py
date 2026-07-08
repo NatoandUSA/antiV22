@@ -57,3 +57,22 @@ def test_calendar_range_narrows():
     yr = len(seasonal.upcoming_holidays(today=date(2026, 7, 8), horizon_days=366))
     mo = len(seasonal.upcoming_holidays(today=date(2026, 7, 8), horizon_days=30))
     assert yr > mo
+
+
+def test_design_themes_are_launchable():
+    # a theme with no literal product noun is still a launch idea (put on a product)
+    for k in ("coastal grandmother", "retro sunset", "50th celebrations"):
+        c = classify(k)
+        assert c["status"] == "THEME_FIT" and c["launchable"], k
+
+
+def test_opportunity_clusters_group_related_keywords():
+    from src import clusters
+    groups, singles = clusters.cluster(
+        ["summer pouch", "travel pouch", "bridesmaid pouch", "vacation pouch",
+         "coastal grandmother"])
+    names = {c["name"] for c in groups}
+    assert "pouch" in names
+    biggest = max(groups, key=lambda c: c["size"])
+    assert biggest["size"] == 4
+    assert "coastal grandmother" in singles

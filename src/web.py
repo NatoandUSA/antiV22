@@ -1435,7 +1435,9 @@ def build_app(password, secret):
     def team_hub():
         u = current_user()
         cards = ['<a class="toolcard" href="/me/tasks"><b>✅ My Tasks</b>'
-                 '<span>What you\'re assigned</span></a>']
+                 '<span>What you\'re assigned</span></a>',
+                 '<a class="toolcard" href="/team/calendar"><b>📅 Team Calendar</b>'
+                 '<span>Tasks by due date — today / week / overdue</span></a>']
         if auth.has_perm(u["role"], "tasks.assign"):
             cards.append('<a class="toolcard" href="/admin/tasks"><b>📋 Team Tasks</b>'
                          '<span>Assign + track everyone\'s work</span></a>')
@@ -1453,6 +1455,67 @@ def build_app(password, secret):
         return page("Team", _bar() + '<article class="md"><h1>👥 Team</h1>'
                     f'<p>Signed in as <b>{_h_esc(u["display_name"])}</b> ({u["role"]}).'
                     '</p></article><div class="toolgrid">' + "".join(cards) + '</div>')
+
+    @app.route("/team/calendar")
+    @login_required
+    def team_calendar():
+        from src import tasks as tk
+        from datetime import date, timedelta
+        u = current_user()
+        view = request.args.get("view", "week")
+        # managers see everyone; members see their own
+        rows = (tk.list_tasks() if auth.has_perm(u["role"], "tasks.assign")
+                else tk.list_tasks(assigned_to=u["user_id"]))
+        by_id = {x["user_id"]: x for x in auth.list_users()}
+        today = date.today().isoformat()
+        wk = (date.today() + timedelta(days=7)).isoformat()
+
+        def keep(t):
+            due = (t.get("due_date") or "")[:10]
+            open_ = t["status"] in tk.OPEN_STATUSES
+            if view == "overdue":
+                return tk.is_overdue(t)
+            if view == "all":
+                return True
+            if not due:
+                return False
+            if view == "today":
+                return due == today and open_
+            if view == "week":
+                return today <= due <= wk and open_
+            if view == "upcoming":
+                return due >= today and open_
+            return True
+
+        shown = sorted((t for t in rows if keep(t)),
+                       key=lambda t: (t.get("due_date") or "9999-99-99"))
+        views = [("today", "Today"), ("week", "This week"), ("overdue", "Overdue"),
+                 ("upcoming", "Upcoming"), ("all", "All")]
+        vrow = "".join(f'<a class="pullbtn{" primary" if view == vk else ""}" '
+                       f'href="/team/calendar?view={vk}">{vl}</a>' for vk, vl in views)
+        viewbar = ('<div class="pullbar"><div class="pulltxt"><b>View</b>'
+                   '<span>Filter tasks by due date</span></div>'
+                   f'<div class="pullbtns">{vrow}</div></div>')
+        body = ""
+        for t in shown:
+            who = by_id.get(t["assigned_to_user_id"], {}).get("display_name", "—")
+            odc = " od" if tk.is_overdue(t) else ""
+            body += (f'<tr class="pr-{(t["priority"] or "medium").lower()}">'
+                     f'<td class="{odc.strip()}">{_h_esc((t.get("due_date") or "—")[:10])}</td>'
+                     f'<td>{_h_esc(t["title"])}</td><td>{_h_esc(who)}</td>'
+                     f'<td>{_h_esc(t.get("related_keyword"))}</td>'
+                     f'<td>{_h_esc(t["status"])}</td>'
+                     f'<td><span class="pill pr-{(t["priority"] or "medium").lower()}">'
+                     f'{_h_esc(t["priority"])}</span></td></tr>')
+        table = ('<table><tr><th>Due</th><th>Task</th><th>Assignee</th><th>Keyword</th>'
+                 '<th>Status</th><th>Priority</th></tr>'
+                 + (body or '<tr><td colspan="6">No tasks in this view.</td></tr>')
+                 + '</table>')
+        return page("Team Calendar", _bar() + viewbar
+                    + '<article class="md"><h1>📅 Team Calendar</h1>'
+                    '<p class="note">Tasks by due date (overdue in red). Update status '
+                    'in <a href="/me/tasks">My Tasks</a>; approve in the '
+                    '<a href="/admin/reviews">Review Queue</a>.</p>' + table + '</article>')
 
     # ---- My Tasks ----
     @app.route("/me/tasks")

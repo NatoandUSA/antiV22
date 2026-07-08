@@ -1,6 +1,19 @@
-# Etsy Product Manager V26.0
+# Etsy Product Manager V26.1
 
-**New in V26.0 — product-fit quality filter + smarter seasonal timing.** Trending
+**New in V26.1 — more keywords, product clusters + a Team Calendar.**
+- **More ideas to dig into:** the product-fit filter no longer over-hides — a
+  keyword with no literal product noun (e.g. `coastal grandmother`, `retro sunset`,
+  `50th celebrations`) is now a **design theme** you can put on any product, so it
+  stays. Only real junk (shop handles, spells, brands, digital, broad seeds) is
+  hidden. Source limits raised too.
+- **🧩 Opportunity clusters:** Opportunities now groups related keywords into
+  **product clusters** ("summer pouch + travel pouch + bridesmaid pouch → pouch")
+  so you build **one strong listing per cluster** instead of chasing each keyword.
+- **📅 Team Calendar** (Team → Team Calendar): tasks by due date with
+  Today / This week / Overdue / Upcoming views (managers see everyone; members see
+  their own).
+
+**V26.0 — product-fit quality filter + smarter seasonal timing.** Trending
 and Opportunities now **hide junk** — shop handles (`haticemediumstudio`),
 spell/psychic niches, trademark/brand terms, digital-only terms, and broad seeds —
 each with a reason, behind a **"Show risky / review"** toggle. The seasonal

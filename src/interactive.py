@@ -290,7 +290,7 @@ def should_sell(kw):
     return "\n".join(L)
 
 
-def _split_fit(rows, key, mode, want=20):
+def _split_fit(rows, key, mode, want=30):
     """Classify rows by product-fit; return (launchable[:want], hidden)."""
     from src import product_fit as pf
     good, hidden = [], []
@@ -316,7 +316,7 @@ def _hidden_block(hidden, key, show_all):
 
 
 def trending(mode=None, show_all=False):
-    raw = [t for t in mcp.trending_keywords(limit=60)
+    raw = [t for t in mcp.trending_keywords(limit=90)
            if matches_mode((t.get("tag") or "").lower(), mode)]
     picks, hidden = _split_fit(raw, "tag", mode)
     L = [f"# Trending now — {MODE_LABEL.get(mode)}", "",
@@ -336,15 +336,33 @@ def trending(mode=None, show_all=False):
     return "\n".join(L + _hidden_block(hidden, "tag", show_all))
 
 
+def _cluster_block(picks, key="tag"):
+    """Group the launch-ready keywords into product clusters (build ONE listing
+    per cluster that targets all its keywords)."""
+    from src import clusters as cl
+    groups, _ = cl.cluster([r.get(key) for r in picks])
+    if not groups:
+        return []
+    L = ["## 🧩 Product clusters — build ONE better listing per cluster", "",
+         "_Group related keywords into a single product idea and target them all "
+         "in one strong listing (don't make a separate listing for each)._", "",
+         "| Product cluster | Keywords | Cover these keywords |", "|---|---|---|"]
+    for c in groups[:10]:
+        L.append(f"| **{c['primary']}** | {c['size']} | {', '.join(c['members'])} |")
+    return L + [""]
+
+
 def opportunities(mode=None, show_all=False):
-    raw = [r for r in mcp.scout_opportunities(limit=60)
+    raw = [r for r in mcp.scout_opportunities(limit=90)
            if matches_mode((r.get("tag") or "").lower(), mode)]
     picks, hidden = _split_fit(raw, "tag", mode)
     L = [f"# Opportunities — {MODE_LABEL.get(mode)}", "",
          "_Launch-ready, **product-fit** ideas only (shop names, spells, brands, "
-         "digital + broad seeds filtered out). Verify trademark._", "",
-         "| Keyword | Fit | Opportunity | Momentum | Sellers | Conv | Avg price | TM |",
-         "|---|---|---|---|---|---|---|---|"]
+         "digital + broad seeds filtered out). Verify trademark._", ""]
+    L += _cluster_block(picks)
+    L += ["## Individual keyword ideas", "",
+          "| Keyword | Fit | Opportunity | Momentum | Sellers | Conv | Avg price | TM |",
+          "|---|---|---|---|---|---|---|---|"]
     for r in picks:
         tag = _clean(r.get("tag"))
         risk, _ = tm_check(tag.lower())

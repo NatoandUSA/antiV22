@@ -888,6 +888,20 @@ def run_selftest():
           and Path("docs/UPGRADE_DECISION_LOG.md").exists()
           and Path("docs/GITHUB_REFERENCE_RESEARCH.md").exists())
 
+    # ---- V26.1: design themes launchable + opportunity clusters + team calendar ----
+    from src import clusters as _cl
+    _grp, _sng = _cl.cluster(["summer pouch", "travel pouch", "bridesmaid pouch",
+                              "coastal grandmother"])
+    check("Design themes launchable + opportunity clusters group related keywords",
+          _pf.classify("coastal grandmother")["status"] == "THEME_FIT"
+          and _pf.classify("coastal grandmother")["launchable"]
+          and "THEME_FIT" in _pf.LAUNCHABLE
+          and any(c["name"] == "pouch" and c["size"] == 3 for c in _grp)
+          and "Product clusters" in _iv_src_now)
+    check("Team Calendar view wired (today / week / overdue / upcoming)",
+          "/team/calendar" in _web_src and 'view == "overdue"' in _web_src
+          and 'href="/team/calendar"' in _web_src)
+
     print("\nSELF-TEST RESULTS")
     for name, cond in results:
         print(f"  {'PASS' if cond else 'FAIL'}  {name}")

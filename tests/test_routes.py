@@ -50,6 +50,7 @@ def test_home_is_clean(client):
 @pytest.mark.parametrize("route", [
     "/cheatsheet", "/workflow", "/suppliers", "/feedback", "/profit", "/grade",
     "/alerts", "/launchpad", "/trackers", "/research", "/shops", "/listings",
+    "/team", "/team/calendar", "/team/calendar?view=overdue", "/me/tasks",
 ])
 def test_pages_render(client, route):
     assert client.get(route).status_code == 200
