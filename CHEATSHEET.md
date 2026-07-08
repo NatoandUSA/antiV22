@@ -1,146 +1,100 @@
-# Etsy Product Manager — Command Cheat Sheet (V20.5)
+# Etsy Product Manager — Command Cheat Sheet (V23.0)
 
-Every command is typed in a terminal (PowerShell on Windows, Terminal on Mac)
-**from inside the project folder**. On Windows use `py`; on Mac use `python3`.
+**The short version:** the tool mostly runs itself now. The **VPS refreshes the
+data every day at 6:00 AM on its own**, and your **team uses the dashboard in the
+browser — no terminal, no commands**. You only open a terminal for the occasional
+admin task below.
 
-**Legend:** 💻 works offline · 🌐 needs internet · 🔑 needs a token/password in `.env` · 💰 costs money · ⭐ the ones you'll actually use most
+**Where you type, and how to start Python:**
 
-`[pod|embroidery]` after a command = do it for **one product line only**. Leave
-it off to include everything. Example: `py main.py daily pod`.
-
----
-
-## 🧑‍🤝‍🧑 For your team: the dashboard does it all (no commands)
-
-Your teammates never touch the terminal. The dashboard home page now leads with
-**live, self-serve tools** that work **24/7 with your PC off** — no waiting on you:
-
-| Tool | Teammate types / clicks | Gets back |
+| Place | How to open it | Python command |
 |---|---|---|
-| **Analyze** | a keyword | demand, price, competition, what's winning, related keywords |
-| **Should I sell?** | a keyword | GO / CONDITIONAL / NO-GO verdict + reasons |
-| **Expand** | a keyword | related keywords to explore |
-| **Draft listing** | a keyword | title + 13 tags + price + description skeleton |
-| **Trending now** | click (per line) | rising keywords |
-| **Opportunities** | click (per line) | low-competition sweet spots |
-| **Seasonal calendar** | click | what to launch next, timed |
+| 🌍 **The dashboard** (etsy.theglobalserviceteam.site) | A web browser | *none — you click buttons* |
+| 🖥️ **The VPS** (the server) | SSH, then `cd ~/etsy-agent` | `python` (inside the `.venv`) |
+| 💻 **Your laptop** | PowerShell (Windows) / Terminal (Mac), in the project folder | `py` on Windows · `python3` on Mac |
 
-Every result has the **trademark check** built in. This is what used to require
-the operator in the terminal — the whole team now self-serves in the browser.
-The read-only **daily reports** sit below the tools on the same page.
+> ⚠️ On the VPS it's `python` (not `py`). On Windows it's `py`. That's the only
+> difference — the commands after it are identical.
 
 ---
 
-## Where each thing runs (important)
+## 🌍 The dashboard — what the TEAM uses (no commands, ever)
 
-**You never type commands into the website.** There are three places things happen:
+Your teammates just open the website and click. Everything below is a button, and
+it works 24/7 whether your laptop is on or off:
 
-| Place | What happens there |
-|---|---|
-| 🌍 **The dashboard** (etsy.theglobalserviceteam.site) | **Read-only.** The team just *reads* the reports, Market Pulse, and this cheat sheet. **No commands run here** — it only shows what was already built and uploaded. |
-| 💻🌐 **Your PC/Mac — with internet** | Where reports are *built*. These commands fetch live data, so you need Wi-Fi: `daily`, `harvest`, `discover`, `ideas`, `manager`, `grow`, `expand`, `categories`, `supplier`, `printify`, `images --all`, `rawreports`, and the publish button `push-to-vps.ps1`. |
-| 💻 **Your PC/Mac — offline** | No internet needed: `selftest`, `web` (local preview), `listreports`, `openreports`, `tasks`, `blockers`, `statusboard`, `finalqa`, `performance`, `images` (list only). |
-
-**The flow:** you *build* on your computer (internet) → *publish* with `push-to-vps.ps1`
-→ the team *reads* on the dashboard. The website never builds anything itself —
-that's why trend-fetching stays on your laptop (the server's IP is blocked from YTrends).
-
----
-
-## ⭐ The 3 you'll use every day
-
-| Command | What it does | Notes |
+| On the dashboard | What they do | What they get |
 |---|---|---|
-| `.\deploy\push-to-vps.ps1` | **The publish button.** Harvests fresh keywords → builds the POD + Embroidery reports → uploads them to the live team site. Asks for the `etsy` password. | 🌐 🔑 Run on the **laptop** only (the VPS can't fetch trends). Ends with the site URL. |
-| `py main.py web` | Opens the team report portal in your browser so you can read everything locally before publishing. | 🔑 needs `WEB_PASSWORD` in `.env`. Press `Ctrl+C` to stop it. |
-| `py main.py selftest` | Health check — confirms the whole tool is working. Run it after any change. | 💻 fast, no internet. Should say **ALL CHECKS PASSED**. |
+| ⚡ **Command Center** | type a keyword + pick a mode | the full workspace: verdict, all scores, listing draft, design prompt, publish gate |
+| **Analyze / Should I sell? / Expand** | a keyword | demand + competition, a GO/NO-GO read, related keywords |
+| **Build listing** | a keyword | title + 13 tags + description (**draft only**) |
+| 🕵️ **Spy** | a keyword | who's winning + who dominates the niche |
+| 📈 **Trending / 💎 Opportunities** | click (per mode) | rising keywords · low-competition sweet spots |
+| 📅 **Seasonal calendar** | click | upcoming holidays + launch-by dates + keywords |
+| 🏪 **Saved shops / 📌 Saved listings** | click **Auto-pull** | new shops already selling · young winning listings |
+| 📝 **Grade my listing** | paste title+tags+description | a 0–100 score + exact fixes |
+| 🏭 **Suppliers** | open catalog / upload CSV | the supplier library |
+| 📉 **Sales feedback** | log real numbers after a manual publish | a Day-3/7 KEEP / CHANGE / KILL / SCALE action |
 
-**To update the live site** (after a push), run these **on the VPS**:
+Every result has the **trademark check** built in, and nothing is ever
+auto-published — publishing stays a manual human decision.
+
+---
+
+## 🖥️ On the VPS — the few admin commands (run rarely)
+
+SSH in, then `cd ~/etsy-agent`. The daily data refresh already runs itself at
+6 AM, so you'll rarely need these.
+
+| Command | Where | What it does |
+|---|---|---|
+| `git pull` | VPS | Get the latest code I pushed. Updates the site + this cheat sheet **instantly** (no restart needed for the cheat sheet). |
+| `sudo systemctl restart etsy-web` | VPS | Restart the dashboard **only after a code change** so it loads the new version. ~5 seconds, not a reboot. |
+| `python main.py daily-run` | VPS | **The daily auto-job.** Pulls fresh keywords + refreshes the shop/listing feeds + writes a summary. Runs by itself at 6 AM; run it by hand to refresh now. **Never publishes.** |
+| `python main.py healthcheck` | VPS | Confirms folders, data, dashboard, and cron are all OK. |
+| `python main.py cron status` | VPS | Shows the 6 AM job: installed? last run? log path? |
+| `python main.py cron install --time "06:00"` | VPS | (Re)installs the 6 AM schedule. You already did this once. |
+| `python main.py autopull` | VPS | Just refresh Saved shops + Saved listings now. |
+| `python main.py daily pod` / `daily embroidery` | VPS | Rebuild the read-only daily reports for one line. |
+
+**To update the live site after I push new code:**
 ```bash
-cd /home/etsy/etsy-agent
-git checkout -- keywords.csv    # only if git pull complains
+cd ~/etsy-agent
 git pull
-sudo systemctl restart etsy-web
+sudo systemctl restart etsy-web    # only needed when code changed
 ```
+(If `git pull` ever complains about a local file, run `git stash` then `git pull`.)
 
 ---
 
-## Building the reports
+## 💻 On your laptop — optional (you don't need this daily anymore)
 
-| Command | What it does | Notes |
+Since the VPS refreshes itself at 6 AM, the old "push every day" step is now
+**optional** — use it only when you want an **instant** refresh instead of waiting
+for the morning.
+
+| Command | Where | What it does |
 |---|---|---|
-| `py main.py daily [pod\|embroidery]` | **THE report command.** Builds the 5 clean team reports (Start Here, Manager, Market & Keyword, Seller, Designer) **+ the live Market Pulse**. | 🌐 The sync runs this for you; run it manually to preview. |
-| `py main.py harvest` | Pulls a **deep, fresh keyword pool** from the live YTrends index (rankings + opportunities + trending + POD/embroidery search) into `keyword_data.csv`, which fuels the reports. Runs automatically before each sync. | 🌐 This is what took Embroidery from 13 → 200+ keywords. |
-| `py main.py harvest --dry` | Same as above but **previews only** — writes nothing. Good for seeing what's out there. | 🌐 safe, read-only. |
-| `py main.py manager [pod\|embroidery]` | The full Manager AI report on its own (verdicts, profit model, publish gate). | 🌐 |
-| `py main.py ideas [pod\|embroidery]` | Just the **Best Ideas** report — product clusters + a 7-day validation plan. | 🌐 |
-| `py main.py discover [pod\|embroidery]` | Pulls live data and ranks **new** niche ideas (rising, low-competition). | 🌐 |
+| `py main.py selftest` | laptop | Health check after any change. Must say **ALL CHECKS PASSED**. Fast, no internet. |
+| `py main.py web` | laptop | Preview the whole dashboard locally in your browser. `Ctrl+C` to stop. |
+| `.\deploy\push-to-vps.ps1` | laptop | **Instant publish** — build the reports and upload now (instead of waiting for 6 AM). Optional. |
+| `py main.py workspace build --keyword "usa raccoon shirt" --mode pod` | laptop | Build one full workspace from the terminal + save it. |
+| `py main.py expand "chenille bag"` | laptop | Deep related-keyword research for one niche. |
+
+> A few deep-research commands (`expand`, `discover`, `ideas`, `grow`) use the
+> older cookie-based data source, which is blocked from the server's IP — so run
+> **those** on the laptop. The everyday stuff (`daily`, `harvest`, `autopull`,
+> `daily-run`, the whole dashboard) uses the YTrends MCP, which **works fine on
+> the VPS** — that's why the 6 AM auto-run works.
 
 ---
-
-## Digging into a niche (research)
-
-| Command | What it does | Notes |
-|---|---|---|
-| `py main.py expand "keyword"` | Shows related keywords for a niche you like, **and saves them to the dashboard's "Keyword Research" page** (top-right link). Example: `py main.py expand "chenille bag"`. Publish with the sync. | 🌐 |
-| `py main.py categories` | Which Etsy categories pay best per seller. | 🌐 |
-| `py main.py grow [pod\|embroidery]` | Older keyword-grower (auto-adds viral/best-selling terms). `harvest` is the newer, bigger version. | 🌐 |
-| `py main.py grow "niche keyword"` | Deep-research one specific niche. | 🌐 |
-| `py main.py` (nothing after) | Validates your `keywords.csv` seed list against Google Trends. Slow and rarely needed now. | 🌐 (legacy) |
-
----
-
-## Listings, suppliers & design images
-
-| Command | What it does | Notes |
-|---|---|---|
-| `py main.py listing "keyword"` | A complete listing draft pack (title, tags, description) — **draft only, never auto-published**. | 🌐 |
-| `py main.py supplier pod "clear concert bag"` | Pulls supplier details for a POD product. | 🌐 |
-| `py main.py supplier embroidery "chenille name bag"` | Same, for an embroidery product. | 🌐 |
-| `py main.py printify "pouch"` | Finds Printify products + real US shipping. | 🌐 🔑 |
-| `py main.py printify cost 1090` | Shipping cost per print provider for a product ID. | 🌐 🔑 |
-| `py main.py images` | **Lists** the AI design prompts for approved products (no charge). | 💻 |
-| `py main.py images --all` | **Generates** the design PNGs via OpenAI. | 🌐 🔑 💰 each image is a paid API call. |
-
----
-
-## Reading reports & housekeeping
-
-| Command | What it does | Notes |
-|---|---|---|
-| `py main.py listreports` | Prints the file paths of every latest report. | 💻 |
-| `py main.py openreports` | Opens the latest report folder in your file explorer. | 💻 |
-| `py main.py rawreports [pod\|embroidery]` | The detailed/debug report set (more than the clean 5). | 🌐 |
-| `py main.py tasks` | Daily team tasks report (9 roles). | 💻 |
-| `py main.py blockers` | What's blocking products, grouped by severity. | 💻 |
-| `py main.py statusboard` | Product status board (csv + md). | 💻 |
-| `py main.py finalqa` | Final QA summary. | 💻 |
-| `py main.py performance` | Performance report from `shop_performance.csv`. | 💻 |
-
----
-
-## Inside Claude Code (type these in the chat, not the terminal)
-
-Once the **ytrends** server is approved, you can just ask in plain English, e.g.
-*"what's trending in embroidery this week?"* — or use the installed skills:
-
-| Skill | What it does |
-|---|---|
-| `/whats-hot` | Weekly Etsy scan — what's rising, cooling, and which seasonal events are coming. |
-| `/should-i-sell` | A GO / CONDITIONAL GO / NO-GO verdict for a specific niche, with 3 reasons. |
-| `/holiday-prep` | A seasonal launch timeline with the "launch 6 weeks early" deadline math. |
-
----
-
-## Where the data comes from
-
-- **Live trends:** the official YTrends MCP (`mcp.trends.ytuong.ai`) — no token needed.
-- **Cross-check:** Google Trends is live; Pinterest + X turn on when you add
-  `PINTEREST_ACCESS_TOKEN` / `X_BEARER_TOKEN` to `.env`.
-- **Reports are Markdown only** (no PDF). The team reads them on the dashboard.
 
 ## Golden rules
-1. Build + publish from the **laptop** (`push-to-vps.ps1`) — the VPS can't fetch trends.
-2. Run `py main.py selftest` after any change — it must say **ALL CHECKS PASSED**.
-3. Never publish a listing straight from a draft — it goes through QA first.
-4. Never share your `.env` — it holds your passwords and tokens.
+1. **The team uses the dashboard; you rarely touch the terminal.** The VPS
+   refreshes itself at 6 AM.
+2. After I push code: on the VPS run `git pull` (+ `sudo systemctl restart
+   etsy-web` if the dashboard code changed).
+3. **Never auto-publish.** A listing is only ever listed **manually**, and only
+   when the workspace shows **PUBLISH_READY = true**.
+4. Run `py main.py selftest` after any change — it must say **ALL CHECKS PASSED**.
+5. Never share your `.env` — it holds your passwords and tokens.
