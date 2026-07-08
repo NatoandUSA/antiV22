@@ -135,13 +135,22 @@ def healthcheck():
     env = Path(".env")
     add(".env file exists", env.exists(),
         "" if env.exists() else "copy .env.example to .env")
-    cookie = False
-    if env.exists():
-        for line in env.read_text(encoding="utf-8", errors="replace").splitlines():
-            if line.strip().startswith("YTRENDS_COOKIE=") and len(line.split("=", 1)[1].strip()) > 5:
-                cookie = True
-    add("YTRENDS_COOKIE present (value hidden)", cookie,
-        "optional — the MCP data layer works without a cookie" if not cookie else "set")
+
+    def _env_set(key, minlen=5):
+        """True if key is set (non-empty) in the environment OR in the .env file.
+        The CLI doesn't load .env (only the web server does), so we check both —
+        and never read or print the value itself."""
+        if (os.getenv(key) or "").strip():
+            return True
+        if env.exists():
+            for line in env.read_text(encoding="utf-8", errors="replace").splitlines():
+                if line.strip().startswith(f"{key}=") \
+                        and len(line.split("=", 1)[1].strip()) >= minlen:
+                    return True
+        return False
+
+    add("YTRENDS_COOKIE present (value hidden)", _env_set("YTRENDS_COOKIE"),
+        "optional — the MCP data layer works without a cookie")
 
     for d in DATA_DIRS:
         add(f"dir {d}", Path(d).exists(), "" if Path(d).exists() else "run daily-run")
@@ -187,8 +196,8 @@ def healthcheck():
         add("passwords hashed (no plaintext)", all(
             (u["password_hash"] or "").split(":")[0] not in ("", "plain")
             and len(u["password_hash"] or "") > 20 for u in users) if users else True)
-        add("session secret configured", bool(os.getenv("APP_SECRET_KEY")
-            or os.getenv("WEB_SECRET")),
+        add("session secret configured",
+            _env_set("APP_SECRET_KEY", 8) or _env_set("WEB_SECRET", 8),
             "set APP_SECRET_KEY in .env so logins survive restarts")
         # activity + task tables present
         auth.appdb.q("SELECT 1 FROM activity_logs LIMIT 1")
