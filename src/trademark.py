@@ -62,6 +62,11 @@ def check(tag):
     non_product = [w for w in words if w not in PRODUCT_WORDS]
     if any(w in SLOGAN_PRONOUNS for w in words):
         return "CAUTION", "slogan-like phrase - verify at tmsearch.uspto.gov"
-    if len(non_product) >= 3 and len(words) >= 4:
-        return "CAUTION", "phrase could be a registered slogan - verify manually"
+    # Long, non-descriptive phrases can be registered slogans. Descriptive Etsy
+    # long-tails (e.g. "gift for dog mom", "personalized dog name shirt") are 4
+    # words but clearly product-descriptive, so require 5+ words / 4+ non-product
+    # words here to avoid flagging every normal long-tail tag. Brand + pronoun
+    # detection above is unchanged.
+    if len(non_product) >= 4 and len(words) >= 5:
+        return "CAUTION", "long phrase could be a registered slogan - verify manually"
     return "OK", ""

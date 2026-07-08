@@ -763,6 +763,41 @@ def run_selftest():
           and _so._mode_ok("embroidery", "JEWELRY", "TSHIRT") is False
           and _so._mode_ok("pod", "EMBROIDERY", "TSHIRT") is False)
 
+    # ---- V24.0: sales-execution OS layer (alerts / trackers / profit / launchpad) ----
+    from src import alerts as _al, tracking as _tk, profit as _pf, launchpad as _lp
+    check("Alerts Center: generate/add/resolve + home badge + route",
+          all(callable(getattr(_al, f, None)) for f in ("generate", "add", "resolve", "summary"))
+          and isinstance(_al.generate(), list)
+          and all(x in _web_src for x in ("/alerts", "/alerts/resolve/", "_alerts_card")))
+    check("Keyword + Market trackers: snapshot + trend + daily auto-snapshot",
+          all(callable(getattr(_tk, f, None)) for f in (
+              "snapshot_keyword", "snapshot_market", "keyword_rows", "market_rows",
+              "daily_snapshot"))
+          and "/trackers" in _web_src
+          and "track_snapshots" in _ops_src)
+    _pfc = _pf.compute(30, 8, 0)
+    check("Profit Center: Etsy fee model + supplier learning + route",
+          _pfc["net_profit"] == 18.70 and callable(_pf.add)
+          and "/profit" in _web_src and 'href="/profit"' in _web_src)
+    check("Launchpad board: columns + self-populating from saved runs",
+          isinstance(_lp.COLUMNS, list) and len(_lp.COLUMNS) >= 8
+          and isinstance(_lp.board(), dict)
+          and all(x in _web_src for x in ("/launchpad", "lpboard")))
+    _an = _iv.analyze_listing("dog shirt", "dog, shirt", "short", kw="dog shirt")
+    check("Listing Analyzer: SEO/Trust/Image sub-scores + hard publish gate",
+          callable(getattr(_iv, "analyze_listing", None))
+          and callable(getattr(_iv, "ads_readiness", None))
+          and "Publish Gate: false" in _an and "DRAFT ONLY" in _an
+          and "Listing Analyzer" in _web_src)
+    from src.trademark import check as _tm_check
+    check("Trademark: descriptive long-tails OK, real slogans/brands still flagged",
+          _tm_check("gift for dog mom")[0] == "OK"
+          and _tm_check("make them chase you")[0] == "CAUTION"
+          and _tm_check("taylor swift shirt")[0] == "HIGH")
+    check("daily-run wires tracker snapshots + alerts refresh (self-populating)",
+          "track_snapshots" in _ops_src and "refresh_alerts" in _ops_src
+          and "alerts.generate()" in _ops_src)
+
     print("\nSELF-TEST RESULTS")
     for name, cond in results:
         print(f"  {'PASS' if cond else 'FAIL'}  {name}")

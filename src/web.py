@@ -118,6 +118,18 @@ def build_app(password, secret):
             return None
         return p
 
+    def _alerts_card():
+        try:
+            from src import alerts
+            s = alerts.summary()
+        except Exception:  # noqa: BLE001
+            s = {"open": 0, "critical": 0}
+        n, crit = s.get("open", 0), s.get("critical", 0)
+        badge = (f' <span class="abadge {"crit" if crit else "warn"}">{n}</span>'
+                 if n else "")
+        return ('<a class="toolcard" href="/alerts"><b>🔔 Alerts' + badge + '</b>'
+                '<span>What needs attention: reviews, kills, stale data</span></a>')
+
     # ---- auth ----
     @app.route("/login", methods=["GET", "POST"])
     def login():
@@ -235,10 +247,17 @@ def build_app(password, secret):
             # --- Section 3: ship it, then learn from results ---
             '<h2 class="grouph">🚀 Execute &amp; improve</h2>'
             '<div class="toolgrid">'
-            '<a class="toolcard" href="/grade"><b>📝 Grade my listing</b>'
-            '<span>Paste a title + 13 tags + description → 0–100 + fixes</span></a>'
+            '<a class="toolcard" href="/grade"><b>📋 Listing Analyzer</b>'
+            '<span>SEO / Trust / Image scores + publish gate</span></a>'
             '<a class="toolcard" href="/feedback"><b>📉 Sales feedback</b>'
             '<span>Post-launch: keep / change / kill / scale</span></a>'
+            + _alerts_card()
+            + '<a class="toolcard" href="/launchpad"><b>🚀 Launchpad</b>'
+            '<span>Launch board: idea → manager → Day-7 → scale/kill</span></a>'
+            '<a class="toolcard" href="/trackers"><b>📊 Market &amp; keyword tracker</b>'
+            '<span>Trends over time: rising / falling / stable</span></a>'
+            '<a class="toolcard" href="/profit"><b>💰 Profit Center</b>'
+            '<span>Real P&amp;L per product / supplier / mode</span></a>'
             '<a class="toolcard" href="/workflow"><b>📋 Workflow</b>'
             '<span>How the team works: find → collect → ship</span></a>'
             '<a class="toolcard" href="/cheatsheet"><b>📖 Cheat Sheet</b>'
@@ -930,22 +949,27 @@ def build_app(password, secret):
         tags = (request.form.get("tags") or "").strip()
         desc = (request.form.get("description") or "").strip()
         kw = (request.form.get("keyword") or "").strip()
+        img_ok = request.form.get("first_image_ready") == "on"
+        sup_ok = request.form.get("supplier_ok") == "on"
         result_html = ""
         if request.method == "POST" and (title or tags or desc):
             from src import interactive
             try:
-                out = interactive.grade_listing(title, tags, desc, kw)
+                out = interactive.analyze_listing(title, tags, desc, kw,
+                                                  first_image_ready=img_ok,
+                                                  supplier_ok=sup_ok)
                 rendered = md.markdown(out, extensions=["tables", "fenced_code",
                                                         "sane_lists"])
                 result_html = (f'<article class="md">{rendered}</article>' + COPY_JS)
             except (SystemExit, Exception) as exc:  # noqa: BLE001
-                result_html = ('<p class="empty">Could not grade: '
+                result_html = ('<p class="empty">Could not analyze: '
                                f'{_html.escape(str(exc)[:200])}</p>')
+        ck = lambda on: " checked" if on else ""  # noqa: E731
         form = (
-            '<article class="md"><h1>📝 Grade my listing</h1>'
-            '<p class="lead">Paste an existing listing and get a 0–100 score with '
-            'exact fixes — front-loading, tag character-packing, typos, trademark '
-            'cautions, and description gaps. <b>Grade only — never publishes.</b></p>'
+            '<article class="md"><h1>📋 Listing Analyzer</h1>'
+            '<p class="lead">Paste a draft listing → <b>Listing / SEO / Trust / '
+            'Image</b> scores + a hard <b>publish gate</b> with the exact failed '
+            'checks. <b>Analysis only — never publishes.</b></p>'
             '<form method="post" action="/grade" class="gradeform">'
             '<label>Focus keyword'
             f'<input name="keyword" value="{_html.escape(kw)}" '
@@ -960,9 +984,162 @@ def build_app(password, secret):
             f'<textarea name="description" rows="6" '
             f'placeholder="Your full listing description">{_html.escape(desc)}'
             '</textarea></label>'
-            '<button class="primary" type="submit">Grade listing →</button>'
+            f'<label class="ckrow"><input type="checkbox" name="first_image_ready"'
+            f'{ck(img_ok)}> First image confirmed ready (≥ 75 in First Image Battle)</label>'
+            f'<label class="ckrow"><input type="checkbox" name="supplier_ok"'
+            f'{ck(sup_ok)}> Supplier is SUPPLIER_CONFIRMED</label>'
+            '<button class="primary" type="submit">Analyze listing →</button>'
             '</form></article>')
-        return page("Grade my listing", bar + result_html + form)
+        return page("Listing Analyzer", bar + result_html + form)
+
+    # ---- Alerts Center (internal only — no Etsy automation) ----
+    @app.route("/alerts")
+    @login_required
+    def alerts_page():
+        import html as _h
+        from src import alerts
+        alerts.generate()
+        rows = alerts.load()
+        order = {"critical": 0, "warn": 1, "info": 2}
+        rows.sort(key=lambda r: order.get(r.get("level"), 3))
+        items = ""
+        for r in rows:
+            items += ('<div class="saveditem"><div class="sihead">'
+                      f'<span class="pill lvl-{r.get("level")}">{_h.escape(r.get("level",""))}</span> '
+                      f'<b>{_h.escape(r.get("message",""))}</b> '
+                      f'<a class="cbtn" href="/alerts/resolve/{r.get("id")}">resolve</a>'
+                      f'</div><div class="note">{_h.escape(r.get("kind",""))} · '
+                      f'{_h.escape(r.get("source",""))} · {r.get("updated_at","")}</div></div>')
+        bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
+        return page("Alerts", bar + '<article class="md"><h1>🔔 Alerts Center</h1>'
+                    '<p>Internal only — no Etsy automation, no publishing. Auto-refreshed '
+                    'from system state + the 6 AM run.</p>'
+                    + (items or '<p class="empty">✅ Nothing needs attention right now.</p>')
+                    + '</article>')
+
+    @app.route("/alerts/resolve/<int:aid>")
+    @login_required
+    def alerts_resolve(aid):
+        from src import alerts
+        alerts.resolve(aid)
+        return redirect(url_for("alerts_page"))
+
+    # ---- Launchpad (launch status board) ----
+    @app.route("/launchpad")
+    @login_required
+    def launchpad_page():
+        import html as _h
+        from src import launchpad as lp
+        b = lp.board()
+        cols = ""
+        for c in lp.COLUMNS:
+            cards = b.get(c, [])
+            body = "".join(
+                '<div class="lpcard"><b>' + _h.escape(str(card["keyword"])[:40]) + '</b>'
+                f'<span class="pill">{_h.escape(card.get("mode",""))}</span>'
+                f'<div class="note">{_h.escape(card.get("next_action",""))}</div></div>'
+                for card in cards)
+            cols += (f'<div class="lpcol"><h3>{_h.escape(c)} '
+                     f'<span class="count">{len(cards)}</span></h3>{body or "<p class=note>—</p>"}</div>')
+        bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
+        return page("Launchpad", bar + '<article class="md"><h1>🚀 Launchpad</h1>'
+                    '<p>Every saved run, by launch stage. Cards move automatically as '
+                    'you save runs + log feedback. <b>No auto-publishing</b> — '
+                    '"Published manually" only reflects what your team logged.</p>'
+                    '</article><div class="lpboard">' + cols + '</div>')
+
+    # ---- Market & keyword trackers ----
+    @app.route("/trackers")
+    @login_required
+    def trackers_page():
+        import html as _h
+        from src import tracking as tk
+        def tbl(rows, kind):
+            if not rows:
+                return ('<p class="empty">No ' + kind + ' tracked yet — the 6 AM '
+                        'run fills this automatically, or track one below.</p>')
+            head = ("<table><tr><th>Keyword</th><th>Trend</th><th>Demand/24h</th>"
+                    "<th>Conv</th><th>Listings</th><th>Avg $</th><th>Snaps</th>"
+                    "<th>Action</th></tr>") if kind == "keywords" else (
+                    "<table><tr><th>Niche</th><th>Trend</th><th>Demand/24h</th>"
+                    "<th>Listings</th><th>Sellers</th><th>Avg $</th><th>Snaps</th></tr>")
+            out = [head]
+            for r in rows:
+                if kind == "keywords":
+                    out.append(f"<tr><td>{_h.escape(r['keyword'])}</td>"
+                               f"<td><b>{r['trend']}</b></td><td>{r.get('demand_24h','-')}</td>"
+                               f"<td>{r.get('conversion','-')}</td><td>{r.get('listings','-')}</td>"
+                               f"<td>${r.get('avg_price','-')}</td><td>{r['snapshots']}</td>"
+                               f"<td>{r['action']}</td></tr>")
+                else:
+                    out.append(f"<tr><td>{_h.escape(r['niche'])}</td>"
+                               f"<td><b>{r['trend']}</b></td><td>{r.get('demand_24h','-')}</td>"
+                               f"<td>{r.get('listings','-')}</td><td>{r.get('sellers','-')}</td>"
+                               f"<td>${r.get('avg_price','-')}</td><td>{r['snapshots']}</td></tr>")
+            return "".join(out) + "</table>"
+        bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
+        addf = ('<form method="post" action="/trackers/add" class="toolbar">'
+                '<input name="keyword" placeholder="Track a keyword or niche now">'
+                '<button class="primary" name="kind" value="keyword">Track keyword</button>'
+                '<button name="kind" value="market">Track market</button></form>')
+        return page("Trackers", bar + '<article class="md"><h1>📊 Market &amp; keyword '
+                    'tracker</h1><p>Trends over time from the official index — rising / '
+                    'falling / stable. The 6 AM run snapshots automatically.</p>' + addf
+                    + '<h2>Keywords</h2>' + tbl(tk.keyword_rows(), "keywords")
+                    + '<h2>Markets</h2>' + tbl(tk.market_rows(), "markets") + '</article>')
+
+    @app.route("/trackers/add", methods=["POST"])
+    @login_required
+    def trackers_add():
+        from src import tracking as tk
+        q = (request.form.get("keyword") or "").strip()[:80]
+        kind = request.form.get("kind")
+        if q:
+            try:
+                if kind == "market":
+                    tk.snapshot_market(q)
+                else:
+                    tk.snapshot_keyword(q)
+            except (SystemExit, Exception):  # noqa: BLE001
+                pass
+        return redirect(url_for("trackers_page"))
+
+    # ---- Profit Center ----
+    @app.route("/profit", methods=["GET", "POST"])
+    @login_required
+    def profit_page():
+        import html as _h
+        from src import profit as pf
+        if request.method == "POST":
+            pf.add({k: (request.form.get(k) or "").strip() for k in
+                    ("keyword", "product_mode", "supplier", "sale_price",
+                     "product_cost", "shipping_cost", "offsite_ad",
+                     "refund_or_issue", "notes")})
+            return redirect(url_for("profit_page"))
+        s = pf.summary()
+        sup_rows = "".join(
+            f"<tr><td>{_h.escape(k)}</td><td>{v['sales']}</td>"
+            f"<td>${v['net']:.2f}</td><td>{v['avg_margin']*100:.0f}%</td></tr>"
+            for k, v in s["by_supplier"].items())
+        form = ('<form method="post" action="/profit" class="gradeform">'
+                '<label>Keyword<input name="keyword"></label>'
+                '<label>Mode<input name="product_mode" placeholder="pod/embroidery"></label>'
+                '<label>Supplier<input name="supplier"></label>'
+                '<label>Sale price<input name="sale_price" type="number" step="any"></label>'
+                '<label>Product cost<input name="product_cost" type="number" step="any"></label>'
+                '<label>Shipping cost<input name="shipping_cost" type="number" step="any"></label>'
+                '<label class="ckrow"><input type="checkbox" name="offsite_ad" value="yes">'
+                ' Came from an Etsy offsite ad (15% fee)</label>'
+                '<label>Refund / issue<input name="refund_or_issue" placeholder="or none"></label>'
+                '<button class="primary" type="submit">Log sale + compute profit</button></form>')
+        bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
+        return page("Profit Center", bar + '<article class="md"><h1>💰 Profit Center</h1>'
+                    f'<p>{s["sales"]} sales logged · <b>net ${s["net_total"]:.2f}</b>. '
+                    'Applies the Etsy fee model and feeds supplier scores.</p>'
+                    + ('<h2>By supplier</h2><table><tr><th>Supplier</th><th>Sales</th>'
+                       f'<th>Net</th><th>Avg margin</th></tr>{sup_rows}</table>'
+                       if sup_rows else '')
+                    + form + '</article>')
 
     # ---- keyword research (from `py main.py expand`, synced in reports/latest) ----
     @app.route("/research")
@@ -1150,6 +1327,20 @@ padding:10px 14px;margin:10px 0}
 .learnbox b{color:var(--accent)}.learnbox ul{margin:6px 0 0;padding-left:18px}
 .archive{margin-top:22px;border-top:1px solid var(--line);padding-top:12px}
 .archive summary{cursor:pointer;font-weight:700;color:var(--ink-soft);font-size:.9rem}
+/* alerts + launchpad + trackers + profit */
+.abadge{display:inline-block;min-width:18px;text-align:center;border-radius:20px;
+padding:0 6px;font-size:.72rem;color:#fff;background:#B45309;vertical-align:middle}
+.abadge.crit{background:#99271F}
+.pill.lvl-critical{background:#99271F;color:#fff}.pill.lvl-warn{background:#B45309;color:#fff}
+.pill.lvl-info{background:#3B6E8F;color:#fff}
+.lpboard{display:flex;gap:12px;overflow-x:auto;padding-bottom:10px}
+.lpcol{flex:0 0 220px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px}
+.lpcol h3{font-size:.82rem;margin:0 0 8px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft)}
+.lpcol .count{background:var(--accent-bg);color:var(--accent);border-radius:10px;padding:0 6px;font-size:.72rem}
+.lpcard{background:var(--paper);border:1px solid var(--line);border-radius:9px;padding:8px 10px;margin-bottom:8px}
+.lpcard b{font-size:.86rem;display:block}
+.ckrow{flex-direction:row!important;align-items:center;gap:8px;font-weight:400!important}
+.ckrow input{width:auto!important}
 /* workspace */
 .ws{background:var(--surface);border:1px solid var(--line);border-radius:14px;
 padding:18px 20px;margin:14px 0;box-shadow:var(--shadow)}

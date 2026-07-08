@@ -1,0 +1,35 @@
+# Opt-in code-quality gate. Install once:  pip install pre-commit && pre-commit install
+# Runs automatically on `git commit`. All hooks are permissively licensed (MIT/Apache).
+# Nothing here touches Etsy or publishes anything — it only checks files + runs tests.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-json          # every saved-run / data JSON must be valid
+      - id: check-yaml
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+      - id: check-merge-conflict
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff                # fast Python linter (warns, does not auto-break)
+
+  # Local hooks — run the project's own gates before pushing.
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest (offline unit tests)
+        entry: python -m pytest -q
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+      - id: selftest
+        name: py main.py selftest (needs network)
+        entry: python main.py selftest
+        language: system
+        pass_filenames: false
+        stages: [manual]        # run on demand: pre-commit run selftest --hook-stage manual

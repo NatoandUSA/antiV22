@@ -378,6 +378,46 @@ def cmd_harvest(cmd, args):
     run_harvest(args)
 
 
+def cmd_alerts(cmd, args):
+    from src import alerts
+    alerts.generate()
+    rows = alerts.load()
+    print(f"ALERTS ({len(rows)} open)")
+    for r in sorted(rows, key=lambda x: {"critical": 0, "warn": 1}.get(x["level"], 2)):
+        print(f"  [{r['level'].upper():8}] {r['message']}")
+    if not rows:
+        print("  none — nothing needs attention.")
+
+
+def cmd_track(cmd, args):
+    from src import tracking as tk
+    kv, words = _flags(args)
+    q = kv.get("keyword") or " ".join(words).strip('\'"')
+    if not q:
+        _usage_exit('Usage: python main.py track "keyword" [--market]')
+    if "--market" in args:
+        s = tk.snapshot_market(q)
+    else:
+        s = tk.snapshot_keyword(q)
+    print(f"Tracked: {s}" if s else "Nothing tracked (no data).")
+
+
+def cmd_profit(cmd, args):
+    from src import profit as pf
+    s = pf.summary()
+    print(f"PROFIT CENTER: {s['sales']} sales · net ${s['net_total']:.2f}")
+    for sup, v in s["by_supplier"].items():
+        print(f"  {sup:<14} sales={v['sales']:<3} net=${v['net']:<9.2f} "
+              f"avg_margin={v['avg_margin']*100:.0f}%")
+
+
+def cmd_launchpad(cmd, args):
+    from src import launchpad as lp
+    for col, n in lp.summary().items():
+        if n:
+            print(f"  {col:<20} {n}")
+
+
 def cmd_daily_run(cmd, args):
     from src import ops
     ops.daily_run()
@@ -476,6 +516,10 @@ COMMANDS = {
     "daily-run": cmd_daily_run,
     "healthcheck": cmd_healthcheck,
     "cron": cmd_cron,
+    "alerts": cmd_alerts,
+    "track": cmd_track,
+    "profit": cmd_profit,
+    "launchpad": cmd_launchpad,
 }
 
 # Commands that reach the live YTrends/Printify APIs. For YTrends-backed ones

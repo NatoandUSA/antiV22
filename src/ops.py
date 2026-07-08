@@ -17,7 +17,8 @@ from pathlib import Path
 LOG_DIR = Path("logs")
 DATA_DIRS = [
     "data/raw", "data/raw/ytuong", "data/processed", "data/suppliers",
-    "data/performance", "data/learning", "reports/latest/runs",
+    "data/performance", "data/learning", "data/tracking", "data/alerts",
+    "reports/latest/runs",
 ]
 CRON_MARKER = "# etsy-agent-daily-run"
 
@@ -85,9 +86,20 @@ def daily_run():
         from src import learning
         return learning.summary()
 
+    def _track():
+        from src import tracking
+        return tracking.daily_snapshot(limit=15)
+
+    def _alerts():
+        from src import alerts
+        alerts.generate()          # re-scan state and raise/clear alerts
+        return alerts.summary()
+
     step("harvest_keywords", _harvest)
     step("autopull_feeds", _autopull)
+    step("track_snapshots", _track)
     step("learning_summary", _learn)
+    step("refresh_alerts", _alerts)
 
     out = Path("data/processed") / f"daily_summary_{date.today()}.json"
     out.write_text(json.dumps(summary, indent=2), encoding="utf-8")

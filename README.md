@@ -1,6 +1,29 @@
-# Etsy Product Manager V23.1
+# Etsy Product Manager V24.0
 
-**New in V23.1 — Spy is mode-aware + full-system audit hardening.**
+**New in V24.0 — the sales-execution OS layer (Helium-10-inspired, Etsy-specific).**
+Five new modules turn the tool from research into an operating system. All
+self-populating, English only, no auto-publishing.
+
+- **🔔 Alerts Center** (`/alerts`) — one "what needs attention today" list, auto-built
+  from state (stale data, Day-3/7 reviews due, kill/scale flags, daily-run failures,
+  problem suppliers). Home card shows the open count.
+- **🚀 Launchpad** (`/launchpad`) — a Kanban launch board (Not started → Ready for
+  manager → Published manually → Day-7 → Scaled/Killed) that **derives itself** from
+  saved runs + feedback. No auto-publishing.
+- **📊 Keyword + Market Trackers** (`/trackers`) — metrics over time, rising / falling /
+  stable. **The 6 AM run snapshots them automatically.**
+- **💰 Profit Center** (`/profit`) — real P&L per sale with the Etsy fee model
+  (listing $0.20 · 6.5% txn · ~3%+$0.25 pay · 15% offsite); feeds supplier scores.
+- **📋 Listing Analyzer** (`/grade`) — Listing / SEO / Buyer-Trust / Image sub-scores
+  + a hard publish gate with the exact failed checks. Plus a manual **Ads Readiness**
+  check (never runs ads).
+
+Also fixed a real usability bug: the trademark check no longer flags normal 4-word
+long-tail tags (e.g. "gift for dog mom") as slogans — brands + real slogans are
+still caught. New `tests/test_os_modules.py` (12 tests) + `.pre-commit-config.yaml`
++ `docs/MARKET_GAP_RESEARCH.md`. Publishing stays manual, gated on `PUBLISH_READY`.
+
+**V23.1 — Spy is mode-aware + full-system audit hardening.**
 
 - **🕵️ Spy now respects Product Mode.** The bug where Embroidery mode was
   silently dropped is fixed: the mode flows form → route → `spy()`. Spy now shows

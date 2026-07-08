@@ -478,6 +478,144 @@ def grade_listing(title, tags_str, desc, kw="", mode=None):
     return "\n".join(L)
 
 
+_PLACEHOLDERS = ("tbd", "xxx", "placeholder", "lorem", "todo", "your text here",
+                 "[", "insert ", "example")
+
+
+def analyze_listing(title, tags_str, desc, kw="", mode=None,
+                    first_image_ready=False, supplier_ok=False):
+    """Full pre-publish Listing Analyzer (Helium-10 Listing Analyzer idea, Etsy
+    rules). Returns markdown with Listing / SEO / Trust / Image sub-scores + a
+    hard publish gate and the EXACT failed checks. Never publishes."""
+    title = (title or "").strip()
+    desc = (desc or "").strip()
+    kw = (kw or "").strip().lower()
+    tags = [t.strip().lower() for t in (tags_str or "").replace("\n", ",").split(",")
+            if t.strip()]
+    tl, dl = title.lower(), desc.lower()
+    failed = []
+
+    # --- SEO (0-100) ---
+    seo = 0
+    if kw and tl.startswith(kw[:min(len(kw), 15)]):
+        seo += 25
+    elif kw and kw in tl:
+        seo += 14
+        failed.append("Move the focus keyword to the FRONT of the title.")
+    elif kw:
+        failed.append(f"Add '{kw}' to the title, front-loaded.")
+    n = len(tags)
+    seo += 20 if n == 13 else max(0, int(20 * n / 13))
+    if n != 13:
+        failed.append(f"Use exactly 13 tags (have {n}).")
+    chars = sum(len(t) for t in tags)
+    seo += int(15 * min(1, chars / 260))
+    if chars < 156:
+        failed.append(f"Tags use {chars}/260 chars — pack longer multi-word tags.")
+    longtail = sum(1 for t in tags if len(t.split()) >= 2)
+    seo += 15 if longtail >= 8 else int(15 * longtail / 8)
+    typos = [t for t in tags if _typo_flag(t)]
+    seo += 0 if typos else 15
+    if typos:
+        failed.append(f"Fix typo tags: {', '.join(typos[:3])}.")
+    tm_high = [t for t in tags if tm_check(t)[0] == "HIGH"]
+    tm_caution = [t for t in tags if tm_check(t)[0] == "CAUTION"]
+    seo += 0 if tm_high else 10   # only real brands cost SEO points
+    if tm_high:
+        failed.append(f"Remove trademark tags (known brand): {', '.join(tm_high[:3])}.")
+    if tm_caution:
+        failed.append(f"Verify + manager-approve slogan-like tags: {', '.join(tm_caution[:3])}.")
+    seo = min(100, seo)
+
+    # --- Buyer Trust (0-100) ---
+    trust = 0
+    if any(w in dl for w in ("personaliz", "custom", "name", "monogram")):
+        trust += 30
+    else:
+        failed.append("State the personalization + exactly how to order it.")
+    if any(w in dl for w in ("ship", "processing", "delivery", "arrive")):
+        trust += 30
+    else:
+        failed.append("Add a clear shipping / processing-time note.")
+    if any(w in dl for w in ("material", "cotton", "acrylic", "metal", "thread",
+                             "fabric", "size")):
+        trust += 20
+    else:
+        failed.append("Name the material / size so buyers trust the product.")
+    trust += 20 if len(desc) >= 100 else int(20 * len(desc) / 100)
+    if len(desc) < 100:
+        failed.append("Description is thin — add materials, personalization, shipping.")
+    trust = min(100, trust)
+
+    # --- Image Readiness (0-100) ---
+    image = 85 if first_image_ready else 40
+    if not first_image_ready:
+        failed.append("First image not confirmed ready (needs the First Image Battle ≥ 75).")
+
+    # --- placeholders + supplier ---
+    ph = [t for t in tags + [title, desc] if any(p in t.lower() for p in _PLACEHOLDERS)]
+    if ph:
+        failed.append("Remove placeholder text before publishing.")
+    if not supplier_ok:
+        failed.append("Supplier not confirmed (SUPPLIER_CONFIRMED required).")
+
+    clean_tags = n == 13 and not typos and not tm_high and not tm_caution
+    listing_score = round(seo * 0.40 + trust * 0.30 + image * 0.30)
+    gate = (seo >= 75 and trust >= 70 and image >= 75 and clean_tags
+            and first_image_ready and supplier_ok and not ph
+            and bool(kw) and kw in tl and any(kw in t for t in tags) and kw in dl)
+    if kw and not (kw in tl and any(kw in t for t in tags) and kw in dl):
+        failed.append("Use the SAME focus keyword in title, a tag, AND the description.")
+
+    L = [f"# 📋 Listing Analyzer — {title[:48] or '(no title)'}", "",
+         "| Score | /100 |", "|---|---|",
+         f"| **Listing Score** | **{listing_score}** |",
+         f"| SEO Score | {seo} |",
+         f"| Buyer Trust Score | {trust} |",
+         f"| Image Readiness Score | {image} |", "",
+         f"**Publish Gate: {'true' if gate else 'false'}**", ""]
+    if gate:
+        L += ["✅ All pre-publish checks pass. Manager approval + manual publish "
+              "only — the tool never publishes for you."]
+    else:
+        L += ["## ⛔ DRAFT ONLY — DO NOT PUBLISH", "", "**FAILED_PUBLISH_CHECKS:**"]
+        L += [f"- {f}" for f in failed] or ["- (none listed)"]
+    L += ["", f"_Tags: {n}/13 · {chars}/260 chars · {longtail} long-tail. "
+          "Grade only — never auto-published._"]
+    return "\n".join(L)
+
+
+def ads_readiness(publish_ready, first_image_score, offer_score, margin=0.0,
+                  has_traffic=False, price=0.0):
+    """Etsy Ads readiness — MANUAL only. Decides if a listing is worth testing
+    Etsy Ads; never runs ads. Returns markdown."""
+    checks = {
+        "PUBLISH_READY is true": bool(publish_ready),
+        "First-image score ≥ 75": first_image_score >= 75,
+        "Offer strength ≥ 70": offer_score >= 70,
+        "Margin supports ad spend (≥ 25%)": margin >= 0.25,
+        "Has early traffic / strong confidence": bool(has_traffic) or publish_ready,
+    }
+    ready = all(checks.values())
+    budget = "$3–5/day" if margin < 0.4 else "$5–10/day"
+    L = [f"# 📣 Etsy Ads Readiness — {'READY' if ready else 'NOT READY'}", "",
+         "_Manual only — the tool never runs ads. This just says whether it's "
+         "worth testing Etsy Ads yourself._", "",
+         f"**ADS_READY: {'true' if ready else 'false'}**", "",
+         "| Check | OK |", "|---|---|"]
+    L += [f"| {k} | {'✅' if v else '❌'} |" for k, v in checks.items()]
+    if ready:
+        L += ["", f"- **Suggested test budget:** {budget}",
+              "- **Suggested test duration:** 7–10 days",
+              "- **Keywords to watch:** your 3 strongest long-tail tags",
+              "- **Stop rule:** kill if ACOS > your margin after 10 days / 30 clicks.",
+              "- **Scale rule:** raise budget only if orders come in profitably."]
+    else:
+        L += ["", "- Not worth ad spend yet — fix the ❌ checks first "
+              "(publish-ready + first image + offer + margin)."]
+    return "\n".join(L)
+
+
 def _spy_feasibility(kw, mode):
     """Mode-aware 'can we actually make this?' — supplier match per mode + the
     design rules for that production method. Embroidery must check embroidery
