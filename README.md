@@ -1,6 +1,16 @@
-# Etsy Product Manager V26.4
+# Etsy Product Manager V26.5
 
-**New in V26.4 — deeper lists + instant first load.**
+**New in V26.5 — the deep lists now reach the TEAM (VPS), not just the laptop.**
+The live Trending/Opportunities pages read their keywords from a cache in
+`data/agent.db`. The VPS can't fetch YTrends (blocked IP), and the deploy script
+wasn't syncing that cache — so the team saw empty/stale keyword pages while the
+laptop saw the deep lists. Now `deploy/push-to-vps.ps1` runs `py main.py warm`
+(deep-pull the cache) and ships `agent.db` up with an **atomic rename**, so the
+server shows the same 50-deep lists + clusters. Team logins/tasks/activity live in
+a separate `data/app.db` and are never touched by the sync. New `py main.py warm`
+command warms the cache on demand.
+
+**V26.4 — deeper lists + instant first load.**
 - **Deeper pull:** Trending/Opportunities now pull **100** and show up to **50**
   launch-ready keywords (was 60/30), so clusters get even richer.
 - **Pre-warmed cache:** the daily run now pre-fetches these surfaces into the

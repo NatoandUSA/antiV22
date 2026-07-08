@@ -521,6 +521,18 @@ def run_selftest():
           and "warm_keyword_cache" in _ops_src
           and callable(__import__("src.interactive", fromlist=["warm_cache"]).warm_cache))
 
+    # ---- V26.5: deploy script warms + ships the keyword cache to the VPS ----
+    _push = Path("deploy/push-to-vps.ps1")
+    _push_src = _push.read_text(encoding="utf-8") if _push.exists() else ""
+    # Only the executable lines (drop # comments, which mention app.db on purpose).
+    _push_cmds = "\n".join(l for l in _push_src.splitlines()
+                           if not l.lstrip().startswith("#"))
+    check("push-to-vps: warm cache + ship agent.db (atomic rename), app.db untouched",
+          "main.py warm" in _push_cmds
+          and "data/agent.db" in _push_cmds
+          and "agent.db.tmp" in _push_cmds and "mv -f" in _push_cmds
+          and "app.db" not in _push_cmds)   # never sync the team logins/tasks db
+
     from src import crosscheck as _cc
     check("cross-check sources present (Google Trends + Pinterest + X)",
           set(_cc.status()) == {"Google Trends", "Pinterest", "X / Twitter"}

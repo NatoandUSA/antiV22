@@ -513,6 +513,16 @@ def cmd_daily_run(cmd, args):
     ops.daily_run()
 
 
+def cmd_warm(cmd, args):
+    """Pre-fetch the deep Trending/Opportunities/Gems keyword pages into the daily
+    cache (data/agent.db). Run on the fetching machine (the laptop) so the first
+    dashboard load is instant; the deploy script also syncs that cache to the VPS
+    (whose IP can't reach YTrends), so the team sees the same deep lists."""
+    from src import interactive
+    print("Warming keyword cache (deep pull)...")
+    print("  " + interactive.warm_cache())
+
+
 def cmd_healthcheck(cmd, args):
     from src import ops
     checks = ops.healthcheck()
@@ -604,6 +614,7 @@ COMMANDS = {
     "workspace": cmd_workspace,
     "autopull": cmd_autopull,
     "daily-run": cmd_daily_run,
+    "warm": cmd_warm,
     "healthcheck": cmd_healthcheck,
     "cron": cmd_cron,
     "alerts": cmd_alerts,
