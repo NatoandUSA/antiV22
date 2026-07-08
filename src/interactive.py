@@ -658,19 +658,83 @@ def _spy_feasibility(kw, mode):
     return L + [""]
 
 
+def _spy_reverse(listings, mode, limit=3):
+    """Competitor Reverse Engine — decode the strongest competitors' playbook:
+    keyword/tag strategy, price positioning, offer angle, strength, weakness, and
+    how WE beat them. Structural learning only — never copy art/titles/photos."""
+    real = [r for r in listings if r.get("title")]
+    L = ["## 🔬 Reverse-engineer the top competitors", "",
+         "_Their playbook, decoded — so you can out-execute it. **Structural "
+         "learning only; never copy** their artwork, titles, or photos._", ""]
+    if not real:
+        return L + ["_No competitor listings returned for this keyword._", ""]
+    prices = [_f(r.get("price_usd") or r.get("price")) for r in real]
+    prices = [p for p in prices if p > 0]
+    niche_avg = sum(prices) / len(prices) if prices else 0
+    ranked = sorted(real, key=lambda r: _f(r.get("total_sold")), reverse=True)[:limit]
+    gaps = set()
+    for i, r in enumerate(ranked, 1):
+        title = _clean(r.get("title"))
+        price = _f(r.get("price_usd") or r.get("price"))
+        tags = [_clean(t) for t in (r.get("tags") or []) if _clean(t)][:8]
+        tl = title.lower()
+        pos = ("premium" if niche_avg and price > niche_avg * 1.2 else
+               "budget" if niche_avg and price < niche_avg * 0.8 else "mid-market")
+        pers = [w for w in ("personalized", "custom", "name", "monogram",
+                            "embroidered", "bundle", "set", "gift", "matching")
+                if w in tl]
+        sold = _f(r.get("total_sold"))
+        strength = ("STRONG" if sold > 500 else "moderate" if sold > 100
+                    else "new / small")
+        weak = []
+        if not any(w in tl for w in ("name", "custom", "personal", "monogram")):
+            weak.append("no personalization in the title"); gaps.add("personalization")
+        if len(tl.split()) < 6:
+            weak.append("broad / thin title (weak long-tail SEO)"); gaps.add("seo")
+        if not any(w in tl for w in ("bundle", "set", "matching", "gift box")):
+            weak.append("no bundle / set / gift-box offer"); gaps.add("bundle")
+        if not weak:
+            weak.append("solid listing — beat it on a bolder first image")
+            gaps.add("first image")
+        L += [f"### #{i} — {title[:60]} · {strength}", "",
+              f"- **Keyword / tag strategy:** {', '.join(tags) or 'not shown'}",
+              f"- **Price positioning:** {_money(price)} ({pos}"
+              + (f" vs niche avg {_money(niche_avg)}" if niche_avg else "") + ")",
+              f"- **Offer angle:** "
+              + (', '.join(pers) if pers else "generic — no personalization/bundle in the title"),
+              f"- **Strength:** {_int(r.get('total_sold'))} sold · "
+              f"{_pct(r.get('conversion_rate'))} conv · {_int(r.get('favorites'))} favs",
+              f"- **Weakness to beat:** {'; '.join(weak)}", ""]
+    plays = {
+        "personalization": "offer real personalization (name / date / monogram) most of them lack",
+        "seo": "front-load a specific long-tail — their titles are broad",
+        "bundle": "add a set / gift-box / matching option they don't offer",
+        "first image": "win the thumbnail — bolder, clearer, gift-in-use hero shot",
+    }
+    L += ["### ✅ Our better angle (built from their gaps)", ""]
+    L += [f"- {plays[g]}" for g in ("personalization", "seo", "bundle", "first image")
+          if g in gaps]
+    if mode == "embroidery":
+        L.append("- A real stitched / chenille version = a premium they can't match cheaply.")
+    L += ["", "_What NOT to copy: their artwork, exact title wording, photos, or "
+          "branding. Learn the structure — make your own original._", ""]
+    return L
+
+
 def spy(kw, mode=None):
-    """Competitor intelligence for a keyword — MODE-AWARE. Who wins, who dominates,
-    who just launched, whether we can make it in this mode, and the gaps. Learning
-    only: study structure, never copy."""
+    """Competitor intelligence + REVERSE ENGINE for a keyword — MODE-AWARE. Who
+    wins, each top competitor's decoded playbook, who just launched, whether we can
+    make it in this mode, and the gaps. Learning only: study structure, never copy."""
     kw = kw.strip()
     m = (mode or "").lower()
     if m not in ("pod", "embroidery", "both"):
         m = "embroidery" if matches_mode(kw.lower(), "embroidery") else "pod"
     label = {"pod": "Print on Demand", "embroidery": "Embroidery",
              "both": "POD vs Embroidery"}[m]
-    L = [f"# 🕵️ Spy — {kw} · {label}", "",
-         "_Competitor intelligence for **learning only**. Study structure + the "
-         "gaps — never copy artwork, titles, descriptions, or photos._", ""]
+    L = [f"# 🕵️ Spy + Reverse Engine — {kw} · {label}", "",
+         "_Competitor intelligence + a decoded **reverse-engineer** of the top "
+         "sellers' playbook. **Learning only** — study structure + the gaps, never "
+         "copy artwork, titles, descriptions, or photos._", ""]
 
     try:
         comp = mcp.call("ytrends_analyze_competition", seed=kw, seed_type="keyword")
@@ -741,6 +805,9 @@ def spy(kw, mode=None):
     if shared:
         L += ["", "## Tags the winners share (reference — write your own)", ""]
         L += [f"- **{t}** — used by {c} of the top listings" for t, c in shared]
+
+    # Competitor Reverse Engine — decode each top competitor's playbook.
+    L += [""] + _spy_reverse(listings, m)
 
     L += ["", "## Who just launched (new entrants — what's fresh)", ""]
     try:

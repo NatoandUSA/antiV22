@@ -227,8 +227,8 @@ def build_app(password, secret):
             f'</b><span>Rising keywords in {active_label}</span></a>'
             f'<a class="toolcard" href="/opportunities?mode={active}"><b>💎 '
             'Opportunities</b><span>Low-competition sweet spots</span></a>'
-            f'<a class="toolcard" href="/spy?mode={active}"><b>🕵️ Spy</b>'
-            '<span>Mode-aware: who wins + can we make it in this mode</span></a>'
+            f'<a class="toolcard" href="/spy?mode={active}"><b>🕵️ Spy + Reverse Engine</b>'
+            '<span>Decode each competitor\'s playbook + how to beat them</span></a>'
             f'<a class="toolcard" href="/calendar?mode={active}"><b>📅 Seasonal calendar</b>'
             '<span>Upcoming holidays + launch-by dates + keywords</span></a>'
             '</div>'
@@ -1459,9 +1459,15 @@ padding:7px 11px;cursor:pointer}
 .empty{color:var(--ink-soft);background:var(--surface);border:1px dashed var(--line-strong);
 border-radius:12px;padding:22px;text-align:center;font-size:.9rem}
 /* single report */
-.rbar{display:flex;align-items:center;justify-content:space-between;gap:12px;
-margin-bottom:16px;flex-wrap:wrap}
-.back{font-family:var(--mono);font-size:.78rem;color:var(--accent);font-weight:600}
+.rbar{position:sticky;top:0;z-index:80;display:flex;align-items:center;
+justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0 0 18px;
+padding:10px 16px;background:var(--paper);border-bottom:1px solid var(--line-strong);
+box-shadow:0 2px 8px rgba(0,0,0,.06)}
+.back{display:inline-flex;align-items:center;gap:7px;font-family:var(--sans);
+font-size:.92rem;font-weight:700;color:var(--paper);background:var(--accent);
+border:1px solid var(--accent);border-radius:10px;padding:9px 16px;text-decoration:none;
+line-height:1}
+.back:hover{filter:brightness(1.08)}
 .md{background:var(--surface);border:1px solid var(--line);border-radius:14px;
 padding:26px 30px;box-shadow:var(--shadow);overflow-x:auto}
 .md h1{font-size:1.5rem}.md h2{font-size:1.2rem;border-bottom:1px solid var(--line);

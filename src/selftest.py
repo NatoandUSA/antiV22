@@ -580,12 +580,19 @@ def run_selftest():
               "suggest_fields")) and isinstance(_ws.ROLE_REPORTS, dict)
           and all(x in _web_src for x in ("/run/export/", "runedit", "PRINT_BASE")))
 
-    check("competitor Spy tool wired + MODE-aware (/spy passes product mode)",
+    _iv_src_now = Path("src/interactive.py").read_text(encoding="utf-8")
+    check("Spy + Reverse Engine wired + MODE-aware (/spy passes product mode)",
           callable(getattr(_iv, "spy", None))
           and all(x in _web_src for x in ('href="/spy?mode=', 'formaction="/spy"'))
           # /spy route reads the mode and passes it through to spy()
           and 'interactive.spy(q, mode)' in _web_src
-          and "_spy_feasibility" in Path("src/interactive.py").read_text(encoding="utf-8"))
+          and "_spy_feasibility" in _iv_src_now
+          # competitor reverse engine folded into Spy
+          and "_spy_reverse" in _iv_src_now
+          and "Reverse-engineer the top competitors" in _iv_src_now)
+    check("secondary pages have a sticky, tappable Home button",
+          ".rbar{position:sticky" in _web_src
+          and ".back{" in _web_src and "background:var(--accent)" in _web_src)
 
     from src import saved as _sv
     check("saved shops + listings learning library wired",

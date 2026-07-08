@@ -1,6 +1,18 @@
-# Etsy Product Manager V24.0
+# Etsy Product Manager V24.1
 
-**New in V24.0 — the sales-execution OS layer (Helium-10-inspired, Etsy-specific).**
+**New in V24.1 — Spy becomes a Competitor Reverse Engine + a sticky Home button.**
+
+- **🕵️ Spy + Reverse Engine** — Spy now *decodes each top competitor's playbook*:
+  their keyword/tag strategy, price positioning (premium/mid/budget vs the niche
+  average), offer angle, estimated strength (sold · conversion · favorites), the
+  specific weakness to beat, and **"our better angle" built from their gaps** —
+  mode-aware, structural learning only, never copy. (Folded into Spy, not a
+  separate page, to keep the dashboard lean.)
+- **🏠 Easy Home button** — every secondary page now has a **sticky** accent Home
+  button pinned to the top, so it's always one tap away even when you've scrolled
+  down page 2 or 3.
+
+**V24.0 — the sales-execution OS layer (Helium-10-inspired, Etsy-specific).**
 Five new modules turn the tool from research into an operating system. All
 self-populating, English only, no auto-publishing.
 
