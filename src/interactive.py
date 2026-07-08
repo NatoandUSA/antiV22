@@ -321,8 +321,13 @@ def trending(mode=None, show_all=False):
     picks, hidden = _split_fit(raw, "tag", mode)
     L = [f"# Trending now — {MODE_LABEL.get(mode)}", "",
          "_Rising keywords, **product-fit filtered** (junk hidden). Verify trademark._",
-         "", "| Keyword | Fit | Momentum | Competition | Conv | Avg price | TM |",
-         "|---|---|---|---|---|---|---|"]
+         ""]
+    cb = _cluster_block(picks)
+    L += cb
+    if cb:
+        L += ["## Individual keyword ideas", ""]
+    L += ["| Keyword | Fit | Momentum | Competition | Conv | Avg price | TM |",
+          "|---|---|---|---|---|---|---|"]
     for t in picks:
         tag = _clean(t.get("tag"))
         risk, _ = tm_check(tag.lower())
@@ -343,12 +348,14 @@ def _cluster_block(picks, key="tag"):
     groups, _ = cl.cluster([r.get(key) for r in picks])
     if not groups:
         return []
-    L = ["## 🧩 Product clusters — build ONE better listing per cluster", "",
-         "_Group related keywords into a single product idea and target them all "
-         "in one strong listing (don't make a separate listing for each)._", "",
-         "| Product cluster | Keywords | Cover these keywords |", "|---|---|---|"]
+    L = ["## 🧩 Product clusters — build ONE listing per cluster", "",
+         "_Related keywords collapsed into a single product idea — build one strong "
+         "listing that targets them all, instead of a separate listing for each._",
+         "", "| Product idea | Keywords | Base title | Cover these keywords |",
+         "|---|---|---|---|"]
     for c in groups[:10]:
-        L.append(f"| **{c['primary']}** | {c['size']} | {', '.join(c['members'])} |")
+        L.append(f"| **{c['name'].title()}** | {c['size']} | {c['primary']} "
+                 f"| {', '.join(c['members'])} |")
     return L + [""]
 
 

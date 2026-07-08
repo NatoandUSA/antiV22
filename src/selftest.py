@@ -888,16 +888,22 @@ def run_selftest():
           and Path("docs/UPGRADE_DECISION_LOG.md").exists()
           and Path("docs/GITHUB_REFERENCE_RESEARCH.md").exists())
 
-    # ---- V26.1: design themes launchable + opportunity clusters + team calendar ----
+    # ---- V26.1/2: design themes launchable + product clusters + team calendar ----
     from src import clusters as _cl
     _grp, _sng = _cl.cluster(["summer pouch", "travel pouch", "bridesmaid pouch",
-                              "coastal grandmother"])
-    check("Design themes launchable + opportunity clusters group related keywords",
+                              "chenille name bag", "bridesmaid bag", "transparent bag",
+                              "custom name necklace", "coastal grandmother"])
+    _by = {c["name"]: c for c in _grp}
+    check("Design themes launchable + product clusters group by product noun",
           _pf.classify("coastal grandmother")["status"] == "THEME_FIT"
           and _pf.classify("coastal grandmother")["launchable"]
           and "THEME_FIT" in _pf.LAUNCHABLE
-          and any(c["name"] == "pouch" and c["size"] == 3 for c in _grp)
+          and _by.get("pouch", {}).get("size") == 3
+          and _by.get("bag", {}).get("size") == 3          # not split by "name"
+          and "custom name necklace" in _sng               # lone noun stays single
           and "Product clusters" in _iv_src_now)
+    check("Clusters shown on BOTH Trending and Opportunities",
+          _iv_src_now.count("_cluster_block(picks)") >= 2)
     check("Team Calendar view wired (today / week / overdue / upcoming)",
           "/team/calendar" in _web_src and 'view == "overdue"' in _web_src
           and 'href="/team/calendar"' in _web_src)

@@ -1,14 +1,22 @@
-# Etsy Product Manager V26.1
+# Etsy Product Manager V26.2
 
-**New in V26.1 — more keywords, product clusters + a Team Calendar.**
+**New in V26.2 — clusters that actually group, on both keyword pages.**
+- **🧩 Product clusters on Trending AND Opportunities:** related keywords now
+  collapse into one product idea keyed on the **product noun** — three "…bag"
+  keywords become a single **Bag** idea; `summer/travel/bridesmaid pouch` → **Pouch**.
+  Modifiers like "name" or "custom" no longer create fake clusters, and plurals are
+  normalised (`decals` → `decal`). Each cluster suggests a base title so you build
+  **one strong listing** that targets every keyword in it.
+
+**V26.1 — more keywords, product clusters + a Team Calendar.**
 - **More ideas to dig into:** the product-fit filter no longer over-hides — a
   keyword with no literal product noun (e.g. `coastal grandmother`, `retro sunset`,
   `50th celebrations`) is now a **design theme** you can put on any product, so it
   stays. Only real junk (shop handles, spells, brands, digital, broad seeds) is
   hidden. Source limits raised too.
-- **🧩 Opportunity clusters:** Opportunities now groups related keywords into
-  **product clusters** ("summer pouch + travel pouch + bridesmaid pouch → pouch")
-  so you build **one strong listing per cluster** instead of chasing each keyword.
+- **🧩 Opportunity clusters:** Opportunities groups related keywords into
+  **product clusters** so you build **one strong listing per cluster** instead of
+  chasing each keyword.
 - **📅 Team Calendar** (Team → Team Calendar): tasks by due date with
   Today / This week / Overdue / Upcoming views (managers see everyone; members see
   their own).

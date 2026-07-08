@@ -76,3 +76,18 @@ def test_opportunity_clusters_group_related_keywords():
     biggest = max(groups, key=lambda c: c["size"])
     assert biggest["size"] == 4
     assert "coastal grandmother" in singles
+
+
+def test_clusters_group_by_product_noun_not_modifier():
+    from src import clusters
+    groups, singles = clusters.cluster(
+        ["chenille name bag", "bridesmaid bag", "transparent bag",
+         "custom name necklace", "indoor decals", "personalized decals"])
+    by = {c["name"]: c for c in groups}
+    # the three bags collapse into ONE "bag" idea (not split by the "name" modifier)
+    assert by["bag"]["size"] == 3
+    assert "chenille name bag" in by["bag"]["members"]
+    # plural product noun is normalised (decals -> decal)
+    assert by["decal"]["size"] == 2
+    # a lone necklace is NOT dragged into a "name" cluster with the bag
+    assert "custom name necklace" in singles
