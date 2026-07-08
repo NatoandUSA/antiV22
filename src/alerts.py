@@ -147,20 +147,24 @@ def generate():
     except Exception:  # noqa: BLE001
         pass
 
-    # overdue team tasks (past due_date + still open) — clears when done/rescheduled
+    # team-task deadlines: OVERDUE (warn) and DUE SOON = today/tomorrow (info).
+    # Both auto-clear when the task is done, rescheduled, or moves state.
     try:
         from src import tasks as _tk
-        today = date.today().isoformat()
         for t in _tk.list_tasks():
-            ref = f"task-{t['task_id']}"
-            due = (t.get("due_date") or "").strip()
-            still_open = t["status"] not in ("DONE", "APPROVED", "REJECTED")
-            if due and still_open and due[:10] < today:
-                add("task_overdue",
-                    f"Task '{(t['title'] or '')[:40]}' is OVERDUE (due {due[:10]}).",
+            ref, dref = f"task-{t['task_id']}", f"taskdue-{t['task_id']}"
+            title, due = (t.get("title") or "")[:40], (t.get("due_date") or "")[:10]
+            if _tk.is_overdue(t):
+                add("task_overdue", f"Task '{title}' is OVERDUE (due {due}).",
                     "warn", ref, "auto")
+                resolve_ref(dref)
+            elif _tk.is_due_soon(t):
+                add("task_due_soon", f"Task '{title}' is due soon (due {due}).",
+                    "info", dref, "auto")
+                resolve_ref(ref)
             else:
                 resolve_ref(ref)
+                resolve_ref(dref)
     except Exception:  # noqa: BLE001
         pass
 

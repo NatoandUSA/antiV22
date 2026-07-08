@@ -1,6 +1,12 @@
-# Etsy Product Manager V25.2
+# Etsy Product Manager V25.3
 
-**New in V25.2 — a professional, tidy task experience.** Every member now sees a
+**New in V25.3 — "due soon" heads-up.** Before a task is actually overdue, tasks
+due **today or tomorrow** now show a soft **🟠 Due soon** reminder — in the home
+"My tasks" strip (orange), as its own group on My Tasks, and as an info alert.
+It clears automatically once the task is done or rescheduled (and upgrades to the
+red overdue warning if the deadline passes).
+
+**V25.2 — a professional, tidy task experience.** Every member now sees a
 **"My tasks"** reminder strip pinned to the **top of the home dashboard** (open
 count + overdue in red). **My Tasks** is grouped (🔴 Overdue → To do → In progress
 → Awaiting review) with priority colours, a **"what 'done' means"** line per task

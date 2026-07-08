@@ -126,6 +126,16 @@ def is_overdue(t):
     return bool(due) and t["status"] in OPEN_STATUSES and due[:10] < date.today().isoformat()
 
 
+def is_due_soon(t):
+    """Open task due today or tomorrow (and not already overdue) — a soft heads-up."""
+    from datetime import date, timedelta
+    due = (t.get("due_date") or "").strip()[:10]
+    if not due or t["status"] not in OPEN_STATUSES:
+        return False
+    today = date.today().isoformat()
+    return today <= due <= (date.today() + timedelta(days=1)).isoformat()
+
+
 def my_open(user_id):
     """A user's still-open tasks, urgent/overdue first."""
     rows = [t for t in list_tasks(assigned_to=user_id) if t["status"] in OPEN_STATUSES]

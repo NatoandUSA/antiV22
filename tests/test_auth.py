@@ -9,12 +9,15 @@ from src import appdb
 
 @pytest.fixture(autouse=True)
 def temp_db():
-    """Point every test in this module at a throwaway database."""
-    old = appdb.DB_PATH
-    appdb.DB_PATH = Path(tempfile.mkdtemp()) / "app.db"
+    """Point every test at a throwaway database + isolated alerts store."""
+    from src import alerts
+    old_db, old_store = appdb.DB_PATH, alerts.STORE
+    tmp = Path(tempfile.mkdtemp())
+    appdb.DB_PATH = tmp / "app.db"
+    alerts.STORE = tmp / "alerts.json"
     appdb.init_db()
     yield
-    appdb.DB_PATH = old
+    appdb.DB_PATH, alerts.STORE = old_db, old_store
 
 
 # ------------------------------------------------------------ passwords ----

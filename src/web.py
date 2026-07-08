@@ -353,6 +353,7 @@ def build_app(password, secret):
             mine = _tk.my_open(_mu["user_id"])
             if mine:
                 od = sum(1 for t in mine if _tk.is_overdue(t))
+                ds = sum(1 for t in mine if _tk.is_due_soon(t))
                 chips = "".join(
                     f'<a class="tkchip pr-{t["priority"].lower()}'
                     + (" od" if _tk.is_overdue(t) else "") + '" href="/me/tasks">'
@@ -360,6 +361,7 @@ def build_app(password, secret):
                 more = (f'<a class="tkchip more" href="/me/tasks">+{len(mine)-3} more</a>'
                         if len(mine) > 3 else "")
                 odtxt = f' · <b class="odtext">{od} overdue</b>' if od else ""
+                odtxt += f' · <b class="dstext">{ds} due soon</b>' if ds else ""
                 review = ""
                 if auth.has_perm(_mu["role"], "tasks.review"):
                     rq = len(_tk.review_queue())
@@ -1437,10 +1439,14 @@ def build_app(password, secret):
         rows = tk.list_tasks(assigned_to=u["user_id"])
         overdue = [t for t in rows if tk.is_overdue(t)]
         oid = {t["task_id"] for t in overdue}
+        due_soon = [t for t in rows if tk.is_due_soon(t)
+                    and t["status"] in ("TODO", "IN_PROGRESS", "BLOCKED")]
+        skip = oid | {t["task_id"] for t in due_soon}
         buckets = [
             ("🔴 Overdue", overdue),
-            ("⚪ To do", [t for t in rows if t["status"] == "TODO" and t["task_id"] not in oid]),
-            ("🔵 In progress", [t for t in rows if t["status"] in ("IN_PROGRESS", "BLOCKED") and t["task_id"] not in oid]),
+            ("🟠 Due soon", due_soon),
+            ("⚪ To do", [t for t in rows if t["status"] == "TODO" and t["task_id"] not in skip]),
+            ("🔵 In progress", [t for t in rows if t["status"] in ("IN_PROGRESS", "BLOCKED") and t["task_id"] not in skip]),
             ("🕓 Awaiting review", [t for t in rows if t["status"] == "READY_FOR_REVIEW" and t["task_id"] not in oid]),
         ]
 
@@ -1861,7 +1867,7 @@ padding:0 6px;font-size:.72rem;color:#fff;background:#B45309;vertical-align:midd
 .mytasks{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;
 background:var(--accent-bg);border:1px solid var(--accent);border-radius:12px;
 padding:11px 16px;margin:0 0 16px}
-.mtlabel{font-size:.9rem}.mtlabel .odtext{color:#99271F}
+.mtlabel{font-size:.9rem}.mtlabel .odtext{color:#99271F}.mtlabel .dstext{color:#B45309}
 .mtchips{display:flex;flex-wrap:wrap;gap:6px;flex:1}
 .tkchip{font-size:.76rem;font-weight:700;background:var(--surface);border:1px solid var(--line-strong);
 border-left:3px solid var(--ink-soft);border-radius:7px;padding:3px 9px;color:var(--ink);text-decoration:none}
