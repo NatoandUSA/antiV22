@@ -1,3 +1,15 @@
+# Etsy Product Manager V27.0
+
+**New in V27.0 — full audit + the Embroidery-mode fix.**
+- **Embroidery mode is no longer starved.** Switching to Embroidery used to show
+  ~2 keywords vs POD's ~50, because a crude pre-filter dropped every design theme.
+  Now product-fit (already mode-aware) decides: **POD and Embroidery each show ~50**,
+  they *share* design themes (a theme can be printed OR embroidered) and *differ* on
+  product-specific keywords (shirts/bags → POD; chenille/monogram/engraved → Embroidery).
+  Wrong-mode real products are dropped silently instead of cluttering the "risky" list.
+- **Audit:** selftest + pytest green, trademark keywords still **BLOCKED**, no
+  auto-publish path, publish-gate invariant intact.
+
 # Etsy Product Manager V26.9
 
 **New in V26.9 — a real task scheduler + editable tasks + a polished board.**

@@ -298,13 +298,23 @@ def should_sell(kw):
 
 
 def _split_fit(rows, key, mode, want=SHOW):
-    """Classify rows by product-fit; return (launchable[:want], hidden)."""
+    """Classify rows by product-fit; return (launchable[:want], junk).
+
+    `junk` is only genuine off-fit (shop names, spells, brands, digital, broad
+    seeds) — a real product that simply fits the OTHER mode (e.g. an embroidery
+    term while POD is selected) is dropped silently, not shown as 'risky'. This
+    is what keeps Embroidery mode from being starved: themes stay launchable in
+    both modes, and POD products just don't appear under Embroidery."""
     from src import product_fit as pf
-    good, hidden = [], []
+    good, junk = [], []
     for r in rows:
-        r["_fit"] = pf.classify(r.get(key) or "", mode)
-        (good if r["_fit"]["launchable"] else hidden).append(r)
-    return good[:want], hidden
+        c = pf.classify(r.get(key) or "", mode)
+        r["_fit"] = c
+        if c["launchable"]:
+            good.append(r)
+        elif c["status"] not in pf.LAUNCHABLE:   # real junk, not just wrong-mode
+            junk.append(r)
+    return good[:want], junk
 
 
 def _hidden_block(hidden, key, show_all):
@@ -323,8 +333,9 @@ def _hidden_block(hidden, key, show_all):
 
 
 def trending(mode=None, show_all=False):
-    raw = [t for t in mcp.trending_keywords(limit=PULL)
-           if matches_mode((t.get("tag") or "").lower(), mode)]
+    # Pull the full pool; product-fit (mode-aware) decides what shows. No mode
+    # pre-filter — that used to starve Embroidery by dropping design themes.
+    raw = mcp.trending_keywords(limit=PULL)
     picks, hidden = _split_fit(raw, "tag", mode)
     L = [f"# Trending now — {MODE_LABEL.get(mode)}", "",
          "_Rising keywords, **product-fit filtered** (junk hidden). Verify trademark._",
@@ -367,8 +378,7 @@ def _cluster_block(picks, key="tag"):
 
 
 def opportunities(mode=None, show_all=False):
-    raw = [r for r in mcp.scout_opportunities(limit=PULL)
-           if matches_mode((r.get("tag") or "").lower(), mode)]
+    raw = mcp.scout_opportunities(limit=PULL)
     picks, hidden = _split_fit(raw, "tag", mode)
     L = [f"# Opportunities — {MODE_LABEL.get(mode)}", "",
          "_Launch-ready, **product-fit** ideas only (shop names, spells, brands, "
