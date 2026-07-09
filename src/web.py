@@ -1675,30 +1675,57 @@ def build_app(password, secret):
         return redirect(url_for("my_tasks"))
 
     # ---- Team Tasks (assign) ----
+    def _task_fields(task=None, pk="", ptype=""):
+        """Shared form fields for New task + Edit task (keeps them identical)."""
+        from src import tasks as tk
+        sel = lambda cur, x: " selected" if x == cur else ""
+        t = task or {}
+        cur_title = _h_esc(t.get("title") or ((pk + " — ") if pk else ""))
+        cur_kw = _h_esc(t.get("related_keyword") or pk)
+        cur_type = t.get("task_type") or ptype
+        cur_prio = t.get("priority") or "MEDIUM"
+        due = (t.get("due_date") or "")[:16]
+        if len(due) == 10:                 # old date-only value -> give the picker a time
+            due += "T09:00"
+        types = "".join(f'<option{sel(cur_type, x)}>{x}</option>' for x in tk.TASK_TYPES)
+        prios = "".join(f'<option{sel(cur_prio, x)}>{x}</option>' for x in tk.PRIORITIES)
+        return (
+            f'<label>Title<input name="title" value="{cur_title}" required></label>'
+            f'<label>Assign to<select name="assigned_to">'
+            f'{_user_options(t.get("assigned_to_user_id"))}</select></label>'
+            f'<label>Type<select name="task_type">{types}</select></label>'
+            f'<label>Priority<select name="priority">{prios}</select></label>'
+            f'<label>Keyword<input name="related_keyword" value="{cur_kw}"></label>'
+            '<label>Due date &amp; time<input type="datetime-local" name="due_date" '
+            f'value="{due}"></label>')
+
     @app.route("/admin/tasks")
     @require_perm("tasks.assign")
     def team_tasks():
         from src import tasks as tk
         rows = tk.list_tasks()
         by_id = {u["user_id"]: u for u in auth.list_users()}
-        # pre-fill from a Launchpad / run "Assign task" link (?keyword=...&type=...)
         pk = _h_esc(request.args.get("keyword") or "")
         ptype = request.args.get("type") or ""
-        types = "".join(f'<option{" selected" if x == ptype else ""}>{x}</option>'
-                        for x in tk.TASK_TYPES)
-        prios = "".join(f"<option>{x}</option>" for x in tk.PRIORITIES)
+
+        # team pulse — the board at a glance (management feel)
+        overdue = sum(1 for t in rows if tk.is_overdue(t))
+        tiles = [("Active", sum(1 for t in rows if t["status"] in tk.OPEN_STATUSES), ""),
+                 ("In progress", sum(1 for t in rows if t["status"] in ("IN_PROGRESS", "BLOCKED")), ""),
+                 ("In review", sum(1 for t in rows if t["status"] == "READY_FOR_REVIEW"), ""),
+                 ("Overdue", overdue, " bad" if overdue else ""),
+                 ("Completed", sum(1 for t in rows if t["status"] in ("APPROVED", "DONE")), " good")]
+        pulse = '<div class="tkstats">' + "".join(
+            f'<div class="tkstat{c}"><span class="n">{n}</span><span class="l">{l}</span></div>'
+            for l, n, c in tiles) + '</div>'
+
         form = ('<details class="tknew"' + (" open" if pk else "") + '>'
                 '<summary>➕ New task</summary>'
                 '<form method="post" action="/admin/tasks/create" class="gradeform">'
-                f'<label>Title<input name="title" value="{(pk + " — ") if pk else ""}" required></label>'
-                f'<label>Assign to<select name="assigned_to">{_user_options()}</select></label>'
-                f'<label>Type<select name="task_type">{types}</select></label>'
-                f'<label>Priority<select name="priority">{prios}</select></label>'
-                f'<label>Keyword<input name="related_keyword" value="{pk}"></label>'
-                '<label>Due date<input name="due_date" placeholder="YYYY-MM-DD"></label>'
-                '<button class="primary" type="submit">Create + assign task</button>'
+                + _task_fields(pk=pk, ptype=ptype)
+                + '<button class="primary" type="submit">Create + assign task</button>'
                 '</form></details>')
-        # a tidy status board matching the workflow flow
+
         board = [("⚪ To do", ("TODO",)), ("🔵 In progress", ("IN_PROGRESS", "BLOCKED")),
                  ("🕓 Awaiting review", ("READY_FOR_REVIEW",)),
                  ("✅ Done", ("APPROVED", "DONE", "REJECTED"))]
@@ -1707,19 +1734,30 @@ def build_app(password, secret):
             cards = [t for t in rows if t["status"] in statuses]
             body = ""
             for t in cards:
-                who = by_id.get(t["assigned_to_user_id"], {}).get("display_name", "—")
-                od = " od" if tk.is_overdue(t) else ""
-                body += ('<div class="tkcard pr-' + (t["priority"] or "medium").lower() + '">'
-                         '<b>' + _h_esc(t["title"][:44]) + '</b>'
-                         f'<div class="note{od}">{_h_esc(who)} · {_h_esc(t.get("task_type") or "")}'
-                         + (f' · due {_h_esc((t.get("due_date") or "")[:10])}' if t.get("due_date") else "")
-                         + '</div></div>')
+                name = by_id.get(t["assigned_to_user_id"], {}).get("display_name", "—")
+                initials = ("".join(w[0] for w in name.split()[:2]).upper() or "—")
+                od = tk.is_overdue(t)
+                due = (t.get("due_date") or "")
+                prio = (t["priority"] or "medium").lower()
+                duebadge = (f'<span class="tkdue{" od" if od else ""}">🕒 '
+                            f'{_h_esc(due[:16].replace("T", " "))}</span>' if due else '')
+                body += (
+                    f'<div class="tkcard pr-{prio}"><div class="tktop">'
+                    f'<span class="tkinit" title="{_h_esc(name)}">{_h_esc(initials)}</span>'
+                    f'<b>{_h_esc(t["title"][:48])}</b></div>'
+                    f'<div class="tkmeta">{_h_esc(t.get("task_type") or "—")}'
+                    f'<span class="pill pr-{prio}">{_h_esc(t["priority"])}</span></div>'
+                    f'<div class="tkfoot">{duebadge}'
+                    f'<a class="cbtn" href="/admin/tasks/{t["task_id"]}/edit">✏️ Edit</a>'
+                    '</div></div>')
             cols += (f'<div class="lpcol"><h3>{label} <span class="count">{len(cards)}'
                      f'</span></h3>{body or "<p class=note>—</p>"}</div>')
-        return page("Team Tasks", _bar() + '<article class="md"><h1>📋 Team Tasks</h1>'
-                    '<p class="note">Assign work by workflow stage and watch it move '
-                    'left → right. Members update their own status; you review at the end.</p>'
-                    + form + '</article><div class="lpboard">' + cols + '</div>')
+        return page("Team Tasks", _bar()
+                    + '<article class="md"><h1>📋 Team Tasks</h1>'
+                    '<p class="tklead">Great products ship when everyone knows their next '
+                    'move. Assign the work, watch it flow left → right, and clear the board '
+                    'together — momentum is a team sport.</p>'
+                    + pulse + form + '</article><div class="lpboard">' + cols + '</div>')
 
     @app.route("/admin/tasks/create", methods=["POST"])
     @require_perm("tasks.assign")
@@ -1738,6 +1776,42 @@ def build_app(password, secret):
              summary=t["title"])
         _log("TASK_ASSIGN", module="tasks", entity_type="task", entity_id=t["task_id"],
              summary=f"-> user {assignee}")
+        return redirect(url_for("team_tasks"))
+
+    @app.route("/admin/tasks/<int:tid>/edit")
+    @require_perm("tasks.assign")
+    def team_task_edit(tid):
+        from src import tasks as tk
+        t = tk.get_task(tid)
+        if not t:
+            return redirect(url_for("team_tasks"))
+        statuses = "".join(f'<option{" selected" if x == t["status"] else ""}>{x}</option>'
+                           for x in tk.STATUSES)
+        who = _h_esc(t.get("related_keyword") or t["title"])
+        form = (f'<form method="post" action="/admin/tasks/{tid}/edit" class="gradeform">'
+                + _task_fields(task=t)
+                + f'<label>Status<select name="status">{statuses}</select></label>'
+                + '<div class="tkactions"><button class="primary" type="submit">'
+                'Save changes</button>'
+                '<a class="tkbtn" href="/admin/tasks">Cancel</a></div></form>')
+        return page("Edit task", _bar() + '<article class="md"><h1>✏️ Edit task</h1>'
+                    f'<p class="note">Editing task #{tid} — {who}. Change the assignee, '
+                    'priority, status, due date/time, or details.</p>' + form + '</article>')
+
+    @app.route("/admin/tasks/<int:tid>/edit", methods=["POST"])
+    @require_perm("tasks.assign")
+    def team_task_edit_save(tid):
+        from src import tasks as tk
+        assignee = int(request.form.get("assigned_to") or 0) or None
+        tk.update_task(
+            tid, status=request.form.get("status"),
+            priority=request.form.get("priority"), assigned_to_user_id=assignee,
+            title=(request.form.get("title") or "").strip()[:200],
+            task_type=request.form.get("task_type"),
+            related_keyword=(request.form.get("related_keyword") or "").strip()[:120],
+            due_date=(request.form.get("due_date") or "").strip()[:20])
+        _log("TASK_UPDATE", module="tasks", entity_type="task", entity_id=tid,
+             summary="edited")
         return redirect(url_for("team_tasks"))
 
     # ---- Review Queue ----
@@ -2065,6 +2139,23 @@ border-radius:11px;padding:11px 14px;margin-bottom:9px;box-shadow:var(--shadow)}
 border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);cursor:pointer}
 .tkbtn.primary{background:var(--accent);color:var(--paper);border-color:var(--accent)}
 .tknew{margin:6px 0 14px}.tknew summary{cursor:pointer;font-weight:700;color:var(--accent)}
+.tklead{font-size:.96rem;color:var(--ink-soft);margin:6px 0 16px;max-width:64ch;line-height:1.5}
+.tkstats{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 16px}
+.tkstat{flex:1 1 96px;min-width:96px;background:var(--surface);border:1px solid var(--line);
+border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:3px;box-shadow:var(--shadow)}
+.tkstat .n{font-size:1.6rem;font-weight:800;color:var(--ink);line-height:1;font-variant-numeric:tabular-nums}
+.tkstat .l{font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-faint);font-weight:700}
+.tkstat.bad{border-color:var(--stop)}.tkstat.bad .n{color:var(--stop)}
+.tkstat.good{border-color:var(--ok)}.tkstat.good .n{color:var(--ok)}
+.tktop{display:flex;align-items:center;gap:8px}
+.tktop b{font-size:.92rem;line-height:1.25}
+.tkinit{flex:0 0 auto;width:26px;height:26px;border-radius:50%;background:var(--accent-bg);
+color:var(--accent);font-size:.64rem;font-weight:800;display:flex;align-items:center;justify-content:center}
+.tkmeta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:8px 0 0;
+font-size:.72rem;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.03em}
+.tkfoot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:9px}
+.tkdue{font-size:.7rem;color:var(--ink-soft);font-variant-numeric:tabular-nums}
+.tkdue.od{color:var(--stop);font-weight:700}
 /* workspace */
 .ws{background:var(--surface);border:1px solid var(--line);border-radius:14px;
 padding:18px 20px;margin:14px 0;box-shadow:var(--shadow)}

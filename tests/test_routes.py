@@ -57,6 +57,32 @@ def test_pages_render(client, route):
     assert client.get(route).status_code == 200
 
 
+def test_task_datetime_due_and_edit(client):
+    from src import tasks as tk
+    # create with a date+time due value from the picker
+    client.post("/admin/tasks/create", data={
+        "title": "Research pouches", "assigned_to": "", "task_type": "KEYWORD_RESEARCH",
+        "priority": "HIGH", "related_keyword": "summer pouch",
+        "due_date": "2026-08-01T14:30"})
+    t = [x for x in tk.list_tasks() if x["title"] == "Research pouches"][0]
+    assert t["due_date"] == "2026-08-01T14:30"          # hour preserved
+    # edit page renders + has the native picker
+    ep = client.get(f"/admin/tasks/{t['task_id']}/edit")
+    assert ep.status_code == 200 and 'type="datetime-local"' in ep.get_data(as_text=True)
+    # save edits: title, priority, status, keyword, due
+    r = client.post(f"/admin/tasks/{t['task_id']}/edit", data={
+        "title": "Research pouches v2", "assigned_to": "",
+        "task_type": "KEYWORD_RESEARCH", "priority": "URGENT",
+        "related_keyword": "travel pouch", "status": "IN_PROGRESS",
+        "due_date": "2026-08-02T09:00"})
+    assert r.status_code in (301, 302)
+    t2 = tk.get_task(t["task_id"])
+    assert (t2["title"] == "Research pouches v2" and t2["priority"] == "URGENT"
+            and t2["status"] == "IN_PROGRESS"
+            and t2["related_keyword"] == "travel pouch"
+            and t2["due_date"] == "2026-08-02T09:00")
+
+
 def test_tool_feedback_submit_and_resolve(client):
     from src import toolfeedback as tfb
     # a member submits feedback

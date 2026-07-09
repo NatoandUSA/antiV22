@@ -1,6 +1,17 @@
-# Etsy Product Manager V26.8
+# Etsy Product Manager V26.9
 
-**New in V26.8 — team Tool Feedback.**
+**New in V26.9 — a real task scheduler + editable tasks + a polished board.**
+- **Date + time picker:** the Due date field is now a native calendar + clock
+  (`datetime-local`) — pick the day and the hour, no typing `YYYY-MM-DD`.
+- **Edit / reassign tasks:** every card on Team Tasks has an **✏️ Edit** link —
+  change the assignee, priority, status, due date/time, keyword, or title after it's
+  created (owner/managers).
+- **Professional redesign:** a **team-pulse** stat strip (Active / In progress / In
+  review / Overdue / Completed), assignee-initial chips, clock-stamped due dates
+  (overdue in red), and an encouraging header — built to make managing the team feel
+  motivating, not clerical.
+
+**V26.8 — team Tool Feedback.**
 - Every team member gets a **💬 Tool Feedback** box (Team → Tool Feedback): pick a
   category (idea / bug / question) and write what to improve, add, or fix. They see
   their own submissions + status.

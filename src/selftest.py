@@ -566,6 +566,16 @@ def run_selftest():
           and "/team/feedback/resolve" in _web_src_v268
           and 'href="/team/feedback"' in _web_src_v268)
 
+    # ---- V26.9: date+time picker + editable tasks + polished board ----
+    import inspect as _inspect2
+    from src import tasks as _tk2
+    check("Team Tasks: date+time picker, editable tasks, pulse board",
+          'type="datetime-local"' in _web_src_v268
+          and '/admin/tasks/<int:tid>/edit' in _web_src_v268
+          and "tkstats" in _web_src_v268
+          and {"title", "task_type", "due_date"}
+          <= set(_inspect2.signature(_tk2.update_task).parameters))
+
     from src import crosscheck as _cc
     check("cross-check sources present (Google Trends + Pinterest + X)",
           set(_cc.status()) == {"Google Trends", "Pinterest", "X / Twitter"}

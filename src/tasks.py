@@ -92,7 +92,11 @@ def list_tasks(assigned_to=None, status=None, role_target=None, task_type=None,
     return appdb.q(sql, tuple(params))
 
 
-def update_task(task_id, status=None, priority=None, assigned_to_user_id=None):
+def update_task(task_id, status=None, priority=None, assigned_to_user_id=None,
+                title=None, task_type=None, related_keyword=None, due_date=None):
+    """Update a task. status/priority/assignee were the original fields; title,
+    task_type, related_keyword and due_date let an owner/manager EDIT the task.
+    Any field left as None keeps its current value."""
     t = get_task(task_id)
     if not t:
         return None
@@ -100,11 +104,17 @@ def update_task(task_id, status=None, priority=None, assigned_to_user_id=None):
     if status not in STATUSES:
         raise ValueError(f"invalid status {status}")
     completed = _now() if status in ("DONE", "APPROVED") else t.get("completed_at")
-    appdb.execute("UPDATE tasks SET status=?, priority=?, assigned_to_user_id=?, "
-                  "updated_at=?, completed_at=? WHERE task_id=?",
-                  (status, (priority or t["priority"]).upper(),
-                   assigned_to_user_id if assigned_to_user_id is not None
-                   else t["assigned_to_user_id"], _now(), completed, task_id))
+    keep = lambda new, cur: cur if new is None else new
+    appdb.execute(
+        "UPDATE tasks SET status=?, priority=?, assigned_to_user_id=?, title=?, "
+        "task_type=?, related_keyword=?, due_date=?, updated_at=?, completed_at=? "
+        "WHERE task_id=?",
+        (status, (priority or t["priority"]).upper(),
+         assigned_to_user_id if assigned_to_user_id is not None
+         else t["assigned_to_user_id"],
+         keep(title, t["title"]), keep(task_type, t.get("task_type")),
+         keep(related_keyword, t.get("related_keyword")),
+         keep(due_date, t.get("due_date")), _now(), completed, task_id))
     return get_task(task_id)
 
 
