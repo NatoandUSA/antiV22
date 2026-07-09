@@ -1179,21 +1179,20 @@ def build_app(password, secret):
     @app.route("/spy")
     @login_required
     def spy():
-        import re as _re
+        from src import interactive
         raw = (request.args.get("q") or "").strip()[:200]   # room for a listing URL
         m = (request.args.get("supplier_type") or request.args.get("mode") or "").lower()
         mode = m if m in ("pod", "embroidery", "both") else None
-        # Accept a keyword OR an Etsy listing URL: pull the target keyword from the
-        # URL slug (etsy.com/listing/<id>/<slug>) and decode the market it competes in.
+        # Accept a keyword OR an Etsy listing URL. spy_target reads the URL's title
+        # slug and broadens it to a keyword the index has data for. lid is None for a
+        # plain keyword; lid set + empty q = a listing URL with no usable title slug.
+        q, lid = interactive.spy_target(raw) if raw else ("", None)
         src_note = ""
-        lm = _re.search(r"etsy\.com/(?:[a-z-]{2,6}/)?listing/(\d+)/([a-z0-9\-]+)",
-                        raw, _re.I)
-        if lm:
-            q = " ".join(_no_tags(lm.group(2).replace("-", " ")).split()[:8])[:80].strip()
-            src_note = (f'<p class="note">🔗 Decoded from Etsy listing '
-                        f'<b>#{lm.group(1)}</b> — analyzing the market its title targets.</p>')
-        else:
-            q = "".join(c for c in raw if c.isalnum() or c in " '&-.").strip()[:80]
+        url_no_slug = (lid is not None and not q)
+        if lid and q:
+            src_note = (f'<p class="note">🔗 Decoded from Etsy listing <b>#{lid}</b> → '
+                        f'market keyword "<b>{_h_esc(q)}</b>" (broadened from the title '
+                        'so the market data isn\'t empty).</p>')
         bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
         msel = "".join(
             f'<option value="{v}"{" selected" if v == (mode or "pod") else ""}>{lbl}</option>'
@@ -1213,8 +1212,13 @@ def build_app(password, secret):
                  '<p class="note">Decoding a whole <b>shop</b> isn\'t available — the '
                  'market data source is keyword-level, not per-shop.</p>')
         if not q:
-            return page("Spy", bar + '<article class="md">' + intro + form + '</article>')
-        from src import interactive
+            warn = ('<p class="empty">That Etsy link has no title in it (just the '
+                    'listing number). Paste the <b>full</b> URL including the title '
+                    'part — e.g. <code>etsy.com/listing/1234567890/personalized-photo-'
+                    'badge-reel</code> — so Spy can read the keywords.</p>'
+                    if url_no_slug else '')
+            return page("Spy", bar + '<article class="md">' + intro + warn + form
+                        + '</article>')
         _log("SPY_SEARCH", module="spy", keyword=q, product_mode=mode)
         try:
             body = md.markdown(interactive.spy(q, mode),

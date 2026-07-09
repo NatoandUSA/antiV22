@@ -1,6 +1,16 @@
-# Etsy Product Manager V27.4
+# Etsy Product Manager V27.5
 
-**New in V27.4 — Spy decodes listing URLs + daily-run guardrail + clearer sources.**
+**New in V27.5 — Spy listing-URL fixes (empty results + mangled input).**
+- **Broadens the listing title to a keyword that has data.** A full 5-word Etsy
+  title (`personalized photo badge reel custom`) returns nothing from the index;
+  Spy now trims generic words and shortens it to the product core
+  (`photo badge reel`) that actually has competitors/listings — so the sections
+  aren't empty.
+- **Listing URL without the title part** (`etsy.com/listing/12345`) no longer gets
+  mangled into a garbage keyword — it shows a clear "paste the full URL with the
+  title" message instead of an all-empty Spy report.
+
+**V27.4 — Spy decodes listing URLs + daily-run guardrail + clearer sources.**
 - **🕵️ Spy now takes an Etsy listing URL** (not just a keyword): paste
   `etsy.com/listing/…` and it decodes the market that listing's title targets.
   (Whole-**shop** decoding isn't offered — the data source is keyword-level, no

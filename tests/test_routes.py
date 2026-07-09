@@ -139,6 +139,24 @@ def test_spy_is_self_contained_and_analyze_active_state(client):
     assert "#b45309" not in ex                             # inline styles removed
 
 
+def test_spy_listing_url_parsing_and_broadening(client, monkeypatch):
+    from src import interactive as iv, ytrends_mcp as mcp
+    # plain keyword + slug-less URL don't touch the MCP
+    assert iv.spy_target("usa raccoon shirt") == ("usa raccoon shirt", None)
+    assert iv.spy_target("etsy.com/listing/4519711663") == ("", "4519711663")
+    # a slug-less URL shows help, never runs Spy on a mangled "etsy.comlisting..." string
+    ns = client.get("/spy?q=etsy.com/listing/4519711663").get_data(as_text=True)
+    assert "has no title in it" in ns and "etsy.comlisting" not in ns
+    # a full URL broadens the 5-word title to the product core that has data
+    monkeypatch.setattr(mcp, "research_keyword",
+                        lambda kw, days=30: {"top_listings": [1]} if kw == "photo badge reel" else {})
+    monkeypatch.setattr(mcp, "analyze_competition",
+                        lambda seed, seed_type="keyword": {})
+    kw, lid = iv.spy_target(
+        "https://www.etsy.com/listing/4519711663/personalized-photo-badge-reel-custom")
+    assert lid == "4519711663" and kw == "photo badge reel"
+
+
 def test_feedback_form_saves(client):
     r = client.post("/feedback/add", data={
         "listing_url": "https://etsy.com/listing/test",

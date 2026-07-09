@@ -820,6 +820,42 @@ def _spy_reverse(listings, mode, limit=3):
     return L
 
 
+_SLUG_GENERIC = {"personalized", "personalised", "custom", "customized", "customised",
+                 "gift", "gifts", "the", "for", "your", "my", "and", "with", "new",
+                 "best", "a", "of", "to", "in", "on", "handmade", "unique"}
+
+
+def spy_target(raw):
+    """Parse a Spy input — a keyword OR an Etsy listing URL — into
+    (keyword, listing_id). For a plain keyword listing_id is None. For a listing
+    URL we read the title slug and BROADEN it (drop generic modifiers, use fewer
+    words) to a keyword the index actually has market data for — a full 5-word
+    listing title usually returns nothing, but its 2–3 word product core is rich.
+    A listing URL with no usable title slug returns ("", listing_id)."""
+    import re
+    raw = (raw or "").strip()
+    m = re.search(r"etsy\.com\S*?/listing/(\d+)(?:/([a-z0-9\-]+))?", raw, re.I)
+    if not m:
+        kw = "".join(c for c in raw if c.isalnum() or c in " '&-.").strip()[:80]
+        return kw, None
+    lid, slug = m.group(1), (m.group(2) or "")
+    words = [w for w in slug.split("-") if w and w not in _SLUG_GENERIC]
+    if not words:
+        return "", lid
+    for n in (5, 4, 3, 2):                     # broaden until the index has data
+        cand = " ".join(words[:n]).strip()
+        if not cand:
+            continue
+        try:
+            rk = mcp.research_keyword(cand) or {}
+            tl = rk.get("top_listings") or (rk.get("data", {}) or {}).get("top_listings") or []
+            if tl or (mcp.analyze_competition(cand, "keyword") or {}).get("listings"):
+                return cand, lid
+        except (SystemExit, Exception):        # noqa: BLE001 - fall back to a plain guess
+            break
+    return " ".join(words[:3]), lid
+
+
 def spy(kw, mode=None):
     """Competitor intelligence + REVERSE ENGINE for a keyword — MODE-AWARE. Who
     wins, each top competitor's decoded playbook, who just launched, whether we can
