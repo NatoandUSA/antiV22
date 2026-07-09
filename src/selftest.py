@@ -654,7 +654,7 @@ def run_selftest():
     _iv_src_now = Path("src/interactive.py").read_text(encoding="utf-8")
     check("Spy + Reverse Engine wired + MODE-aware (/spy passes product mode)",
           callable(getattr(_iv, "spy", None))
-          and all(x in _web_src for x in ('href="/spy?mode=', 'formaction="/spy"'))
+          and 'href="/spy?mode=' in _web_src   # the Spy card (Command Center dup removed V27.2)
           # /spy route reads the mode and passes it through to spy()
           and 'interactive.spy(q, mode)' in _web_src
           and "_spy_feasibility" in _iv_src_now

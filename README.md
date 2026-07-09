@@ -1,6 +1,16 @@
-# Etsy Product Manager V27.1
+# Etsy Product Manager V27.2
 
-**New in V27.1 — security hardening (from the full audit).**
+**New in V27.2 — friendlier, faster UI (fewer steps, less clutter).**
+- **Command Center** now shows just what you need — product mode + keyword +
+  **Build full workspace**. The 6 optional fields and single-tool shortcuts moved
+  into a **"＋ More options"** disclosure. Removed the duplicate Spy button (the
+  richer Spy card stays).
+- **Sales feedback** dropped from **24 fields to 6** up front (URL, keyword, price,
+  Day-7 views, orders, revenue); the rest live under **"＋ More metrics"**.
+- **Pulse strips** (like Team Tasks) added to **Launchpad** and **Profit Center**
+  — see the board's health / your net at a glance — with confident lead copy.
+
+**V27.1 — security hardening (from the full audit).**
 - **XSS closed:** free-text inputs that flowed into markdown/HTML (the `/run`
   workspace options, the `/grade` listing fields, competitor titles) are now
   stripped of tag-injection characters at the boundary. A `javascript:` shop/listing

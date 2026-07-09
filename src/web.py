@@ -314,8 +314,11 @@ def build_app(password, secret):
             'placeholder="Main keyword, e.g. usa raccoon shirt">'
             '<button class="primary" type="submit">Build full workspace →</button>'
             '</div>'
+            '<details class="cmdmore"><summary>＋ More options &amp; quick tools</summary>'
+            '<p class="note">Optional — the workspace already auto-suggests these. '
+            'Or jump straight to a single tool:</p>'
             '<div class="cmdopts">'
-            '<input name="product_type" placeholder="Product type (optional)">'
+            '<input name="product_type" placeholder="Product type">'
             '<input name="niche" placeholder="Niche">'
             '<input name="target_customer" placeholder="Target customer">'
             '<input name="occasion" placeholder="Occasion">'
@@ -323,12 +326,11 @@ def build_app(password, secret):
             '<input name="personalization" placeholder="Personalization">'
             '</div>'
             '<div class="cmdbtns">'
-            '<button formaction="/analyze" name="do" value="analyze">Analyze</button>'
-            '<button formaction="/analyze" name="do" value="expand">Expand</button>'
+            '<button formaction="/analyze" name="do" value="analyze">Analyze only</button>'
+            '<button formaction="/analyze" name="do" value="expand">Expand keywords</button>'
             '<button formaction="/should-sell">Should I sell?</button>'
-            '<button formaction="/draft-listing">Build listing</button>'
-            '<button formaction="/spy">🕵️ Spy</button>'
-            '</div></form>'
+            '<button formaction="/draft-listing">Draft listing</button>'
+            '</div></details></form>'
             # --- Section 1: find what to make (live market research) ---
             '<h2 class="grouph">🔍 Find opportunities — live market research</h2>'
             '<div class="toolgrid">'
@@ -1001,14 +1003,20 @@ def build_app(password, secret):
         import html as _h
         from src import feedback as fb
         form = ('<form class="savedform" method="post" action="/feedback/add">'
+                # 6 core fields cover the Day-3/7 call; the rest are optional detail.
                 '<input name="listing_url" placeholder="Listing URL" required>'
                 '<input name="keyword" placeholder="Main keyword (links the saved run)">'
+                '<input name="price" type="number" step="any" placeholder="Price">'
+                '<input name="day_7_views" type="number" placeholder="Day 7 views">'
+                '<input name="orders" type="number" placeholder="Orders">'
+                '<input name="revenue" type="number" step="any" placeholder="Revenue">'
+                '<details class="fbmore"><summary>＋ More metrics (optional)</summary>'
+                '<div class="fbgrid">'
                 '<input name="publish_date" placeholder="Publish date (YYYY-MM-DD)">'
                 '<input name="product_mode" placeholder="Mode (pod/embroidery)">'
                 '<input name="supplier" placeholder="Supplier">'
                 '<input name="product_cost" type="number" step="any" placeholder="Product cost">'
                 '<input name="shipping_cost" type="number" step="any" placeholder="Shipping cost">'
-                '<input name="price" type="number" step="any" placeholder="Price">'
                 '<input name="title" placeholder="Title">'
                 '<input name="main_image_version" placeholder="Main image version (e.g. v2)">'
                 '<input name="mockup_style" placeholder="Mockup style (flat / lifestyle / gift)">'
@@ -1016,13 +1024,11 @@ def build_app(password, secret):
                 '<input name="bundle_offer" placeholder="Bundle offered">'
                 '<input name="day_1_impressions" type="number" placeholder="Day 1 impressions">'
                 '<input name="day_3_views" type="number" placeholder="Day 3 views">'
-                '<input name="day_7_views" type="number" placeholder="Day 7 views">'
                 '<input name="favorites" type="number" placeholder="Favorites">'
                 '<input name="carts" type="number" placeholder="Carts">'
-                '<input name="orders" type="number" placeholder="Orders">'
-                '<input name="revenue" type="number" step="any" placeholder="Revenue">'
                 '<input name="profit" type="number" step="any" placeholder="Profit">'
                 '<input name="refund_or_issue" placeholder="Refund / issue (or none)">'
+                '</div></details>'
                 '<textarea name="notes" placeholder="Notes"></textarea>'
                 '<button class="primary" type="submit">Log + get Day-3/7 recommendation</button>'
                 '</form>')
@@ -1312,11 +1318,14 @@ def build_app(password, secret):
             cols += (f'<div class="lpcol"><h3>{_h.escape(c)} '
                      f'<span class="count">{len(cards)}</span></h3>{body or "<p class=note>—</p>"}</div>')
         bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
+        pulse = '<div class="tkstats">' + "".join(
+            f'<div class="tkstat"><span class="n">{len(b.get(c, []))}</span>'
+            f'<span class="l">{_h.escape(c)}</span></div>' for c in lp.COLUMNS) + '</div>'
         return page("Launchpad", bar + '<article class="md"><h1>🚀 Launchpad</h1>'
-                    '<p>Every saved run, by launch stage. Cards move automatically as '
-                    'you save runs + log feedback. <b>No auto-publishing</b> — '
-                    '"Published manually" only reflects what your team logged.</p>'
-                    '</article><div class="lpboard">' + cols + '</div>')
+                    '<p class="tklead">Every idea, from spark to scale. Cards move '
+                    'themselves as you save runs and log results — your job is to keep '
+                    'them flowing right. <b>No auto-publishing</b>, ever.</p>'
+                    + pulse + '</article><div class="lpboard">' + cols + '</div>')
 
     # ---- Market & keyword trackers ----
     @app.route("/trackers")
@@ -1403,9 +1412,18 @@ def build_app(password, secret):
                 '<label>Refund / issue<input name="refund_or_issue" placeholder="or none"></label>'
                 '<button class="primary" type="submit">Log sale + compute profit</button></form>')
         bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
+        netcls = " good" if s["net_total"] > 0 else (" bad" if s["net_total"] < 0 else "")
+        ptiles = [("Sales logged", str(s["sales"]), ""),
+                  ("Net profit", f'${s["net_total"]:,.0f}', netcls),
+                  ("Suppliers", str(len(s.get("by_supplier", {}))), ""),
+                  ("Product lines", str(len(s.get("by_mode", {}))), "")]
+        ppulse = '<div class="tkstats">' + "".join(
+            f'<div class="tkstat{c}"><span class="n">{v}</span>'
+            f'<span class="l">{l}</span></div>' for l, v, c in ptiles) + '</div>'
         return page("Profit Center", bar + '<article class="md"><h1>💰 Profit Center</h1>'
-                    f'<p>{s["sales"]} sales logged · <b>net ${s["net_total"]:.2f}</b>. '
-                    'Applies the Etsy fee model and feeds supplier scores.</p>'
+                    '<p class="tklead">Real money, not guesses. Every logged sale runs '
+                    'through the Etsy fee model and sharpens your supplier scores — so '
+                    'you double down on what actually pays.</p>' + ppulse
                     + ('<h2>By supplier</h2><table><tr><th>Supplier</th><th>Sales</th>'
                        f'<th>Net</th><th>Avg margin</th></tr>{sup_rows}</table>'
                        if sup_rows else '')
@@ -2184,6 +2202,10 @@ border-radius:11px;padding:11px 14px;margin-bottom:9px;box-shadow:var(--shadow)}
 border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);cursor:pointer}
 .tkbtn.primary{background:var(--accent);color:var(--paper);border-color:var(--accent)}
 .tknew{margin:6px 0 14px}.tknew summary{cursor:pointer;font-weight:700;color:var(--accent)}
+.cmdmore{margin-top:8px}.cmdmore summary{cursor:pointer;font-weight:700;color:var(--accent);font-size:.9rem;padding:4px 0;list-style:revert}
+.cmdmore .cmdopts,.cmdmore .cmdbtns{margin-top:8px}
+.fbmore{grid-column:1/-1}.fbmore summary{cursor:pointer;font-weight:700;color:var(--accent);font-size:.86rem;padding:2px 0}
+.fbgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px;margin-top:8px}
 .tklead{font-size:.96rem;color:var(--ink-soft);margin:6px 0 16px;max-width:64ch;line-height:1.5}
 .tkstats{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 16px}
 .tkstat{flex:1 1 96px;min-width:96px;background:var(--surface);border:1px solid var(--line);
