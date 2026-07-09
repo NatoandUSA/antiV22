@@ -1,6 +1,19 @@
-# Etsy Product Manager V27.0
+# Etsy Product Manager V27.1
 
-**New in V27.0 — full audit + the Embroidery-mode fix.**
+**New in V27.1 — security hardening (from the full audit).**
+- **XSS closed:** free-text inputs that flowed into markdown/HTML (the `/run`
+  workspace options, the `/grade` listing fields, competitor titles) are now
+  stripped of tag-injection characters at the boundary. A `javascript:` shop/listing
+  URL can no longer become a live link.
+- **Security headers** on every response (CSP, `X-Frame-Options: DENY`, nosniff,
+  Referrer-Policy) as defense-in-depth.
+- **Cookie:** set `WEB_SECURE_COOKIES=1` in the VPS `.env` to mark the session
+  cookie HTTPS-only. Login no longer reveals whether an email exists.
+- Audit confirmed the fundamentals are solid: **no SQL injection**, no dangerous
+  eval/shell, debug off, pbkdf2 passwords + lockout, admin routes gated, no secret
+  leakage, path traversal defended.
+
+**V27.0 — full audit + the Embroidery-mode fix.**
 - **Embroidery mode is no longer starved.** Switching to Embroidery used to show
   ~2 keywords vs POD's ~50, because a crude pre-filter dropped every design theme.
   Now product-fit (already mode-aware) decides: **POD and Embroidery each show ~50**,

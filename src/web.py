@@ -103,8 +103,28 @@ def build_app(password, secret):
     app.config.update(
         SESSION_COOKIE_HTTPONLY=True,       # JS can't read the cookie
         SESSION_COOKIE_SAMESITE="Lax",      # basic CSRF mitigation
+        # Send the session cookie only over HTTPS. Enabled on the VPS by setting
+        # WEB_SECURE_COOKIES=1 in .env; left off for local http://localhost dev.
+        SESSION_COOKIE_SECURE=(os.getenv("WEB_SECURE_COOKIES", "").strip() == "1"),
         PERMANENT_SESSION_LIFETIME=timedelta(hours=12),   # session timeout
     )
+
+    @app.after_request
+    def _security_headers(resp):
+        # Defense-in-depth: block framing (clickjacking), MIME sniffing, and
+        # restrict where scripts/frames can come from. Inline script/style are
+        # allowed (the app renders them); images come from anywhere (listing
+        # thumbnails). This backstops the XSS-sink escaping in the routes.
+        resp.headers.setdefault("X-Frame-Options", "DENY")
+        resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+        resp.headers.setdefault("Referrer-Policy", "same-origin")
+        resp.headers.setdefault("Content-Security-Policy",
+            "default-src 'self'; script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; img-src * data: blob:; "
+            "font-src 'self' data:; connect-src 'self'; object-src 'none'; "
+            "frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
+        return resp
+
     auth.appdb.init_db()
 
     def _ip():
@@ -113,6 +133,22 @@ def build_app(password, secret):
 
     def _ua():
         return request.headers.get("User-Agent", "")[:200]
+
+    def _no_tags(s):
+        """Remove the HTML tag-injection characters. Used to neutralize XSS at
+        input boundaries where the value later flows through markdown/raw HTML."""
+        return (s or "").translate({ord("<"): "", ord(">"): "", ord('"'): ""})
+
+    def _safe_url(u):
+        """Only allow http(s) links; block javascript:/data: URI XSS. Returns '' if
+        the scheme isn't safe, so the caller renders no href."""
+        u = (u or "").strip()
+        low = u.lower()
+        if low.startswith("http://") or low.startswith("https://"):
+            return u
+        if low and "//" not in low and ":" not in low.split("/")[0]:
+            return "https://" + u          # bare domain -> assume https
+        return ""
 
     def current_user():
         uid = session.get("uid")
@@ -188,9 +224,10 @@ def build_app(password, secret):
                 return redirect(url_for("index"))
             activity.log("AUTH_LOGIN_FAILED", user={"email": email}, module="auth",
                          ip=_ip(), success=False, error=why)
+            # One generic message for wrong-password AND disabled/unknown account,
+            # so login can't be used to enumerate which emails exist.
             error = ('<p class="err">Account locked after too many attempts — '
-                     'try again in 15 minutes.</p>' if why == "locked" else
-                     '<p class="err">This account is disabled.</p>' if why == "disabled"
+                     'try again in 15 minutes.</p>' if why == "locked"
                      else '<p class="err">Wrong email or password.</p>')
         return page("Sign in", LOGIN.replace("{{ERROR}}", error))
 
@@ -461,7 +498,11 @@ def build_app(password, secret):
     def _run_inputs():
         raw = (request.args.get("q") or "").strip()[:80]
         q = "".join(c for c in raw if c.isalnum() or c in " '&-.").strip()
-        opts = {k: (request.args.get(k) or "").strip()[:60] for k in _OPT_FIELDS}
+        # Strip tag-injection chars from the free-text option fields at the
+        # boundary so no downstream markdown/HTML sink can be XSS'd (some render
+        # sites escape, some don't — this makes every one safe).
+        opts = {k: _no_tags((request.args.get(k) or "").strip()[:60])
+                for k in _OPT_FIELDS}
         return q, opts
 
     @app.route("/run")
@@ -679,7 +720,7 @@ def build_app(password, secret):
             is_auto = r.get("source") == "auto"
             ov = saved.overall(r.get("scores"))
             fw = "".join(f"<li>{_h.escape(f)}</li>" for f in saved.SHOP_FRAMEWORK)
-            url = _h.escape(r.get("shop_url") or "")
+            url = _h.escape(_safe_url(r.get("shop_url")))
             m = r.get("metrics") or {}
             chips = ""
             if is_auto and m:
@@ -782,7 +823,7 @@ def build_app(password, secret):
             is_auto = r.get("source") == "auto"
             ov = saved.overall(r.get("scores"))
             fw = "".join(f"<li>{_h.escape(f)}</li>" for f in saved.LISTING_FRAMEWORK)
-            url = _h.escape(r.get("listing_url") or "")
+            url = _h.escape(_safe_url(r.get("listing_url")))
             m = r.get("metrics") or {}
             thumb, chips = "", ""
             if is_auto and m:
@@ -1164,10 +1205,12 @@ def build_app(password, secret):
     def grade():
         import html as _html
         bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
-        title = (request.form.get("title") or "").strip()
-        tags = (request.form.get("tags") or "").strip()
-        desc = (request.form.get("description") or "").strip()
-        kw = (request.form.get("keyword") or "").strip()
+        # Strip tag-injection chars: the analysis RESULT echoes these back through
+        # markdown (raw-HTML passthrough), so neutralize XSS at the boundary.
+        title = _no_tags((request.form.get("title") or "").strip())
+        tags = _no_tags((request.form.get("tags") or "").strip())
+        desc = _no_tags((request.form.get("description") or "").strip())
+        kw = _no_tags((request.form.get("keyword") or "").strip())
         img_ok = request.form.get("first_image_ready") == "on"
         sup_ok = request.form.get("supplier_ok") == "on"
         result_html = ""

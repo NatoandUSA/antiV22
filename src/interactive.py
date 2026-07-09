@@ -49,7 +49,10 @@ def _pct(v):
 
 
 def _clean(t):
-    return str(t or "").replace("|", "/").replace("\n", " ").strip()
+    # Strip "|" (breaks md tables), newlines, and "<>" (third-party listing
+    # titles/tags flow into markdown raw-HTML — neutralize any injected tags).
+    return (str(t or "").replace("|", "/").replace("\n", " ")
+            .replace("<", "").replace(">", "").strip())
 
 
 def _g(d, *keys):

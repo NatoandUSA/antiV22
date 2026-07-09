@@ -57,6 +57,25 @@ def test_pages_render(client, route):
     assert client.get(route).status_code == 200
 
 
+def test_security_xss_neutralized_and_headers(client):
+    from src import saved
+    # /grade result must not echo an executable tag from the title/keyword
+    g = client.post("/grade", data={
+        "title": "<img src=x onerror=alert(1)>", "tags": "a, b",
+        "description": "a reasonably long description here",
+        "keyword": "<svg onload=alert(1)>"}).get_data(as_text=True)
+    assert "<img" not in g and "<svg" not in g
+    # a javascript: shop URL must not become a live href
+    saved.add_shop({"shop_name": "xss test shop",
+                    "shop_url": "javascript:alert(document.cookie)", "category": "",
+                    "niche": "", "status": "watching", "notes": "", "scores": {}})
+    assert 'href="javascript:' not in client.get("/shops").get_data(as_text=True)
+    # defense-in-depth headers present on every response
+    h = client.get("/")
+    assert h.headers.get("X-Frame-Options") == "DENY"
+    assert "Content-Security-Policy" in h.headers
+
+
 def test_task_datetime_due_and_edit(client):
     from src import tasks as tk
     # create with a date+time due value from the picker
