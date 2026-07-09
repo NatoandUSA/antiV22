@@ -1734,17 +1734,19 @@ def build_app(password, secret):
             cards = [t for t in rows if t["status"] in statuses]
             body = ""
             for t in cards:
-                name = by_id.get(t["assigned_to_user_id"], {}).get("display_name", "—")
-                initials = ("".join(w[0] for w in name.split()[:2]).upper() or "—")
+                name = by_id.get(t["assigned_to_user_id"], {}).get("display_name") or "Unassigned"
+                initials = ("".join(w[0] for w in name.split()[:2]).upper() or "•")
                 od = tk.is_overdue(t)
                 due = (t.get("due_date") or "")
                 prio = (t["priority"] or "medium").lower()
                 duebadge = (f'<span class="tkdue{" od" if od else ""}">🕒 '
                             f'{_h_esc(due[:16].replace("T", " "))}</span>' if due else '')
                 body += (
-                    f'<div class="tkcard pr-{prio}"><div class="tktop">'
-                    f'<span class="tkinit" title="{_h_esc(name)}">{_h_esc(initials)}</span>'
-                    f'<b>{_h_esc(t["title"][:48])}</b></div>'
+                    f'<div class="tkcard pr-{prio}">'
+                    f'<div class="tkwho"><span class="tkinit" title="{_h_esc(name)}">'
+                    f'{_h_esc(initials)}</span>'
+                    f'<span class="tkname">{_h_esc(name)}</span></div>'
+                    f'<b class="tktitle">{_h_esc(t["title"][:52])}</b>'
                     f'<div class="tkmeta">{_h_esc(t.get("task_type") or "—")}'
                     f'<span class="pill pr-{prio}">{_h_esc(t["priority"])}</span></div>'
                     f'<div class="tkfoot">{duebadge}'
@@ -2147,10 +2149,13 @@ border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:3px;
 .tkstat .l{font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-faint);font-weight:700}
 .tkstat.bad{border-color:var(--stop)}.tkstat.bad .n{color:var(--stop)}
 .tkstat.good{border-color:var(--ok)}.tkstat.good .n{color:var(--ok)}
-.tktop{display:flex;align-items:center;gap:8px}
-.tktop b{font-size:.92rem;line-height:1.25}
-.tkinit{flex:0 0 auto;width:26px;height:26px;border-radius:50%;background:var(--accent-bg);
-color:var(--accent);font-size:.64rem;font-weight:800;display:flex;align-items:center;justify-content:center}
+.tkwho{display:flex;align-items:center;gap:7px;margin-bottom:7px;padding-bottom:7px;
+border-bottom:1px dashed var(--line)}
+.tkname{font-size:.76rem;font-weight:700;color:var(--ink-soft);white-space:nowrap;
+overflow:hidden;text-overflow:ellipsis}
+.tktitle{display:block;font-size:.92rem;line-height:1.28}
+.tkinit{flex:0 0 auto;width:26px;height:26px;border-radius:50%;background:var(--accent);
+color:var(--paper);font-size:.64rem;font-weight:800;display:flex;align-items:center;justify-content:center}
 .tkmeta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:8px 0 0;
 font-size:.72rem;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.03em}
 .tkfoot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:9px}

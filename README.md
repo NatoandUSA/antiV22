@@ -7,9 +7,9 @@
   change the assignee, priority, status, due date/time, keyword, or title after it's
   created (owner/managers).
 - **Professional redesign:** a **team-pulse** stat strip (Active / In progress / In
-  review / Overdue / Completed), assignee-initial chips, clock-stamped due dates
-  (overdue in red), and an encouraging header — built to make managing the team feel
-  motivating, not clerical.
+  review / Overdue / Completed), a **staff name + initial avatar** on every card (see
+  who owns each job at a glance), clock-stamped due dates (overdue in red), and an
+  encouraging header — built to make managing the team feel motivating, not clerical.
 
 **V26.8 — team Tool Feedback.**
 - Every team member gets a **💬 Tool Feedback** box (Team → Tool Feedback): pick a
