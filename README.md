@@ -1,6 +1,17 @@
-# Etsy Product Manager V27.3
+# Etsy Product Manager V27.4
 
-**New in V27.3 — Spy fixed + Analyze bug + smarter Command Center.**
+**New in V27.4 — Spy decodes listing URLs + daily-run guardrail + clearer sources.**
+- **🕵️ Spy now takes an Etsy listing URL** (not just a keyword): paste
+  `etsy.com/listing/…` and it decodes the market that listing's title targets.
+  (Whole-**shop** decoding isn't offered — the data source is keyword-level, no
+  per-shop analysis; stated plainly in the UI.)
+- **daily-run guardrail:** running it with the wrong Python (the VPS system
+  `python3` missing `dotenv`) now fails fast with a clear "use `.venv/bin/python`"
+  message instead of "failing" every step and raising a false CRITICAL alert.
+- **Keyword Research page** now says it's a **saved snapshot from YTrends data**
+  (not a live query or a staff-search log), and links to the live Expand.
+
+**V27.3 — Spy fixed + Analyze bug + smarter Command Center.**
 - **🕵️ Spy is self-contained again:** it now has its own keyword + product-mode +
   **Decode competitors** form (the previous version wrongly pointed to a removed
   button). Spy decodes the **competitors ranking for a keyword** — their titles,

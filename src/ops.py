@@ -43,6 +43,18 @@ def ensure_dirs():
 # ------------------------------------------------------------ daily-run ----
 def daily_run():
     """Pull fresh data + refresh feeds + write a summary. Never publishes."""
+    # Preflight: every data step needs these. If we're on the wrong interpreter
+    # (e.g. the VPS system `python3` instead of `.venv/bin/python`), fail fast with
+    # a clear message BEFORE running/writing anything — otherwise all data steps
+    # "fail" on the missing import and raise a scary CRITICAL alert.
+    try:
+        import dotenv, requests  # noqa: F401
+    except ImportError as exc:
+        print(f"Cannot run daily-run: missing dependency '{exc.name}'.")
+        print("You're probably using the wrong Python. Use the project's venv:")
+        print("  VPS:    .venv/bin/python main.py daily-run")
+        print("  laptop: py main.py daily-run   (Windows)  /  python3 …  (Mac)")
+        raise SystemExit(1)
     log = get_logger("daily-run", "daily-run.log")
     err = get_logger("errors", "errors.log")
     import json

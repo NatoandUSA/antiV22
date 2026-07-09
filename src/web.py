@@ -1179,28 +1179,39 @@ def build_app(password, secret):
     @app.route("/spy")
     @login_required
     def spy():
-        raw = (request.args.get("q") or "").strip()[:80]
-        q = "".join(c for c in raw if c.isalnum() or c in " '&-.").strip()
+        import re as _re
+        raw = (request.args.get("q") or "").strip()[:200]   # room for a listing URL
         m = (request.args.get("supplier_type") or request.args.get("mode") or "").lower()
         mode = m if m in ("pod", "embroidery", "both") else None
+        # Accept a keyword OR an Etsy listing URL: pull the target keyword from the
+        # URL slug (etsy.com/listing/<id>/<slug>) and decode the market it competes in.
+        src_note = ""
+        lm = _re.search(r"etsy\.com/(?:[a-z-]{2,6}/)?listing/(\d+)/([a-z0-9\-]+)",
+                        raw, _re.I)
+        if lm:
+            q = " ".join(_no_tags(lm.group(2).replace("-", " ")).split()[:8])[:80].strip()
+            src_note = (f'<p class="note">🔗 Decoded from Etsy listing '
+                        f'<b>#{lm.group(1)}</b> — analyzing the market its title targets.</p>')
+        else:
+            q = "".join(c for c in raw if c.isalnum() or c in " '&-.").strip()[:80]
         bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
-        # self-contained search: keyword + product mode + run (no dependency on the
-        # home Command Center)
         msel = "".join(
             f'<option value="{v}"{" selected" if v == (mode or "pod") else ""}>{lbl}</option>'
             for v, lbl in (("pod", "Print on Demand"), ("embroidery", "Embroidery"),
                            ("both", "Both")))
         form = ('<form method="get" action="/spy" class="toolbar">'
-                f'<input name="q" value="{_h_esc(q)}" autofocus '
-                'placeholder="Keyword to decode, e.g. usa raccoon shirt">'
+                f'<input name="q" value="{_h_esc(q if not src_note else raw)}" autofocus '
+                'placeholder="Keyword  —  or paste an Etsy listing URL">'
                 f'<select name="supplier_type" aria-label="Product mode">{msel}</select>'
                 '<button class="primary" type="submit">🕵️ Decode competitors</button>'
                 '</form>')
-        intro = ('<h1>🕵️ Spy + Reverse Engine</h1><p>Type a keyword — Spy finds the '
-                 'competitors ranking for it, decodes each one\'s playbook '
-                 '(title / tags / price / image angle), flags who just launched, and '
-                 'shows the gaps to beat them. Learning only — study structure, never '
-                 'copy.</p>')
+        intro = ('<h1>🕵️ Spy + Reverse Engine</h1><p>Give it a <b>keyword</b> or paste an '
+                 '<b>Etsy listing URL</b> — Spy finds the competitors ranking for it, '
+                 'decodes each one\'s playbook (title / tags / price / image angle), flags '
+                 'who just launched, and shows the gaps to beat them. Learning only — '
+                 'study structure, never copy.</p>'
+                 '<p class="note">Decoding a whole <b>shop</b> isn\'t available — the '
+                 'market data source is keyword-level, not per-shop.</p>')
         if not q:
             return page("Spy", bar + '<article class="md">' + intro + form + '</article>')
         from src import interactive
@@ -1208,8 +1219,8 @@ def build_app(password, secret):
         try:
             body = md.markdown(interactive.spy(q, mode),
                                extensions=["tables", "fenced_code", "sane_lists"])
-            return page(f"Spy: {q}", bar + '<article class="md">' + form + body
-                        + '</article>' + COPY_JS)
+            return page(f"Spy: {q}", bar + '<article class="md">' + form + src_note
+                        + body + '</article>' + COPY_JS)
         except (SystemExit, Exception) as exc:  # noqa: BLE001
             return _tool_error("Spy", exc)
 
@@ -1452,8 +1463,12 @@ def build_app(password, secret):
                            extensions=["tables", "fenced_code", "sane_lists"])
         bar = ('<div class="rbar"><a class="back" href="/">&larr; All '
                'reports</a></div>')
+        src = ('<p class="note">📌 A <b>saved snapshot</b> from a CLI '
+               '<code>expand</code> run — the numbers are from the <b>YTrends index</b> '
+               '(not a log of staff searches). For a <b>live</b> lookup use '
+               '<a href="/">Command Center → Expand keywords</a>.</p>')
         return page("Keyword Research",
-                    bar + f'<article class="md">{html}</article>' + COPY_JS)
+                    bar + f'<article class="md">{src}{html}</article>' + COPY_JS)
 
     # ---- command cheat sheet (served from the repo's CHEATSHEET.md) ----
     @app.route("/cheatsheet")
