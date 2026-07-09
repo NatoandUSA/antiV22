@@ -1,6 +1,17 @@
-# Etsy Product Manager V27.2
+# Etsy Product Manager V27.3
 
-**New in V27.2 — friendlier, faster UI (fewer steps, less clutter).**
+**New in V27.3 — Spy fixed + Analyze bug + smarter Command Center.**
+- **🕵️ Spy is self-contained again:** it now has its own keyword + product-mode +
+  **Decode competitors** form (the previous version wrongly pointed to a removed
+  button). Spy decodes the **competitors ranking for a keyword** — their titles,
+  tags, price, image angle, who just launched, and the gaps to beat them.
+- **Fixed the /Analyze bug:** the active button (Analyze vs Expand) now reflects
+  the view you're on, and the page uses the theme (no more off-brand inline styles).
+- **Command Center:** removed the 6 empty option boxes — those attributes are
+  **AI-filled from live data inside the workspace** ("📝 Run inputs" panel), editable
+  with source + confidence. No guessing up front.
+
+**V27.2 — friendlier, faster UI (fewer steps, less clutter).**
 - **Command Center** now shows just what you need — product mode + keyword +
   **Build full workspace**. The 6 optional fields and single-tool shortcuts moved
   into a **"＋ More options"** disclosure. Removed the duplicate Spy button (the

@@ -125,6 +125,20 @@ def test_spy_and_run_without_keyword_are_graceful(client):
     assert client.get("/run").status_code == 200
 
 
+def test_spy_is_self_contained_and_analyze_active_state(client):
+    # /spy must carry its own keyword+mode+run form (no dependency on a Command
+    # Center button that no longer exists)
+    sp = client.get("/spy").get_data(as_text=True)
+    assert 'action="/spy"' in sp and 'name="q"' in sp and "Decode competitors" in sp
+    assert "click 🕵️ Spy" not in sp                       # old removed-button hint gone
+    # /analyze active button reflects the current view
+    ex = client.get("/analyze?q=dog+shirt&do=expand").get_data(as_text=True)
+    seg = ex[ex.find('action="/analyze"'):ex.find('action="/analyze"') + 600]
+    assert 'value="expand" class="primary"' in seg
+    assert 'value="analyze" class="primary"' not in seg
+    assert "#b45309" not in ex                             # inline styles removed
+
+
 def test_feedback_form_saves(client):
     r = client.post("/feedback/add", data={
         "listing_url": "https://etsy.com/listing/test",

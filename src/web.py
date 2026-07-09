@@ -314,17 +314,11 @@ def build_app(password, secret):
             'placeholder="Main keyword, e.g. usa raccoon shirt">'
             '<button class="primary" type="submit">Build full workspace →</button>'
             '</div>'
-            '<details class="cmdmore"><summary>＋ More options &amp; quick tools</summary>'
-            '<p class="note">Optional — the workspace already auto-suggests these. '
-            'Or jump straight to a single tool:</p>'
-            '<div class="cmdopts">'
-            '<input name="product_type" placeholder="Product type">'
-            '<input name="niche" placeholder="Niche">'
-            '<input name="target_customer" placeholder="Target customer">'
-            '<input name="occasion" placeholder="Occasion">'
-            '<input name="style" placeholder="Style">'
-            '<input name="personalization" placeholder="Personalization">'
-            '</div>'
+            '<details class="cmdmore"><summary>＋ Quick single-step tools</summary>'
+            '<p class="note">Jump straight to one tool instead of the full workspace. '
+            '<b>Tip:</b> product type, niche, occasion, style &amp; personalization are '
+            '<b>AI-filled from the live data inside the workspace</b> (the "📝 Run '
+            'inputs" panel) — edit them there, no need to guess up front.</p>'
             '<div class="cmdbtns">'
             '<button formaction="/analyze" name="do" value="analyze">Analyze only</button>'
             '<button formaction="/analyze" name="do" value="expand">Expand keywords</button>'
@@ -451,19 +445,16 @@ def build_app(password, secret):
         # keep it a plain keyword (defensive; MCP args are JSON, not shell)
         q = "".join(c for c in raw if c.isalnum() or c in " '&-.").strip()
         val = _html.escape(q)
+        # theme-aware toolbar; the active view's button gets .primary (fixes the
+        # bug where "Analyze" stayed highlighted even on the Expand view)
         form = (
-            '<form method="get" action="/analyze" '
-            'style="display:flex;gap:.5rem;flex-wrap:wrap;margin:1rem 0">'
+            '<form method="get" action="/analyze" class="toolbar">'
             f'<input name="q" value="{val}" autofocus '
-            'placeholder="Type a keyword, e.g. custom dad shirt" '
-            'style="flex:1;min-width:220px;padding:.6rem .8rem;'
-            'border:1px solid #d9c9a8;border-radius:8px;font-size:1rem">'
-            '<button name="do" value="analyze" style="padding:.6rem 1rem;'
-            'border:0;border-radius:8px;background:#b45309;color:#fff;'
-            'font-weight:600;cursor:pointer">Analyze</button>'
-            '<button name="do" value="expand" style="padding:.6rem 1rem;'
-            'border:1px solid #b45309;border-radius:8px;background:#fff;'
-            'color:#b45309;font-weight:600;cursor:pointer">Expand</button>'
+            'placeholder="Type a keyword, e.g. custom dad shirt">'
+            '<button name="do" value="analyze"'
+            + (' class="primary"' if do == "analyze" else "") + '>Analyze</button>'
+            '<button name="do" value="expand"'
+            + (' class="primary"' if do == "expand" else "") + '>Expand</button>'
             '</form>')
         head = ('<div class="rbar"><a class="back" href="/">&larr; All '
                 'reports</a></div><article class="md"><h1>Analyze a keyword</h1>'
@@ -1188,21 +1179,37 @@ def build_app(password, secret):
     @app.route("/spy")
     @login_required
     def spy():
-        import html as _html
         raw = (request.args.get("q") or "").strip()[:80]
         q = "".join(c for c in raw if c.isalnum() or c in " '&-.").strip()
         m = (request.args.get("supplier_type") or request.args.get("mode") or "").lower()
         mode = m if m in ("pod", "embroidery", "both") else None
+        bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
+        # self-contained search: keyword + product mode + run (no dependency on the
+        # home Command Center)
+        msel = "".join(
+            f'<option value="{v}"{" selected" if v == (mode or "pod") else ""}>{lbl}</option>'
+            for v, lbl in (("pod", "Print on Demand"), ("embroidery", "Embroidery"),
+                           ("both", "Both")))
+        form = ('<form method="get" action="/spy" class="toolbar">'
+                f'<input name="q" value="{_h_esc(q)}" autofocus '
+                'placeholder="Keyword to decode, e.g. usa raccoon shirt">'
+                f'<select name="supplier_type" aria-label="Product mode">{msel}</select>'
+                '<button class="primary" type="submit">🕵️ Decode competitors</button>'
+                '</form>')
+        intro = ('<h1>🕵️ Spy + Reverse Engine</h1><p>Type a keyword — Spy finds the '
+                 'competitors ranking for it, decodes each one\'s playbook '
+                 '(title / tags / price / image angle), flags who just launched, and '
+                 'shows the gaps to beat them. Learning only — study structure, never '
+                 'copy.</p>')
         if not q:
-            bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
-            return page("Spy", bar + '<article class="md"><h1>🕵️ Spy</h1>'
-                        '<p class="empty">Pick a <b>Product Mode</b> and type a keyword '
-                        'in the Command Center on the <a href="/">home page</a>, then '
-                        'click 🕵️ Spy — the mode is carried through.</p></article>')
+            return page("Spy", bar + '<article class="md">' + intro + form + '</article>')
         from src import interactive
         _log("SPY_SEARCH", module="spy", keyword=q, product_mode=mode)
         try:
-            return _render_tool(f"Spy: {q}", interactive.spy(q, mode))
+            body = md.markdown(interactive.spy(q, mode),
+                               extensions=["tables", "fenced_code", "sane_lists"])
+            return page(f"Spy: {q}", bar + '<article class="md">' + form + body
+                        + '</article>' + COPY_JS)
         except (SystemExit, Exception) as exc:  # noqa: BLE001
             return _tool_error("Spy", exc)
 
