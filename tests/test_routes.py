@@ -102,6 +102,25 @@ def test_task_datetime_due_and_edit(client):
             and t2["due_date"] == "2026-08-02T09:00")
 
 
+def test_task_work_report_flow(client):
+    from src import tasks as tk, auth
+    owner = auth.get_user_by_email("owner@test.local")   # the client is this OWNER
+    t = tk.create_task(title="Report test", assigned_to_user_id=owner["user_id"],
+                       task_type="KEYWORD_RESEARCH")
+    # Save report WITHOUT changing status (the Save-report button -> __KEEP__)
+    client.post("/me/tasks/status", data={"task_id": str(t["task_id"]),
+                "status": "__KEEP__", "work_report": "found 3 gaps"})
+    t1 = tk.get_task(t["task_id"])
+    assert t1["work_report"] == "found 3 gaps" and t1["status"] == "TODO"
+    # Submit for review WITH a report
+    client.post("/me/tasks/status", data={"task_id": str(t["task_id"]),
+                "status": "READY_FOR_REVIEW", "work_report": "done: shortlisted 5"})
+    t2 = tk.get_task(t["task_id"])
+    assert t2["status"] == "READY_FOR_REVIEW" and t2["work_report"] == "done: shortlisted 5"
+    # The reviewer sees the report in the Review Queue
+    assert "done: shortlisted 5" in client.get("/admin/reviews").get_data(as_text=True)
+
+
 def test_tool_feedback_submit_and_resolve(client):
     from src import toolfeedback as tfb
     # a member submits feedback

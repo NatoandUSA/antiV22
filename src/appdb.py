@@ -69,6 +69,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     reviewed_by         INTEGER,
     review_status       TEXT NOT NULL DEFAULT 'NOT_REVIEWED',
     review_notes        TEXT,
+    work_report         TEXT,
     created_at          TEXT NOT NULL,
     updated_at          TEXT NOT NULL,
     completed_at        TEXT
@@ -125,9 +126,18 @@ def connect():
         conn.close()
 
 
+def _add_column(c, table, col, decl):
+    """Idempotent migration: add a column to an existing table if it's missing
+    (CREATE TABLE IF NOT EXISTS never alters an already-created table)."""
+    have = [r[1] for r in c.execute(f"PRAGMA table_info({table})").fetchall()]
+    if col not in have:
+        c.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
+
+
 def init_db():
     with connect() as c:
         c.executescript(SCHEMA)
+        _add_column(c, "tasks", "work_report", "TEXT")   # V27.6: staff work report
 
 
 def q(sql, params=(), one=False):

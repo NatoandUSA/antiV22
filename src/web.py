@@ -1710,12 +1710,8 @@ def build_app(password, secret):
         ]
 
         def card(t):
-            actions = "".join(
-                '<form method="post" action="/me/tasks/status" class="inlineform">'
-                f'<input type="hidden" name="task_id" value="{t["task_id"]}">'
-                f'<input type="hidden" name="status" value="{tgt}">'
-                f'<button class="tkbtn{" primary" if prim else ""}" type="submit">{lbl}</button>'
-                '</form>' for (lbl, tgt, prim) in tk.member_actions(t["status"]))
+            acts = tk.member_actions(t["status"])
+            report_val = _h_esc(t.get("work_report") or "")
             due = (t.get("due_date") or "")[:10]
             duehtml = (f' · <span class="due{" od" if tk.is_overdue(t) else ""}">due {_h_esc(due)}</span>'
                        if due else "")
@@ -1725,6 +1721,28 @@ def build_app(password, secret):
                 rev = (f'<div class="note">Review: <b>{_h_esc(t["review_status"])}</b>'
                        + (f' — {_h_esc(t.get("review_notes"))}' if t.get("review_notes") else "")
                        + '</div>')
+            # ONE form: a report textarea (pre-filled) + the status buttons + "Save
+            # report" (saves the note without changing status). Staff describe what
+            # they did; the reviewer sees it in the Review Queue.
+            if acts:
+                btns = "".join(
+                    f'<button class="tkbtn{" primary" if prim else ""}" name="status" '
+                    f'value="{tgt}" type="submit">{_h_esc(lbl)}</button>'
+                    for (lbl, tgt, prim) in acts)
+                btns += ('<button class="tkbtn" name="status" value="__KEEP__" '
+                         'type="submit">💾 Save report</button>')
+                report = ('<form method="post" action="/me/tasks/status" class="tkreport">'
+                          f'<input type="hidden" name="task_id" value="{t["task_id"]}">'
+                          '<label>📝 What did you do? <span class="note">(links, findings, '
+                          'shortlist — your reviewer sees this)</span></label>'
+                          '<textarea name="work_report" rows="3" placeholder="e.g. '
+                          'Shortlisted 5 keywords (demand vs competition), verified '
+                          f'trademarks, noted 5 rival shops…">{report_val}</textarea>'
+                          f'<div class="tkactions">{btns}</div></form>')
+            elif report_val:
+                report = f'<div class="tkreported"><b>📝 Reported:</b> {report_val}</div>'
+            else:
+                report = ""
             return ('<div class="tkcard pr-' + (t["priority"] or "medium").lower() + '">'
                     '<div class="tkhead"><b>' + _h_esc(t["title"]) + '</b>'
                     f'<span class="pill pr-{(t["priority"] or "medium").lower()}">{_h_esc(t["priority"])}</span></div>'
@@ -1732,9 +1750,7 @@ def build_app(password, secret):
                     + (f' · {_h_esc(t.get("related_keyword"))}' if t.get("related_keyword") else "")
                     + duehtml + '</div>'
                     + (f'<div class="tkguide">🎯 {_h_esc(guide)}</div>' if guide else "")
-                    + rev
-                    + (f'<div class="tkactions">{actions}</div>' if actions else "")
-                    + '</div>')
+                    + rev + report + '</div>')
 
         body = ""
         for label, items in buckets:
@@ -1756,9 +1772,14 @@ def build_app(password, secret):
         tid = int(request.form.get("task_id") or 0)
         t = tk.get_task(tid)
         if t and t["assigned_to_user_id"] == u["user_id"]:
-            tk.update_task(tid, status=request.form.get("status"))
-            _log("TASK_STATUS_CHANGE", module="tasks", entity_type="task",
-                 entity_id=tid, summary=request.form.get("status"))
+            report = _no_tags((request.form.get("work_report") or "").strip())[:4000]
+            raw_status = request.form.get("status")
+            # "__KEEP__" (the Save-report button) leaves status unchanged
+            status = raw_status if raw_status in tk.STATUSES else None
+            tk.update_task(tid, status=status, work_report=report)
+            _log("TASK_STATUS_CHANGE" if status else "TASK_REPORT_SAVED",
+                 module="tasks", entity_type="task", entity_id=tid,
+                 summary=(status or "report saved"))
         return redirect(url_for("my_tasks"))
 
     # ---- Team Tasks (assign) ----
@@ -1910,12 +1931,19 @@ def build_app(password, secret):
         from src import tasks as tk
         rows = tk.review_queue()
         items = ""
+        by_id = {u["user_id"]: u for u in auth.list_users()}
         for t in rows:
+            who = by_id.get(t["assigned_to_user_id"], {}).get("display_name", "—")
+            rep = (t.get("work_report") or "").strip()
+            report_html = (f'<div class="tkreported"><b>📝 {_h_esc(who)} reported:</b> '
+                           f'{_h_esc(rep)}</div>' if rep else
+                           '<div class="note">— no report submitted —</div>')
             items += ('<div class="saveditem"><div class="sihead">'
                       f'<b>{_h_esc(t["title"])}</b> '
                       f'<span class="pill">{_h_esc(t["task_type"])}</span></div>'
-                      f'<div class="note">{_h_esc(t.get("related_keyword"))}</div>'
-                      '<form method="post" action="/admin/reviews/act" class="toolbar">'
+                      f'<div class="note">{_h_esc(who)} · {_h_esc(t.get("related_keyword"))}</div>'
+                      + report_html
+                      + '<form method="post" action="/admin/reviews/act" class="toolbar">'
                       f'<input type="hidden" name="task_id" value="{t["task_id"]}">'
                       '<input name="notes" placeholder="Review notes">'
                       '<button class="primary" name="decision" value="APPROVED">Approve</button>'
@@ -2223,6 +2251,12 @@ border-radius:11px;padding:11px 14px;margin-bottom:9px;box-shadow:var(--shadow)}
 .pill.pr-medium{background:#3B6E8F;color:#fff}.pill.pr-low{background:#6E6455;color:#fff}
 .tkguide{font-size:.82rem;color:var(--ink-soft);margin:6px 0}
 .due.od,.note.od{color:#99271F;font-weight:700}
+.tkreport{margin-top:10px;display:flex;flex-direction:column;gap:6px}
+.tkreport label{font-size:.82rem;font-weight:700}
+.tkreport textarea{width:100%;padding:9px 11px;border:1px solid var(--line-strong);
+border-radius:9px;background:var(--paper);color:var(--ink);font:inherit;font-size:.86rem;resize:vertical}
+.tkreported{margin-top:9px;padding:9px 11px;border-left:3px solid var(--ok);
+background:var(--surface);border-radius:8px;font-size:.86rem;white-space:pre-wrap}
 .tkactions{display:flex;gap:8px;margin-top:9px;flex-wrap:wrap}
 .tkbtn{font:inherit;font-size:.82rem;font-weight:700;padding:7px 13px;border-radius:8px;
 border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);cursor:pointer}

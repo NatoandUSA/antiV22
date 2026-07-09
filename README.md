@@ -1,6 +1,16 @@
-# Etsy Product Manager V27.5
+# Etsy Product Manager V27.6
 
-**New in V27.5 — Spy listing-URL fixes (empty results + mangled input).**
+**New in V27.6 — staff can REPORT their work, not just mark status.**
+- On **My Tasks**, each task now has a **"📝 What did you do?"** report box. Staff
+  write what they did (links, findings, shortlist) and it saves when they
+  **Submit for review** — or with a new **💾 Save report** button that stores the
+  note without changing status.
+- The **Review Queue** now shows each submission's report (**"📝 Anh reported: …"**)
+  next to Approve / Needs fix / Reject, so managers review the actual work, not just
+  a status flip.
+- Stored in a new `tasks.work_report` column (auto-migrated on existing DBs).
+
+**V27.5 — Spy listing-URL fixes (empty results + mangled input).**
 - **Broadens the listing title to a keyword that has data.** A full 5-word Etsy
   title (`personalized photo badge reel custom`) returns nothing from the index;
   Spy now trims generic words and shortens it to the product core
