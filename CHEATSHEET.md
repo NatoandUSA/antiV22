@@ -1,4 +1,42 @@
-# Etsy Product Manager — Command Cheat Sheet (V26.7)
+# Etsy Product Manager — Command Cheat Sheet (V28.0)
+
+## 🧭 YTuong vs. this Dashboard — know the difference
+
+> **YTuong is where we DISCOVER market data. This dashboard is where we turn that
+> data into TEAM ACTION.** We never clone YTuong — we link to it and import from it.
+
+| Use **YTuong / HeyEtsy** to FIND | Use **this Dashboard** to EXECUTE |
+|---|---|
+| trending & hot listings, Etsy's Picks | assign work to staff |
+| top shops, shop analytics | check supplier + profit |
+| views / favorites / sold data | build listing drafts (English) |
+| tags, images, categories | write design briefs / first-image plans |
+| seasonal calendar | review the publish gate (Approve/Reject) |
+| — research links: [trending](https://trends.ytuong.ai/en/trending) · [hidden gems](https://trends.ytuong.ai/en/hidden-gems) · [spy](https://trends.ytuong.ai/en/spy) · [HeyEtsy hot](https://ytuong.me/hot) | track Day 3 / Day 7, and learn what works for OUR shop |
+
+**Flow:** research on YTuong → **📥 Import Center** → **🧭 Research Queue** →
+tasks → draft → **manager review** → *publish by hand only if approved* → Day 3/7.
+
+### The team workflow (who does what)
+
+| Step | Role | Tool | Action | Output |
+|---|---|---|---|---|
+| 1 | Researcher | YTuong | Find hot listing / shop / keyword | Candidate idea |
+| 2 | Researcher | Dashboard | Import URL or keyword | Saved candidate |
+| 3 | Researcher | Dashboard | Classify product fit | Research status |
+| 4 | Researcher | Dashboard | Assign supplier / competitor task | Team task |
+| 5 | Seller | Dashboard | Check supplier and profit | Supplier status |
+| 6 | Designer | Dashboard | Prepare first image / design | Design task |
+| 7 | Seller | Dashboard | Build listing draft | Draft listing |
+| 8 | Manager | Dashboard | Review publish gate | Approve / reject |
+| 9 | Seller | **Etsy, by hand** | Publish manually **only if approved** | Live listing |
+| 10 | Seller / Manager | Dashboard | Update Day 3 / Day 7 results | Keep / fix / kill / scale |
+
+> ⚠️ **PUBLISH_AUTOMATION = false.** The dashboard never posts to Etsy. A listing
+> is only ever published **by a human, by hand**, and only when the workspace shows
+> **Publish-ready = yes** with manager sign-off.
+
+---
 
 **The short version:** the tool runs itself. The **VPS refreshes the keyword data
 by itself every 6 hours**, and your **team just uses the dashboard in a browser —

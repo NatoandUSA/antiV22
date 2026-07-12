@@ -51,7 +51,7 @@ def test_home_is_clean(client):
     "/cheatsheet", "/how-to-use", "/workflow", "/suppliers", "/feedback", "/profit", "/grade",
     "/alerts", "/launchpad", "/trackers", "/research", "/shops", "/listings",
     "/team", "/team/calendar", "/team/calendar?view=overdue", "/me/tasks",
-    "/team/feedback",
+    "/team/feedback", "/imports", "/research-queue",
 ])
 def test_pages_render(client, route):
     assert client.get(route).status_code == 200
@@ -100,6 +100,22 @@ def test_task_datetime_due_and_edit(client):
             and t2["status"] == "IN_PROGRESS"
             and t2["related_keyword"] == "travel pouch"
             and t2["due_date"] == "2026-08-02T09:00")
+
+
+def test_ytuong_import_creates_candidate_no_autopublish(client):
+    from src import research as rs
+    before = len(rs.list_candidates())
+    r = client.post("/imports/add", data={"kind": "product_idea", "source": "YTuong",
+                    "value": "monogram tote bag", "mode": "", "note": "trending"})
+    assert r.status_code in (301, 302)                       # -> research queue
+    after = rs.list_candidates()
+    assert len(after) == before + 1
+    c = after[0]
+    assert c["status"] == "NEW_IDEA" and c["fit_status"] and c["product_mode"] in ("pod", "embroidery")
+    # the queue shows it with deep links + build workspace, and never a publish button
+    q = client.get("/research-queue").get_data(as_text=True)
+    assert "monogram tote bag" in q and "Open in YTuong" in q and "Build workspace" in q
+    assert "Publish now" not in q and ">Publish<" not in q     # no auto-publish path
 
 
 def test_task_work_report_flow(client):

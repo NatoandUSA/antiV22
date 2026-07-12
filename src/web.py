@@ -325,11 +325,18 @@ def build_app(password, secret):
             '<button formaction="/should-sell">Should I sell?</button>'
             '<button formaction="/draft-listing">Draft listing</button>'
             '</div></details></form>'
-            # --- Section 1: find what to make (live market research) ---
-            '<h2 class="grouph">🔍 Find opportunities — live market research</h2>'
+            # --- Section 1: research on YTuong, then IMPORT + execute here ---
+            '<h2 class="grouph">🔍 Research → Import → Execute</h2>'
+            '<p class="note" style="margin:-4px 0 10px">Do market research on '
+            '<b>YTuong / HeyEtsy</b> (the research engine), then <b>import</b> the '
+            'finding here to turn it into tasks, drafts and a manual-publish plan.</p>'
             '<div class="toolgrid">'
+            '<a class="toolcard" href="/imports"><b>📥 YTuong Import Center</b>'
+            '<span>Import a YTuong/Etsy URL or keyword → candidate + product-fit</span></a>'
+            '<a class="toolcard" href="/research-queue"><b>🧭 Research Queue</b>'
+            '<span>Every idea from spark → review → manual publish</span></a>'
             f'<a class="toolcard" href="/trending?mode={active}"><b>📈 Trending now'
-            f'</b><span>Rising keywords in {active_label}</span></a>'
+            f'</b><span>Rising keywords in {active_label} (YTuong data)</span></a>'
             f'<a class="toolcard" href="/opportunities?mode={active}"><b>💎 '
             'Opportunities</b><span>Low-competition sweet spots</span></a>'
             f'<a class="toolcard" href="/spy?mode={active}"><b>🕵️ Spy + Reverse Engine</b>'
@@ -381,33 +388,48 @@ def build_app(password, secret):
                     + ('<div class="reports">' + "".join(detail) + "</div>" if detail else "")
                     + '</details>')
         # Always-visible reminder: the member's open tasks, pinned at the top.
-        mytask_strip = ""
+        # Role-aware FOCUS PANEL — the hero of the home. Staff see their work;
+        # managers see the review/decision desk. (Research tools stay below, so a
+        # task that needs research is one click away, but the default is action.)
+        focus = ""
         _mu = current_user()
         if _mu:
-            from src import tasks as _tk
+            from src import tasks as _tk, research as rs
             mine = _tk.my_open(_mu["user_id"])
-            if mine:
-                od = sum(1 for t in mine if _tk.is_overdue(t))
-                ds = sum(1 for t in mine if _tk.is_due_soon(t))
-                chips = "".join(
-                    f'<a class="tkchip pr-{t["priority"].lower()}'
-                    + (" od" if _tk.is_overdue(t) else "") + '" href="/me/tasks">'
-                    + _h_esc(t["title"][:32]) + '</a>' for t in mine[:3])
-                more = (f'<a class="tkchip more" href="/me/tasks">+{len(mine)-3} more</a>'
-                        if len(mine) > 3 else "")
-                odtxt = f' · <b class="odtext">{od} overdue</b>' if od else ""
-                odtxt += f' · <b class="dstext">{ds} due soon</b>' if ds else ""
-                review = ""
-                if auth.has_perm(_mu["role"], "tasks.review"):
-                    rq = len(_tk.review_queue())
-                    if rq:
-                        review = f' · <a href="/admin/reviews"><b>{rq} to review</b></a>'
-                mytask_strip = (
-                    '<div class="mytasks"><div class="mtlabel">✅ My tasks: '
-                    f'<b>{len(mine)}</b> open{odtxt}{review}</div>'
-                    f'<div class="mtchips">{chips}{more}</div>'
-                    '<a class="mtall" href="/me/tasks">Open →</a></div>')
-        body = mytask_strip + tools + arch
+            od = sum(1 for t in mine if _tk.is_overdue(t))
+            ds = sum(1 for t in mine if _tk.is_due_soon(t))
+            cc = rs.counts_by_status()
+            day37 = cc.get("DAY_3_CHECK", 0) + cc.get("DAY_7_DECISION", 0)
+            is_mgr = (auth.has_perm(_mu["role"], "tasks.assign")
+                      or auth.has_perm(_mu["role"], "tasks.review"))
+            if is_mgr:
+                blocked = len(_tk.list_tasks(status="BLOCKED")) + cc.get("BLOCKED", 0)
+                tiles = [("Imported today", len(rs.imported_today()), "/imports"),
+                         ("To review", len(_tk.review_queue()), "/admin/reviews"),
+                         ("Ready to publish", cc.get("READY_FOR_MANUAL_PUBLISH", 0), "/research-queue"),
+                         ("Blocked", blocked, "/research-queue"),
+                         ("Day 3 / 7 due", day37, "/research-queue"),
+                         ("My tasks", len(mine), "/me/tasks")]
+                title, acts = "🧑‍💼 Manager desk — review &amp; decide", [
+                    ("🔍 Review Queue", "/admin/reviews"), ("🧭 Research Queue", "/research-queue"),
+                    ("📥 Import Center", "/imports"), ("📋 Team Tasks", "/admin/tasks")]
+            else:
+                tiles = [("My tasks", len(mine), "/me/tasks"),
+                         ("Overdue", od, "/me/tasks"), ("Due soon", ds, "/me/tasks"),
+                         ("My research", len(rs.list_candidates(assigned_to=_mu["user_id"])), "/research-queue"),
+                         ("Day 3 / 7 due", day37, "/research-queue")]
+                title, acts = "✅ My work today", [
+                    ("✅ My Tasks", "/me/tasks"), ("🧭 Research Queue", "/research-queue"),
+                    ("📥 Import Center", "/imports")]
+            tilehtml = "".join(
+                f'<a class="tkstat{" bad" if (lbl in ("Overdue", "Blocked") and n) else ""}" '
+                f'href="{href}"><span class="n">{n}</span>'
+                f'<span class="l">{_h_esc(lbl)}</span></a>' for lbl, n, href in tiles)
+            actbtns = "".join(f'<a class="tkbtn" href="{href}">{lbl}</a>' for lbl, href in acts)
+            focus = (f'<section class="focus"><h2 class="grouph">{title}</h2>'
+                     f'<div class="tkstats">{tilehtml}</div>'
+                     f'<div class="tkactions">{actbtns}</div></section>')
+        body = focus + tools + arch
         upd = _last_updated(mdir)
         updated = f'<span class="updated">Updated {upd}</span>' if upd else ""
         _u = current_user()
@@ -1516,6 +1538,148 @@ def build_app(password, secret):
         return page("Team Workflow",
                     bar + f'<article class="md">{html}</article>' + COPY_JS)
 
+    # ============ YTUONG IMPORT CENTER + RESEARCH QUEUE ============
+    # YTuong/HeyEtsy is the RESEARCH engine; this dashboard is the EXECUTION engine.
+    # We import YTuong findings here and turn them into candidates -> tasks -> drafts
+    # -> manager review -> MANUAL publish. No cloning of YTuong pages, no auto-publish.
+    def _fit_pill(status, launchable):
+        cls = "apill" if launchable else ""
+        return f'<span class="pill {cls}">{_h_esc(status)}</span>'
+
+    @app.route("/imports")
+    @login_required
+    def imports_center():
+        from src import research as rs, deeplinks as dl
+        kinds = "".join(f'<option value="{k}">{v}</option>'
+                        for k, v in rs.IMPORT_KINDS.items())
+        srcs = "".join(f'<option>{s}</option>' for s in rs.SOURCES)
+        openbar = ('<div class="dlrow"><b>Open the research engine:</b> '
+                   + dl.render([("YTuong Trending", f"{dl.YTUONG}/trending"),
+                                ("Hidden Gems", f"{dl.YTUONG}/hidden-gems"),
+                                ("YTuong Spy", f"{dl.YTUONG}/spy"),
+                                ("Categories", f"{dl.YTUONG}/categories"),
+                                ("Calendar", f"{dl.YTUONG}/calendar"),
+                                ("HeyEtsy Hot", f"{dl.HEYETSY}/hot"),
+                                ("Best sellers", f"{dl.HEYETSY}/best-seller"),
+                                ("Shop inspirations", f"{dl.HEYETSY}/shop-inspirations?filterTotalSold=shuffle")])
+                   + '</div>')
+        form = ('<form class="savedform" method="post" action="/imports/add">'
+                f'<select name="kind">{kinds}</select>'
+                f'<select name="source">{srcs}</select>'
+                '<select name="mode"><option value="">Auto mode</option>'
+                '<option value="pod">POD</option><option value="embroidery">Embroidery</option></select>'
+                '<input name="value" placeholder="Paste a YTuong/Etsy URL, or type a keyword" required>'
+                '<textarea name="note" placeholder="Note (why this is interesting, screenshot ref, pasted data)"></textarea>'
+                '<button type="submit">Import → create candidate</button></form>')
+        recent = rs.list_candidates()[:8]
+        rows = "".join(
+            f'<tr><td><b>{_h_esc(c["title"])}</b></td><td>{_h_esc(c["source"])}</td>'
+            f'<td>{_h_esc(c["product_mode"])}</td>'
+            f'<td>{_fit_pill(c["fit_status"], c["launchable"])}</td>'
+            f'<td>{_h_esc(c["status"])}</td>'
+            f'<td><a class="cbtn" href="/research-queue">open queue →</a></td></tr>'
+            for c in recent)
+        table = ('<h2>Recently imported</h2><table><tr><th>Idea</th><th>Source</th>'
+                 '<th>Mode</th><th>Product fit</th><th>Status</th><th></th></tr>'
+                 + (rows or '<tr><td colspan="6">Nothing imported yet.</td></tr>')
+                 + '</table>') if recent else ""
+        return page("YTuong Import Center", _bar()
+                    + '<article class="md"><h1>📥 YTuong Import Center</h1>'
+                    '<p class="tklead">YTuong &amp; HeyEtsy do the market research. '
+                    'Import a finding here and the dashboard turns it into an '
+                    'execution plan — product-fit check, product mode, and a spot in '
+                    'the Research Queue. Nothing is auto-published.</p>'
+                    + openbar + form + table + '</article>')
+
+    @app.route("/imports/add", methods=["POST"])
+    @login_required
+    def imports_add():
+        from src import research as rs
+        u = current_user()
+        c = rs.import_candidate(
+            kind=request.form.get("kind") or "product_idea",
+            source=request.form.get("source") or "YTuong",
+            value=_no_tags((request.form.get("value") or "").strip()),
+            mode=(request.form.get("mode") or None),
+            note=_no_tags((request.form.get("note") or "").strip())[:1000],
+            by=u["display_name"])
+        _log("YTUONG_IMPORT", module="research", entity_type="candidate",
+             entity_id=c["id"], keyword=c.get("keyword"),
+             product_mode=c.get("product_mode"), summary=c["title"])
+        return redirect(url_for("research_queue"))
+
+    @app.route("/research-queue")
+    @login_required
+    def research_queue():
+        from src import research as rs, deeplinks as dl
+        u = current_user()
+        by_id = {x["user_id"]: x for x in auth.list_users()}
+        counts = rs.counts_by_status()
+        pulse = '<div class="tkstats">' + "".join(
+            f'<div class="tkstat"><span class="n">{counts.get(s, 0)}</span>'
+            f'<span class="l">{_h_esc(s.replace("_", " ").title())}</span></div>'
+            for s in ("NEW_IDEA", "RESEARCHING", "LISTING_DRAFT", "MANAGER_REVIEW",
+                      "READY_FOR_MANUAL_PUBLISH", "BLOCKED")) + '</div>'
+        cards = ""
+        for c in rs.list_candidates():
+            who = by_id.get(c.get("assigned_to"), {}).get("display_name", "—")
+            kw = c.get("keyword") or c.get("title")
+            links = dl.for_keyword(kw)
+            if c.get("source_url"):
+                links = dl.for_listing(c["source_url"]) + links[:2]
+            statopts = "".join(
+                f'<option{" selected" if s == c["status"] else ""}>{s}</option>'
+                for s in rs.STATUSES)
+            cards += (
+                '<div class="tkcard pr-medium"><div class="tkhead">'
+                f'<b>{_h_esc(c["title"])}</b> {_fit_pill(c["fit_status"], c["launchable"])}'
+                f'<span class="pill">{_h_esc(c["product_mode"])}</span></div>'
+                f'<div class="note">Source: {_h_esc(c["source"])} · Assigned: '
+                f'{_h_esc(who)} · Next: {_h_esc(c.get("next_action") or "—")}</div>'
+                f'<div class="dlrow">{dl.render(links)}</div>'
+                '<div class="tkactions">'
+                f'<a class="tkbtn primary" href="/run?q={_h_esc(str(kw))}">Build workspace</a>'
+                f'<a class="tkbtn" href="/admin/tasks?keyword={_h_esc(str(kw))}">Assign task</a>'
+                '</div>'
+                '<form method="post" action="/research-queue/update" class="toolbar">'
+                f'<input type="hidden" name="id" value="{c["id"]}">'
+                f'<select name="status">{statopts}</select>'
+                f'<select name="assigned_to"><option value="">— assign —</option>{_user_options(c.get("assigned_to"))}</select>'
+                '<input name="due_date" type="datetime-local" placeholder="Due">'
+                '<button class="primary" type="submit">Update</button>'
+                f'<a class="cbtn" href="/research-queue/del/{c["id"]}">delete</a>'
+                '</form></div>')
+        return page("Research Queue", _bar()
+                    + '<article class="md"><h1>🧭 Research Queue</h1>'
+                    '<p class="tklead">Every imported idea, moving from spark to '
+                    'manager-approved manual publish. Assign it, research it, draft it, '
+                    'review it — the pipeline keeps the team honest.</p>'
+                    + pulse + '</article><div class="lpboard" style="flex-direction:column">'
+                    + (cards or '<p class="empty">No candidates yet — import one from the '
+                       '<a href="/imports">YTuong Import Center</a>.</p>') + '</div>')
+
+    @app.route("/research-queue/update", methods=["POST"])
+    @login_required
+    def research_queue_update():
+        from src import research as rs
+        cid = int(request.form.get("id") or 0)
+        assignee = request.form.get("assigned_to")
+        rs.update_candidate(
+            cid, status=request.form.get("status"),
+            assigned_to=(int(assignee) if assignee else None),
+            due_date=(request.form.get("due_date") or None))
+        _log("RESEARCH_UPDATE", module="research", entity_type="candidate",
+             entity_id=cid, summary=request.form.get("status"))
+        return redirect(url_for("research_queue"))
+
+    @app.route("/research-queue/del/<int:cid>")
+    @login_required
+    def research_queue_del(cid):
+        from src import research as rs
+        rs.delete_candidate(cid)
+        _log("RESEARCH_DELETE", module="research", entity_type="candidate", entity_id=cid)
+        return redirect(url_for("research_queue"))
+
     # ======================= TEAM MANAGEMENT =======================
     def _bar():
         return '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
@@ -1538,6 +1702,10 @@ def build_app(password, secret):
         u = current_user()
         cards = ['<a class="toolcard" href="/me/tasks"><b>✅ My Tasks</b>'
                  '<span>What you\'re assigned</span></a>',
+                 '<a class="toolcard" href="/research-queue"><b>🧭 Research Queue</b>'
+                 '<span>Ideas from import → review → manual publish</span></a>',
+                 '<a class="toolcard" href="/imports"><b>📥 YTuong Import Center</b>'
+                 '<span>Turn a YTuong finding into a candidate + task</span></a>',
                  '<a class="toolcard" href="/team/calendar"><b>📅 Team Calendar</b>'
                  '<span>Tasks by due date — today / week / overdue</span></a>']
         if auth.has_perm(u["role"], "tasks.assign"):
@@ -2266,6 +2434,13 @@ border-radius:11px;padding:11px 14px;margin-bottom:9px;box-shadow:var(--shadow)}
 .pill.pr-medium{background:#3B6E8F;color:#fff}.pill.pr-low{background:#6E6455;color:#fff}
 .tkguide{font-size:.82rem;color:var(--ink-soft);margin:6px 0}
 .due.od,.note.od{color:#99271F;font-weight:700}
+.focus{background:var(--surface);border:1px solid var(--line-strong);border-radius:16px;padding:16px 18px;margin:0 0 20px}
+.focus .grouph{margin-top:0}
+a.tkstat{text-decoration:none;transition:border-color .15s}a.tkstat:hover{border-color:var(--accent)}
+.dlrow{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:8px 0;font-size:.82rem}
+.dlbtn{font-size:.74rem;font-weight:700;padding:5px 10px;border:1px solid var(--line-strong);
+border-radius:999px;background:var(--paper);color:var(--accent);text-decoration:none;white-space:nowrap}
+.dlbtn:hover{background:var(--accent-bg)}
 .tkreport{margin-top:10px;display:flex;flex-direction:column;gap:6px}
 .tkreport label{font-size:.82rem;font-weight:700}
 .tkreport textarea{width:100%;padding:9px 11px;border:1px solid var(--line-strong);

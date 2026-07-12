@@ -576,6 +576,21 @@ def run_selftest():
           and {"title", "task_type", "due_date"}
           <= set(_inspect2.signature(_tk2.update_task).parameters))
 
+    # ---- V28.0: YTuong = research engine, dashboard = execution engine ----
+    from src import research as _rs, deeplinks as _dl
+    check("YTuong Import Center + Research Queue (execution pipeline)",
+          all(callable(getattr(_rs, f, None)) for f in
+              ("import_candidate", "list_candidates", "update_candidate", "counts_by_status"))
+          and "READY_FOR_MANUAL_PUBLISH" in _rs.STATUSES
+          and "KILL" in _rs.STATUSES and "SCALE" in _rs.STATUSES
+          and '@app.route("/imports")' in _web_src_v268
+          and '@app.route("/research-queue")' in _web_src_v268)
+    check("Role-based home (staff vs manager) + YTuong deep links, no clone",
+          "Manager desk" in _web_src_v268 and "My work today" in _web_src_v268
+          and "Research → Import → Execute" in _web_src_v268
+          and callable(getattr(_dl, "for_keyword", None))
+          and "trends.ytuong.ai" in _dl.YTUONG and "ytuong.me" in _dl.HEYETSY)
+
     from src import crosscheck as _cc
     check("cross-check sources present (Google Trends + Pinterest + X)",
           set(_cc.status()) == {"Google Trends", "Pinterest", "X / Twitter"}
@@ -933,7 +948,7 @@ def run_selftest():
     check("Professional task UI: home reminder strip + grouped My-Tasks + type guide",
           callable(getattr(_tsk, "my_open", None)) and callable(getattr(_tsk, "member_actions", None))
           and isinstance(_tsk.TYPE_GUIDE, dict) and len(_tsk.TYPE_GUIDE) >= 10
-          and 'class="mytasks"' in _web_src           # home reminder strip
+          and 'class="focus"' in _web_src           # role-aware home focus panel (V28.0)
           and "tkguide" in _web_src and "member_actions" in _web_src)
 
     # ---- V26.0: product-fit quality filter + seasonal launch-status ----

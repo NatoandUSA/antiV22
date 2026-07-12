@@ -1,6 +1,23 @@
-# Etsy Product Manager V27.9
+# Etsy Product Manager V28.0
 
-**New in V27.9 — Competition & Design scores now discriminate.**
+**New in V28.0 — repositioned as the EXECUTION engine on top of YTuong.**
+YTuong/HeyEtsy is the **research engine** (trending, hot listings, shops, tags);
+this dashboard is the **execution engine** that turns findings into team action. We
+link out to YTuong instead of cloning it.
+- **📥 YTuong Import Center** (`/imports`): import a YTuong/Etsy URL or a keyword →
+  auto product-fit + product-mode guess → a saved candidate. Logged to
+  `data/imports/` + `data/research/`.
+- **🧭 Research Queue** (`/research-queue`): every idea moves through a 14-status
+  pipeline (NEW_IDEA → … → MANAGER_REVIEW → READY_FOR_MANUAL_PUBLISH → DAY_3/7 →
+  SCALE/KILL), each with deep links (Open in YTuong / HeyEtsy / Etsy), Build
+  workspace, Assign task, and status/assignee controls.
+- **Role-based home:** staff see a **task-focused** panel (my tasks / overdue / my
+  research); managers see a **review desk** (imported today / to review / ready to
+  publish / blocked / Day 3-7). Not a giant research dashboard by default.
+- Cheat Sheet now explains **YTuong vs Dashboard** + the 10-step workflow table.
+- Publish gate stays strict; **PUBLISH_AUTOMATION = false** (never auto-publishes).
+
+**V27.9 — Competition & Design scores now discriminate.**
 - **Competition** was a 3-value bucket (low/med/high → 82/55/30), so most keywords
   collapsed to the same number. It now uses the **continuous seller-concentration
   index**, so it ranges finely (e.g. 27 → 87). Insight baked in: a niche with *few*
