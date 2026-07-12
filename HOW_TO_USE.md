@@ -46,6 +46,8 @@ số bịa, không phải log tìm kiếm của nhân viên.
 | Khu vực | Dùng để | Nhập gì | Nhận lại gì |
 |---|---|---|---|
 | ⚡ **Command Center** | Việc chính: 1 từ khóa → cả bộ hồ sơ | Chọn **Product mode** + gõ từ khóa | Verdict, 8 điểm, listing, design, kế hoạch |
+| 📥 **Import Center** | Import phát hiện từ YTuong/HeyEtsy/Etsy | Dán **URL listing/shop** hoặc gõ keyword (+ chọn mode) | Candidate vào Research Queue (**giữ product mode**). URL không đọc được → báo nhập keyword bằng tay |
+| 🧭 **Research Queue** | Đường ống ý tưởng → duyệt đăng | Bấm **Build workspace** / giao task | Mỗi ý tưởng chạy NEW_IDEA → NCC → audit → design → nháp → duyệt → đăng thủ công; **mode giữ nguyên** |
 | 📈 **Trending** | Từ khóa **đang lên** | Bấm (theo mode) | ~50 từ khóa rising + **cụm sản phẩm** |
 | 💎 **Opportunities** | Ngách **ít cạnh tranh, cầu thật** | Bấm | ~50 ý tưởng "vùng ngọt" + cụm |
 | 🕵️ **Spy + Reverse Engine** | Giải mã đối thủ | Từ khóa **hoặc link listing Etsy** | Ai thắng, playbook của họ, khe hở để thắng |
@@ -93,7 +95,7 @@ số bịa, không phải log tìm kiếm của nhân viên.
 | **Trademark (TM)** | Nhãn hiệu đã đăng ký (Disney, Pokemon, tên band…) | **OK** = an toàn · **CAUTION** = tự kiểm tra USPTO · **HIGH** = CẤM dùng (bị gỡ shop) |
 | **Publish-ready** | Đủ điều kiện đăng chưa | Chỉ **yes** khi mọi kiểm tra tự động pass **và** quản lý ký từng mục. Không bao giờ tự động |
 | **Cluster** (Cụm sản phẩm) | Gom nhiều từ khóa liên quan thành **1 ý tưởng** | VD: "summer/travel/bridesmaid pouch" → cụm **Pouch**. Làm **1 listing mạnh** phủ cả cụm, thay vì 5 listing rời |
-| **THEME_FIT** (Design theme) | Từ khóa không có "danh từ sản phẩm" (vd "coastal grandmother") | Là **chủ đề thiết kế** — in/thêu lên bất kỳ sản phẩm nào. Vẫn đáng làm |
+| **Design theme** (chủ đề, không có danh từ sản phẩm) | Vd "funny raccoon", "coastal grandmother" | Chia 4 mức: **THEME_FIT_READY** (có ý định mua rõ → làm được ngay, hiện như cơ hội) · **THEME_FIT_NEEDS_PRODUCT** (chủ đề tốt nhưng **chưa có sản phẩm → chọn sản phẩm trước**, chưa launch) · **AMBIGUOUS_PHRASE** (chưa rõ nghĩa) · **LOW_BUYER_INTENT** (tò mò, khó ra đơn) |
 | **Verdict** | Kết luận nên/không | GO = làm ngay · CÓ ĐIỀU KIỆN = test 2 listing trước · WATCH = chờ 2–4 tuần · SKIP/BLOCKED = bỏ |
 
 ---
@@ -107,7 +109,7 @@ số bịa, không phải log tìm kiếm của nhân viên.
 | Sản xuất | Nhanh, in gì cũng được | Chậm hơn, kén mẫu (ít màu, hình khối rõ) |
 | Trong công cụ | Trending/Opportunities lọc theo POD | Lọc theo Embroidery; **theme dùng chung cả 2** |
 
-> Từ khóa **theme** (vd "retro sunset") xuất hiện ở **cả hai** mode vì có thể in hoặc thêu.
+> Từ khóa **theme** (vd "teacher appreciation") xuất hiện ở **cả hai** mode vì có thể in hoặc thêu.
 > Từ khóa sản phẩm cụ thể (áo → POD; túi thêu tên → Embroidery) thì khác nhau.
 
 ---
@@ -118,7 +120,7 @@ số bịa, không phải log tìm kiếm của nhân viên.
 |---|---|---|
 | ✅ **My Tasks** | Mọi nhân viên | Xem việc được giao; đổi trạng thái **và VIẾT BÁO CÁO đã làm gì** (📝) |
 | 📋 **Team Tasks** | Quản lý | Giao việc (có chọn **ngày + giờ**), sửa/giao lại, xem bảng tiến độ |
-| 📅 **Team Calendar** | Cả team | Việc theo hạn: hôm nay / tuần này / trễ hạn |
+| 📅 **Team Calendar** | Cả team | Việc theo hạn: **hôm nay / tuần này / tháng này / trễ hạn / sắp tới** |
 | 🔍 **Review Queue** | Quản lý | Đọc **báo cáo của nhân viên** → Duyệt / Cần sửa / Từ chối |
 | 💬 **Tool Feedback** | Mọi người | Góp ý/báo lỗi công cụ; chủ shop tick "đã xử lý" |
 | 📈 **Activity Log** | Quản lý | Ai đã làm gì trên dashboard |

@@ -1,48 +1,44 @@
-# 🧭 Team Workflow — from idea to live listing
+# 🧭 Quy trình nhóm — từ ý tưởng đến listing (V28.1)
 
-> Everything is a button in the dashboard. The data refreshes itself at 6 AM.
-> **No auto-publishing** — a listing goes live only when a manager approves it and
-> a person publishes it manually on Etsy.
+> **YTuong / HeyEtsy = engine NGHIÊN CỨU. Dashboard này = engine THỰC THI.**
+> Ta không clone YTuong — ta **import** phát hiện từ YTuong rồi biến thành: task cho
+> team, kiểm tra nhà cung cấp (NCC), bản nháp listing, brief thiết kế, duyệt cổng
+> đăng, và học Ngày 3 / Ngày 7.
+>
+> 🔒 **KHÔNG BAO GIỜ tự đăng.** Listing chỉ lên sàn khi **PUBLISH_READY = true**,
+> quản lý ký duyệt, và người thật bấm đăng **thủ công** trên Etsy.
 
-## The workflow, step by step
+## Các bước (theo đúng thứ tự)
 
-| Step | Team Role | Action | Tool Section | Output | Publish allowed? |
-|---|---|---|---|---|---|
-| 1 | Researcher | Find product clusters | Trending / Opportunities / Spy | Saved idea | No |
-| 2 | Researcher | Validate keyword + competitors | Spy / Competitor Audit | Research notes | No |
-| 3 | Researcher | Check supplier fit | Supplier Information | Supplier status | No |
-| 4 | Designer | Prepare first image + design | First Image Battle / Design Prompt | Design task | No |
-| 5 | Seller | Build listing draft | Listing Builder | Title, 13 tags, description | No |
-| 6 | Manager | Review the publish gate | Review Queue / Publish Gate | Approve or reject | Manual only if ready |
-| 7 | Seller | Publish manually on Etsy | Etsy (outside the tool) | Listing live | Manual only |
-| 8 | Seller / Manager | Track Day-3 + Day-7 results | Feedback Loop | Keep / Fix / Kill / Scale | No auto-publish |
-| 9 | Manager | Learn from the result | Learning / Profit / Alerts | Better future scoring | No |
+| Bước | Vai trò | Hành động | Mục trên dashboard | Kết quả |
+|---|---|---|---|---|
+| 1 | Researcher | Tìm cụm sản phẩm / từ khóa đang lên | 📈 Trending · 💎 Opportunities · 📅 Seasonal | Ý tưởng |
+| 2 | Researcher | **Import** phát hiện YTuong (dán URL hoặc gõ keyword) | 📥 Import Center | Candidate (giữ **product mode**) |
+| 3 | Researcher | Phân loại product-fit + giao việc | 🧭 Research Queue | Task nghiên cứu |
+| 4 | Seller | **Build Workspace** (mode **giữ nguyên**) → kiểm tra NCC | Workspace → Supplier | Trạng thái NCC |
+| 5 | Researcher | Soi + audit đối thủ | 🕵️ Spy / Competitor Audit | Ghi chú audit |
+| 6 | Designer | Chuẩn bị ảnh đầu (first image) + design | Workspace → Design | Task thiết kế |
+| 7 | Seller | Dựng nháp listing: title + 13 tag + mô tả (**tiếng Anh**) | Workspace → Listing | Nháp listing |
+| 8 | Manager | Duyệt **Publish Gate** | 🔍 Review Queue | Duyệt / Từ chối |
+| 9 | Seller | Đăng **THỦ CÔNG** trên Etsy (chỉ khi được duyệt) | Etsy (ngoài công cụ) | Listing lên sàn |
+| 10 | Seller / Manager | Nhập số Ngày 3 + Ngày 7 | 📉 Sales Feedback | Giữ / Sửa / Bỏ / Scale |
 
-## Golden rules
+> ✅ **Product mode (POD / Embroidery) được giữ xuyên suốt** từ Import → Research
+> Queue → Build Workspace → NCC → Listing → Design → Publish Gate. Không bị nhầm về
+> POD khi đang làm hàng thêu.
 
-| Rule | |
-|---|---|
-| 🔒 Never publish unless **PUBLISH_READY = true** | Publishing is always a manual, manager-approved human step. |
-| ✅ Everything is a button | The team never needs the terminal. |
-| 🕕 Data refreshes at 6 AM | You always see fresh numbers. |
-| 👀 Study competitors for structure only | Never copy artwork, titles, or tags — make your own. |
+## Cổng đăng bán (Publish Gate) — chỉ **true** khi đủ TẤT CẢ
 
----
+NCC đã xác nhận · **đúng product mode** · đạt mục tiêu lợi nhuận · audit đối thủ xong ·
+có kế hoạch ảnh đầu · **đúng 13 tag sạch** · không dính trademark · không còn chỗ trống
+`[placeholder]` · quản lý ký duyệt · điểm **Can-We-Win** + **Launch-Readiness** đạt.
 
-## 🇻🇳 Quy trình nhóm — từ ý tưởng đến listing (bản tiếng Việt)
+→ Thiếu bất kỳ mục nào: **DRAFT ONLY — KHÔNG ĐĂNG.** Công cụ hiển thị đúng danh sách
+mục còn thiếu (`FAILED_PUBLISH_CHECKS`), không bao giờ báo "sẵn sàng" khi chưa đạt.
 
-| Bước | Vai trò | Hành động | Mục trên dashboard | Kết quả | Được đăng? |
-|---|---|---|---|---|---|
-| 1 | Researcher | Tìm cụm sản phẩm | Trending / Opportunities / Spy | Ý tưởng đã lưu | Không |
-| 2 | Researcher | Thẩm định từ khoá + đối thủ | Spy / Competitor Audit | Ghi chú nghiên cứu | Không |
-| 3 | Researcher | Kiểm tra nhà cung cấp | Supplier Information | Trạng thái NCC | Không |
-| 4 | Designer | Chuẩn bị ảnh đầu + thiết kế | First Image Battle / Design Prompt | Task thiết kế | Không |
-| 5 | Seller | Dựng bản nháp listing | Listing Builder | Tiêu đề, 13 thẻ, mô tả | Không |
-| 6 | Manager | Duyệt cổng đăng bán | Review Queue / Publish Gate | Duyệt hoặc từ chối | Chỉ thủ công khi đạt |
-| 7 | Seller | Đăng THỦ CÔNG trên Etsy | Etsy (ngoài công cụ) | Listing lên sàn | Chỉ thủ công |
-| 8 | Seller / Manager | Theo dõi Ngày 3 + Ngày 7 | Feedback Loop | Giữ / Sửa / Dừng / Nhân rộng | Không tự đăng |
-| 9 | Manager | Học từ kết quả | Learning / Profit / Alerts | Chấm điểm tốt hơn | Không |
+## Quy tắc vàng
 
-**Quy tắc vàng:** 🔒 Không bao giờ đăng trừ khi **PUBLISH_READY = true** (luôn thủ
-công, cần Manager duyệt) · ✅ Mọi thứ là nút bấm · 🕕 Dữ liệu làm mới 6 giờ sáng ·
-👀 Chỉ học cấu trúc đối thủ — tuyệt đối không sao chép.
+🔒 Không tự đăng — luôn thủ công, cần Manager ký · ✅ Mọi thứ là nút bấm (team không
+cần terminal) · 🕕 Dữ liệu tự làm mới mỗi ~6 giờ trên server · 🏷️ Listing luôn viết
+**tiếng Anh** (khách Etsy là Anh–Mỹ) · 👀 Chỉ học **cấu trúc** đối thủ — tuyệt đối
+không sao chép ảnh / title / tag.
