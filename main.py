@@ -542,14 +542,35 @@ def cmd_clean(cmd, args):
 
 def cmd_healthcheck(cmd, args):
     from src import ops
-    checks = ops.healthcheck()
+    with_tests = any(a.lstrip("-").lower() in ("with-tests", "tests", "full")
+                     for a in args)
+    checks, flags = ops.healthcheck(run_tests=with_tests)
     print("HEALTHCHECK")
-    ok_all = True
     for name, ok, detail in checks:
-        ok_all = ok_all and ok
         print(f"  {'PASS' if ok else 'WARN'}  {name}"
-              + (f"  — {detail}" if detail else ""))
-    print(f"\n{'ALL HEALTHY' if ok_all else 'SOME WARNINGS — see above'}")
+              + (f"  - {detail}" if detail else ""))
+
+    def _fmt(v):
+        if v is True:
+            return "true"
+        if v is False:
+            return "false"
+        return "REQUIRES pytest (run: py main.py healthcheck --with-tests)"
+
+    print("\nREADINESS")
+    for k in ("DASHBOARD_READY", "AUTH_READY", "PDF_EXPORT_READY",
+              "DAILY_AUTORUN_READY", "TESTS_PASS",
+              "SYSTEM_READY_FOR_TEAM_USE", "PUBLISH_AUTOMATION"):
+        print(f"  {k:<28}: {_fmt(flags.get(k))}")
+    if not with_tests:
+        print("\n(Add --with-tests to run pytest and get a definitive "
+              "SYSTEM_READY_FOR_TEAM_USE.)")
+    # Exit non-zero only on a KNOWN readiness failure, so CI/deploy scripts can gate.
+    hard_fail = flags.get("SYSTEM_READY_FOR_TEAM_USE") is False or \
+        not (flags.get("DASHBOARD_READY") and flags.get("AUTH_READY")
+             and flags.get("PDF_EXPORT_READY"))
+    if hard_fail:
+        sys.exit(1)
 
 
 def cmd_cron(cmd, args):

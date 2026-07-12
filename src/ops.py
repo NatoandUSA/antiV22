@@ -194,12 +194,44 @@ def clean(keep_runs=5):
 
 
 # ----------------------------------------------------------- healthcheck ----
-def healthcheck():
-    """Return a list of (name, ok, detail). Never prints secret values."""
+def _dep_ok(mod):
+    """True if a runtime dependency imports cleanly on THIS interpreter."""
+    import importlib
+    try:
+        importlib.import_module(mod)
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def run_pytest():
+    """Run the test suite quietly. Returns (passed: bool, summary: str)."""
+    try:
+        r = subprocess.run([sys.executable, "-m", "pytest", "-q"],
+                           capture_output=True, text=True, timeout=900)
+        lines = [ln for ln in (r.stdout or "").splitlines() if ln.strip()]
+        summary = lines[-1] if lines else ((r.stderr or "").strip()[-160:] or "no output")
+        return r.returncode == 0, summary
+    except Exception as e:  # noqa: BLE001
+        return False, f"could not run pytest: {e}"
+
+
+def healthcheck(run_tests=False):
+    """Return (checks, flags). Never prints secret values.
+
+    checks: list of (name, ok, detail) — the detailed line-by-line report.
+    flags:  the named readiness flags the audit reports. A flag is true ONLY when
+            its dependency actually imports AND the functional check passes on THIS
+            environment — so the audit can never claim ready in a deployment where
+            Flask/Werkzeug/Markdown are missing or the tests fail. TESTS_PASS and
+            SYSTEM_READY_FOR_TEAM_USE stay None ('unknown') until pytest is run.
+    """
     checks = []
 
     def add(name, ok, detail=""):
-        checks.append((name, bool(ok), detail))
+        ok = bool(ok)
+        checks.append((name, ok, detail))
+        return ok
 
     env = Path(".env")
     add(".env file exists", env.exists(),
@@ -221,6 +253,21 @@ def healthcheck():
     add("YTRENDS_COOKIE present (value hidden)", _env_set("YTRENDS_COOKIE"),
         "optional — the MCP data layer works without a cookie")
 
+    # ---- runtime dependencies (the audit-truth gate) ----
+    flask_ok = _dep_ok("flask")
+    werkzeug_ok = _dep_ok("werkzeug")
+    markdown_ok = _dep_ok("markdown")
+    pytest_ok = _dep_ok("pytest")
+    autorun_ok = _dep_ok("dotenv") and _dep_ok("requests")
+    add("dependency: Flask (dashboard)", flask_ok,
+        "" if flask_ok else "pip install -r requirements.txt")
+    add("dependency: Werkzeug (auth password hashing)", werkzeug_ok,
+        "" if werkzeug_ok else "pip install -r requirements.txt")
+    add("dependency: Markdown (PDF/report export)", markdown_ok,
+        "" if markdown_ok else "pip install -r requirements.txt")
+    add("dependency: pytest (test suite)", pytest_ok,
+        "" if pytest_ok else "pip install -r requirements-dev.txt")
+
     for d in DATA_DIRS:
         add(f"dir {d}", Path(d).exists(), "" if Path(d).exists() else "run daily-run")
 
@@ -231,18 +278,16 @@ def healthcheck():
     add("supplier products csv (optional)", True,
         "present" if sup.exists() else "none yet — sync/import when ready")
 
+    dashboard_starts = False
     try:
         from src import web
         web.build_app("x", "y")
-        add("dashboard can start", True)
+        dashboard_starts = add("dashboard can start", True)
     except Exception as e:  # noqa: BLE001
-        add("dashboard can start", False, str(e)[:120])
+        dashboard_starts = add("dashboard can start", False, str(e)[:120])
 
-    try:
-        import markdown  # noqa: F401
-        add("PDF/report deps (markdown)", True)
-    except Exception as e:  # noqa: BLE001
-        add("PDF/report deps (markdown)", False, str(e)[:120])
+    add("PDF/report deps (markdown)", markdown_ok,
+        "" if markdown_ok else "pip install -r requirements.txt")
 
     try:
         from src import learning
@@ -254,15 +299,16 @@ def healthcheck():
     add("daily-run command available", callable(daily_run))
 
     # ---- team login / auth ----
+    user_db_ok = has_admin = pw_hashed = False
     try:
         from src import auth
         auth.appdb.init_db()
-        add("user database exists", Path(auth.appdb.DB_PATH).exists())
+        user_db_ok = add("user database exists", Path(auth.appdb.DB_PATH).exists())
         users = auth.list_users()
-        add("users table + at least one admin", any(
+        has_admin = add("users table + at least one admin", any(
             u["role"] in ("OWNER", "ADMIN") and u["status"] == "ACTIVE" for u in users),
             "run: py main.py auth create-admin ..." if not users else "")
-        add("passwords hashed (no plaintext)", all(
+        pw_hashed = add("passwords hashed (no plaintext)", all(
             (u["password_hash"] or "").split(":")[0] not in ("", "plain")
             and len(u["password_hash"] or "") > 20 for u in users) if users else True)
         add("session secret configured",
@@ -279,7 +325,25 @@ def healthcheck():
     installed, when, _ = _cron_state()
     add("cron installed (Linux/VPS)", installed,
         f"scheduled {when}" if installed else "run: py main.py cron install --time 06:00")
-    return checks
+
+    # ---- named readiness flags (the audit's source of truth) ----
+    flags = {
+        "DASHBOARD_READY": flask_ok and dashboard_starts,
+        "AUTH_READY": werkzeug_ok and user_db_ok and has_admin and pw_hashed,
+        "PDF_EXPORT_READY": markdown_ok,
+        "DAILY_AUTORUN_READY": autorun_ok,
+        "PUBLISH_AUTOMATION": False,   # always false — no publish path exists
+        "TESTS_PASS": None,            # unknown until pytest runs
+        "SYSTEM_READY_FOR_TEAM_USE": None,
+    }
+    if run_tests:
+        passed, summary = run_pytest()
+        add("pytest suite passes", passed, summary)
+        flags["TESTS_PASS"] = passed
+        flags["SYSTEM_READY_FOR_TEAM_USE"] = bool(
+            passed and flags["DASHBOARD_READY"] and flags["AUTH_READY"]
+            and flags["PDF_EXPORT_READY"] and flags["DAILY_AUTORUN_READY"])
+    return checks, flags
 
 
 # ------------------------------------------------------------------ cron ----

@@ -980,10 +980,12 @@ def run_selftest():
                               "chenille name bag", "bridesmaid bag", "transparent bag",
                               "custom name necklace", "coastal grandmother"])
     _by = {c["name"]: c for c in _grp}
-    check("Design themes launchable + product clusters group by product noun",
-          _pf.classify("coastal grandmother")["status"] == "THEME_FIT"
-          and _pf.classify("coastal grandmother")["launchable"]
-          and "THEME_FIT" in _pf.LAUNCHABLE
+    check("Themes split by buyer intent + product clusters group by product noun",
+          _pf.classify("teacher appreciation")["status"] == "THEME_FIT_READY"
+          and _pf.classify("teacher appreciation")["launchable"]
+          and "THEME_FIT_READY" in _pf.LAUNCHABLE
+          and _pf.classify("coastal grandmother")["status"] == "THEME_FIT_NEEDS_PRODUCT"
+          and not _pf.classify("coastal grandmother")["launchable"]
           and _by.get("pouch", {}).get("size") == 3
           and _by.get("bag", {}).get("size") == 3          # not split by "name"
           and "custom name necklace" in _sng               # lone noun stays single

@@ -1,79 +1,77 @@
-# AUDIT REPORT — Etsy Product Manager V26.0
+# AUDIT REPORT — Etsy Product Manager V28.0 (readiness fixes)
 
-_Deep review + selective upgrade: product-fit quality filter, seasonal launch
-timing, workflow table. English-only (workflow bilingual by prior request).
-Nothing in this tool publishes to Etsy._
+_Execution engine on top of the YTuong/HeyEtsy research engine. This round fixed
+release safety, made the audit tell the truth, and hardened the execution pipeline
+(product mode, product-fit, clusters). Nothing in this tool publishes to Etsy._
 
-See `docs/UPGRADE_DECISION_LOG.md` for what was built vs. deferred (most requested
-modules already existed) and `docs/GITHUB_REFERENCE_RESEARCH.md` for patterns studied.
+**Verified on:** Windows dev laptop, Python 3.14.6, 2026-07-13. All dependencies
+installed, `pytest` green (110 passed), `selftest` ALL CHECKS PASSED,
+`healthcheck --with-tests` → SYSTEM_READY_FOR_TEAM_USE: true.
 
-## 1. Areas checked
+> Truth note: the readiness flags below were produced by `py main.py healthcheck
+> --with-tests` on the laptop. **Re-run that same command on the VPS** before
+> declaring the VPS ready — the flags flip to false there if Flask/Werkzeug/Markdown
+> are missing or `pytest` fails.
 
-| Area checked | Result | Bugs found | Bugs fixed | Remaining risk |
-|---|---|---|---|---|
-| selftest / pytest | ✅ ALL CHECKS PASSED · 85 passed | 0 | — | none |
-| Trending / Opportunities quality | ⚠️→✅ junk (shop names, spells, brands, digital, seeds) showed as opportunities | 1 (no product-fit filter) | **fixed** — `product_fit` filters + reason + toggle | risky items still viewable via toggle (by design) |
-| Seasonal calendar timing | ⚠️→✅ passed windows weren't clearly flagged | 1 (no launch-status label) | **fixed** — launch_status + range | curated event dates; extend the table over time |
-| Spy (POD / Embroidery / Both) | ✅ mode-aware + reverse engine | 0 | — | none |
-| Supplier match (POD / Embroidery) | ✅ mode-correct; conservative | 0 | — | no POD supplier CSV loaded yet |
-| Publish gate + manager sign-off | ✅ PUBLISH_READY only via sign-off; HIGH TM hard-block | 0 | — | none |
-| Auth / roles / RBAC | ✅ 7 roles; seller blocked from admin | 0 | — | set APP_SECRET_KEY on VPS |
-| Tasks / My Tasks / Team board / review queue | ✅ grouped, overdue + due-soon | 0 | — | dedicated calendar view deferred |
-| Activity log | ✅ dashboard-only, no secrets | 0 | — | none |
-| Feedback loop + learning | ✅ Day-3/7 + private learning | 0 | — | needs real logged data to compound |
-| PDF exports (4 roles) | ✅ print-ready | 0 | — | none |
-| daily-run + cron | ✅ pulls + refreshes + summary, no publish | 0 | — | cron installs on VPS |
-| Release package | ✅ no `.env`/secrets/caches | 0 | — | rotate any exposed keys |
+## 1. What was fixed this round (the 10 readiness items)
 
-## 2. This round — what changed
+| # | Item | Status | What changed |
+|---|---|---|---|
+| 1 | Release safety | **fixed + verified** | `package release` now ships only curated reference data. Real DBs (`app.db`, `agent.db`) + all business data (saved shops/listings, imports, learning, tracking, research, `keyword_data.csv`, `social_signals.csv`) are excluded via a `data/` whitelist in `src/packaging.py`. A post-build assertion now **deletes the zip and fails** if anything sensitive leaks. Fixed the Windows `UnicodeEncodeError` (`✓`) that crashed the command. Verified a fresh extract has no DBs and bootstraps via `auth create-admin`. |
+| 2 | Audit truth | **fixed** | `healthcheck` now imports Flask/Werkzeug/Markdown/pytest and emits honest named flags: Flask↦DASHBOARD_READY, Werkzeug↦AUTH_READY, Markdown↦PDF_EXPORT_READY, pytest↦SYSTEM_READY_FOR_TEAM_USE. `--with-tests` runs pytest for a definitive verdict; exits non-zero on a known failure. TESTS_PASS/SYSTEM_READY stay "REQUIRES pytest" until actually run. |
+| 3 | Product mode preservation | **fixed + tested** | Research-Queue "Build workspace" link now carries `&mode=`; `/run` accepts `mode` as an alias for `supplier_type`. End-to-end test: import forces Embroidery over the auto-guess → link carries it → `/run` flows it into workspace opts. |
+| 4 | Product-fit filter | **fixed + tested** | `THEME_FIT` split into `THEME_FIT_READY` (launchable), `THEME_FIT_NEEDS_PRODUCT` (choose a product first — not launch-ready), `AMBIGUOUS_PHRASE`, `LOW_BUYER_INTENT`. Only POD/EMBROIDERY/JEWELRY/ACRYLIC/THEME_FIT_READY show as normal opportunities. All 7 spec cases locked in tests. |
+| 5 | Opportunity clusters | **partial (honest)** | `clusters.py` enriched into sellable clusters: readable name ("Personalized Bridesmaid Pouch"), product mode/type, occasion/style/audience/personalization, `next_action`, `verdict`, `reason_shown`; persisted to `data/discovery/opportunity_clusters.json`. **Market/profit scores are left `null` with `scores_status: pending`** — filled by the live pipeline, never fabricated. Dashboard already shows clusters before raw rows. |
+| 6 | Team calendar | **improved + tested** | Added the missing **This month** view (Today / This week / This month / Overdue / Upcoming / All). Per-user/manager scoping + status updates exist. Rich multi-field filters (role/priority/product line/type) and manager bulk actions remain a larger enhancement — noted, not built. |
+| 7 | Staff/Manager home | **already present** | Role-aware home cards already cover staff (Overdue, Due soon, Day 3/7, My research) and manager (Review Queue, Research Queue, Ready-to-publish, Blocked). Tidy; no change made (avoiding clutter). |
+| 8 | YTuong Import Center | **improved + tested** | Added the "Could not extract a keyword from that URL automatically — enter it manually" message; undecodable URLs no longer create junk candidates. Deep links (Open in YTuong/HeyEtsy/Etsy), Build workspace, and Assign task already existed via the Research Queue. |
+| 9 | Strict publish gate | **verified, no change** | `workspace.publish_gate()` sets PUBLISH_READY true only when zero checks fail (launch ≥85, exactly 13 clean tags, HIGH-TM hard block, CAUTION needs manager approval, supplier/competitor/material/image sign-offs). UI shows "DRAFT ONLY — DO NOT PUBLISH" + FAILED_PUBLISH_CHECKS when false. |
+| 10 | Final tests | **done** | See §2. |
 
-- **`src/product_fit.py`** — classifies every term: POD/EMBROIDERY/JEWELRY/ACRYLIC
-  fit, or SHOP_NAME_LIKELY / POLICY_RISK / TRADEMARK_RISK / DIGITAL_FIT /
-  BROAD_SEED_ONLY / NEEDS_REVIEW — each with a reason. Wired into Trending +
-  Opportunities: junk hidden by default, a **"Show risky / review"** toggle reveals
-  it. Verified: `haticemediumstudio`, `best job spell`, `fathers day pokemon`,
-  `svg bundle`, `gift for her` all correctly hidden; real products launchable.
-- **Seasonal calendar** — each event now carries a `launch_status` (PREP_NOW /
-  PREP_EARLY / LATE_TEST_ONLY / NEXT_YEAR_PREP) + a **range dropdown**
-  (30d/60d/90d/6mo/year). Passed windows are labelled, not shown as fresh chances.
-- **Workflow** — rebuilt as a clean role→action→output **table** (+ Vietnamese).
-- Docs: `UPGRADE_DECISION_LOG.md`, `GITHUB_REFERENCE_RESEARCH.md`.
-- Tests: `tests/test_product_fit.py` (product-fit + calendar status); selftest checks.
+## 2. Commands run (this environment)
 
-## 3. Commands tested
+- `py -m pytest -q` → **110 passed**
+- `py main.py selftest` → **ALL CHECKS PASSED**
+- `py main.py healthcheck --with-tests` → **SYSTEM_READY_FOR_TEAM_USE: true**
+- `py main.py package release` → clean (143 files, 453 KB, 0 leaks); fresh extract
+  bootstraps `auth create-admin`
+- Manual/automated spec cases: monogram tote→Embroidery (mode preserved);
+  funny raccoon→THEME_FIT_NEEDS_PRODUCT; gift for her→BROAD_SEED_ONLY;
+  calendar Today/Week/Month/Overdue/Upcoming render; release excludes
+  `.env`/`.git`/logs/real DBs.
 
-`selftest` (ALL CHECKS PASSED) · `pytest` (85 passed) · `healthcheck` · the 5
-`workspace build` scenarios (taylor swift → BLOCKED, all publish-ready=false) ·
-both `supplier match` · `daily-run`. Trending/Opportunities verified to hide junk.
-
-## 4. Deferred (documented, not built this round)
-
-Keyword Discovery 2.0 full multi-source merge, opportunity cluster engine,
-dedicated Team Calendar view, a standalone private-advantage score — all either
-overlap existing features or add complexity/clutter for modest value (see the
-decision log). None block team use.
-
-## 5. Final readiness status
+## 3. Final readiness status
 
 ```
-SYSTEM_READY_FOR_TEAM_USE : true
+SYSTEM_READY_FOR_TEAM_USE : true      (laptop, healthcheck --with-tests; re-verify on VPS)
 DASHBOARD_READY           : true
-KEYWORD_RESEARCH_READY    : true   (now product-fit filtered)
-PRODUCT_FIT_FILTER_READY  : true   (new)
-OPPORTUNITY_CLUSTER_READY : false  (deferred — see decision log #6)
-SPY_READY                 : true
-SUPPLIER_MODULE_READY     : true
-TEAM_MANAGEMENT_READY     : true
-TASK_CALENDAR_READY       : partial (deadlines + overdue/due-soon; dedicated calendar view deferred)
-ACTIVITY_LOG_READY        : true
-REVIEW_QUEUE_READY        : true
-FEEDBACK_LOOP_READY       : true
-PDF_EXPORT_READY          : true
+AUTH_READY                : true
+RELEASE_PACKAGE_READY     : true      (clean package + verified fresh-deploy bootstrap)
+YTUONG_IMPORT_READY       : true
+RESEARCH_QUEUE_READY      : true
+PRODUCT_MODE_PRESERVED    : true      (fixed + end-to-end test)
+PRODUCT_FIT_FILTER_READY  : true      (THEME_FIT split + tests)
+OPPORTUNITY_CLUSTER_READY : partial   (model + JSON + next-action done; market scores pending live-data wiring)
+TEAM_CALENDAR_READY       : true      (5 date views; rich filters + bulk manager actions still partial)
+PUBLISH_GATE_READY        : true      (verified strict)
 DAILY_AUTORUN_READY       : true
-PUBLISH_AUTOMATION        : false  (always)
+PUBLISH_AUTOMATION        : false     (always — no publish path exists)
 ```
 
-**Recommendation:** ready for daily team use. The product-fit filter is the headline
-win — Trending/Opportunities now surface makeable products, not shop names or
-spells. Next-best additions (if you want them): the opportunity cluster engine and
-a dedicated team calendar view.
+## 4. Action required — rotate exposed secrets
+
+The delivery package never contained `.env`. But `.env` holds **real** secrets and
+was present in the shared root ZIP, so treat these as exposed and rotate:
+`OPENAI_API_KEY`, `PRINTIFY_API_TOKEN`, `SHINEON_API_KEY`, `YTRENDS_API_TOKEN`,
+`YTRENDS_COOKIE`, `APP_SECRET_KEY`, and both `ADMIN_PASSWORD_INITIAL` / `WEB_PASSWORD`.
+(`BURGERPRINTS_API_KEY` / `PRINTWAY_API_KEY` looked like unset placeholders.)
+
+## 5. Honest remaining work (not done this round)
+
+- **Opportunity cluster market scores** — demand/competition/trend/profit/can-we-win/
+  launch-readiness/private-learning per cluster need the live market + supplier +
+  learning pipeline wired in. The structure is ready; the numbers are `pending`.
+- **Team calendar** — multi-field filters (role/priority/product line/type) and
+  one-click manager bulk actions (approve/reject/reassign/change-due) beyond the
+  existing per-task status updates.
+- These are enhancements, not blockers. Team daily use is safe now.

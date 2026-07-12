@@ -50,7 +50,8 @@ def test_home_is_clean(client):
 @pytest.mark.parametrize("route", [
     "/cheatsheet", "/how-to-use", "/workflow", "/suppliers", "/feedback", "/profit", "/grade",
     "/alerts", "/launchpad", "/trackers", "/research", "/shops", "/listings",
-    "/team", "/team/calendar", "/team/calendar?view=overdue", "/me/tasks",
+    "/team", "/team/calendar", "/team/calendar?view=overdue",
+    "/team/calendar?view=month", "/me/tasks",
     "/team/feedback", "/imports", "/research-queue",
 ])
 def test_pages_render(client, route):
@@ -116,6 +117,38 @@ def test_ytuong_import_creates_candidate_no_autopublish(client):
     q = client.get("/research-queue").get_data(as_text=True)
     assert "monogram tote bag" in q and "Open in YTuong" in q and "Build workspace" in q
     assert "Publish now" not in q and ">Publish<" not in q     # no auto-publish path
+
+
+def test_product_mode_preserved_import_to_workspace(client, monkeypatch):
+    """#3: product mode survives Import -> Research Queue -> Build Workspace link
+    -> /run -> workspace opts (supplier_type)."""
+    from src import research as rs, workspace
+    # 'sunset tote bag' would auto-guess POD; importing as embroidery must WIN.
+    client.post("/imports/add", data={"kind": "product_idea", "source": "YTuong",
+                "value": "sunset tote bag", "mode": "embroidery", "note": ""})
+    cand = [c for c in rs.list_candidates() if c["title"] == "sunset tote bag"][0]
+    assert cand["product_mode"] == "embroidery"           # explicit mode beats guess
+    # the Research Queue 'Build workspace' link carries the mode
+    q = client.get("/research-queue").get_data(as_text=True)
+    assert "/run?q=sunset tote bag&mode=embroidery" in q
+    # and /run maps ?mode= into the workspace opts (supplier_type) — no live data needed
+    seen = {}
+    monkeypatch.setattr(workspace, "build_workspace",
+                        lambda kw, opts: seen.update(opts) or "<div>ws</div>")
+    client.get("/run?q=sunset+tote+bag&mode=embroidery")
+    assert seen.get("supplier_type") == "embroidery"
+
+
+def test_import_url_without_keyword_shows_manual_message(client):
+    """#8: an undecodable URL must not create a junk candidate — the user is asked
+    to enter the keyword/title manually."""
+    from src import research as rs
+    before = len(rs.list_candidates())
+    r = client.post("/imports/add", data={"kind": "product_idea", "source": "Etsy",
+                    "value": "https://www.etsy.com/listing/123456789", "mode": ""},
+                    follow_redirects=True)
+    assert "Could not extract a keyword" in r.get_data(as_text=True)
+    assert len(rs.list_candidates()) == before        # no junk candidate created
 
 
 def test_task_work_report_flow(client):

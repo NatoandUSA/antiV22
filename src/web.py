@@ -520,6 +520,13 @@ def build_app(password, secret):
         # sites escape, some don't — this makes every one safe).
         opts = {k: _no_tags((request.args.get(k) or "").strip()[:60])
                 for k in _OPT_FIELDS}
+        # `mode` is an accepted alias for `supplier_type`, so links from the
+        # Research Queue / Import Center can carry a candidate's product mode as
+        # /run?q=...&mode=pod|embroidery and it flows straight into the workspace.
+        if not opts.get("supplier_type"):
+            m = (request.args.get("mode") or "").strip().lower()
+            if m in ("pod", "embroidery", "both"):
+                opts["supplier_type"] = m
         return q, opts
 
     @app.route("/run")
@@ -1542,9 +1549,23 @@ def build_app(password, secret):
     # YTuong/HeyEtsy is the RESEARCH engine; this dashboard is the EXECUTION engine.
     # We import YTuong findings here and turn them into candidates -> tasks -> drafts
     # -> manager review -> MANUAL publish. No cloning of YTuong pages, no auto-publish.
+    FIT_LABELS = {
+        "POD_FIT": "POD product", "EMBROIDERY_FIT": "Embroidery product",
+        "JEWELRY_FIT": "Jewelry product", "ACRYLIC_FIT": "Acrylic product",
+        "THEME_FIT_READY": "Design theme — launch-ready",
+        "THEME_FIT_NEEDS_PRODUCT": "Good design theme, but choose a product first",
+        "AMBIGUOUS_PHRASE": "Ambiguous — needs a clearer angle",
+        "LOW_BUYER_INTENT": "Low buyer intent — unlikely to convert",
+        "BROAD_SEED_ONLY": "Too broad — a seed, not a product",
+        "SHOP_NAME_LIKELY": "Shop / brand name", "POLICY_RISK": "Policy risk",
+        "TRADEMARK_RISK": "Trademark / brand", "DIGITAL_FIT": "Digital only",
+    }
+
     def _fit_pill(status, launchable):
         cls = "apill" if launchable else ""
-        return f'<span class="pill {cls}">{_h_esc(status)}</span>'
+        label = FIT_LABELS.get(status, status)
+        return (f'<span class="pill {cls}" title="{_h_esc(status)}">'
+                f'{_h_esc(label)}</span>')
 
     @app.route("/imports")
     @login_required
@@ -1583,23 +1604,34 @@ def build_app(password, secret):
                  '<th>Mode</th><th>Product fit</th><th>Status</th><th></th></tr>'
                  + (rows or '<tr><td colspan="6">Nothing imported yet.</td></tr>')
                  + '</table>') if recent else ""
+        notice = ""
+        if request.args.get("notice") == "kw_manual":
+            notice = ('<div class="notice warn">Could not extract a keyword from that '
+                      'URL automatically. Please enter the product keyword/title '
+                      'manually below, then import.</div>')
         return page("YTuong Import Center", _bar()
                     + '<article class="md"><h1>📥 YTuong Import Center</h1>'
                     '<p class="tklead">YTuong &amp; HeyEtsy do the market research. '
                     'Import a finding here and the dashboard turns it into an '
                     'execution plan — product-fit check, product mode, and a spot in '
                     'the Research Queue. Nothing is auto-published.</p>'
-                    + openbar + form + table + '</article>')
+                    + notice + openbar + form + table + '</article>')
 
     @app.route("/imports/add", methods=["POST"])
     @login_required
     def imports_add():
         from src import research as rs
         u = current_user()
+        value = _no_tags((request.form.get("value") or "").strip())
+        # A URL was pasted but no keyword could be decoded from it: don't create a
+        # junk candidate titled with the raw URL — send the user back with a clear
+        # message to type the keyword/title manually.
+        if value.lower().startswith("http") and not rs.kw_from_url(value):
+            return redirect(url_for("imports_center", notice="kw_manual"))
         c = rs.import_candidate(
             kind=request.form.get("kind") or "product_idea",
             source=request.form.get("source") or "YTuong",
-            value=_no_tags((request.form.get("value") or "").strip()),
+            value=value,
             mode=(request.form.get("mode") or None),
             note=_no_tags((request.form.get("note") or "").strip())[:1000],
             by=u["display_name"])
@@ -1638,7 +1670,8 @@ def build_app(password, secret):
                 f'{_h_esc(who)} · Next: {_h_esc(c.get("next_action") or "—")}</div>'
                 f'<div class="dlrow">{dl.render(links)}</div>'
                 '<div class="tkactions">'
-                f'<a class="tkbtn primary" href="/run?q={_h_esc(str(kw))}">Build workspace</a>'
+                f'<a class="tkbtn primary" href="/run?q={_h_esc(str(kw))}'
+                f'&mode={_h_esc(c.get("product_mode") or "")}">Build workspace</a>'
                 f'<a class="tkbtn" href="/admin/tasks?keyword={_h_esc(str(kw))}">Assign task</a>'
                 '</div>'
                 '<form method="post" action="/research-queue/update" class="toolbar">'
@@ -1748,6 +1781,7 @@ def build_app(password, secret):
         by_id = {x["user_id"]: x for x in auth.list_users()}
         today = date.today().isoformat()
         wk = (date.today() + timedelta(days=7)).isoformat()
+        mo = (date.today() + timedelta(days=30)).isoformat()
 
         def keep(t):
             due = (t.get("due_date") or "")[:10]
@@ -1762,14 +1796,16 @@ def build_app(password, secret):
                 return due == today and open_
             if view == "week":
                 return today <= due <= wk and open_
+            if view == "month":
+                return today <= due <= mo and open_
             if view == "upcoming":
                 return due >= today and open_
             return True
 
         shown = sorted((t for t in rows if keep(t)),
                        key=lambda t: (t.get("due_date") or "9999-99-99"))
-        views = [("today", "Today"), ("week", "This week"), ("overdue", "Overdue"),
-                 ("upcoming", "Upcoming"), ("all", "All")]
+        views = [("today", "Today"), ("week", "This week"), ("month", "This month"),
+                 ("overdue", "Overdue"), ("upcoming", "Upcoming"), ("all", "All")]
         vrow = "".join(f'<a class="pullbtn{" primary" if view == vk else ""}" '
                        f'href="/team/calendar?view={vk}">{vl}</a>' for vk, vl in views)
         viewbar = ('<div class="pullbar"><div class="pulltxt"><b>View</b>'

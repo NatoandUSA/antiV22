@@ -31,18 +31,40 @@ SHOP_SUFFIXES = ("studio", "studios", "shop", "store", "co", "designs", "design"
 GENERIC = {"gift", "gifts", "custom", "personalized", "cute", "trendy", "new",
            "best", "popular", "handmade", "unique", "shirt", "mug", "bag", "art",
            "design", "for", "her", "him", "mom", "dad"}
+# Occasion / holiday / gift-recipient signals: a theme carrying these has clear
+# buyer intent and converts on an obvious default product -> launch-ready as-is.
+BUYER_INTENT_SIGNS = {"christmas", "xmas", "halloween", "thanksgiving", "easter",
+                      "valentine", "valentines", "birthday", "wedding", "bridal",
+                      "bridesmaid", "anniversary", "graduation", "retirement",
+                      "baby", "newborn", "nursery", "engagement", "reunion",
+                      "celebration", "celebrations", "memorial", "appreciation",
+                      "mothers", "fathers", "teacher", "nurse", "coworker",
+                      "wife", "husband"}
+# Curiosity / informational phrases: people browse, they don't buy.
+CURIOSITY_SIGNS = {"facts", "fact", "trivia", "quiz", "meaning", "definition",
+                   "history", "wiki", "statistics", "stats", "tutorial", "guide"}
+# Lone modifiers that are meaningless without a concrete subject.
+VAGUE_MODIFIERS = {"funny", "retro", "vintage", "aesthetic", "boho", "spooky",
+                   "sassy", "cozy", "groovy", "minimalist", "cottagecore"}
 
 # Final statuses.
 POD_FIT, EMBROIDERY_FIT, JEWELRY_FIT, ACRYLIC_FIT = \
     "POD_FIT", "EMBROIDERY_FIT", "JEWELRY_FIT", "ACRYLIC_FIT"
 DIGITAL_FIT, SHOP_NAME_LIKELY, POLICY_RISK, TRADEMARK_RISK = \
     "DIGITAL_FIT", "SHOP_NAME_LIKELY", "POLICY_RISK", "TRADEMARK_RISK"
-BROAD_SEED_ONLY, NON_PRODUCT, NEEDS_REVIEW, THEME_FIT = \
-    "BROAD_SEED_ONLY", "NON_PRODUCT", "NEEDS_REVIEW", "THEME_FIT"
+BROAD_SEED_ONLY, NON_PRODUCT, NEEDS_REVIEW = \
+    "BROAD_SEED_ONLY", "NON_PRODUCT", "NEEDS_REVIEW"
 
-# THEME_FIT = a design theme (no literal product noun) you can put on any product,
-# e.g. "coastal grandmother", "retro sunset". These ARE launch-worthy.
-LAUNCHABLE = {POD_FIT, EMBROIDERY_FIT, JEWELRY_FIT, ACRYLIC_FIT, THEME_FIT}
+# A design theme has no literal product noun. We split it by how launch-ready it is:
+#   THEME_FIT_READY         - clear theme WITH buyer intent + no risk -> launch as-is
+#   THEME_FIT_NEEDS_PRODUCT - good theme but no product noun -> choose a product first
+#   AMBIGUOUS_PHRASE        - meaning/intent unclear
+#   LOW_BUYER_INTENT        - curiosity/vague -> unlikely to convert
+THEME_FIT_READY, THEME_FIT_NEEDS_PRODUCT, AMBIGUOUS_PHRASE, LOW_BUYER_INTENT = \
+    "THEME_FIT_READY", "THEME_FIT_NEEDS_PRODUCT", "AMBIGUOUS_PHRASE", "LOW_BUYER_INTENT"
+
+# Only these are shown as normal launch opportunities.
+LAUNCHABLE = {POD_FIT, EMBROIDERY_FIT, JEWELRY_FIT, ACRYLIC_FIT, THEME_FIT_READY}
 
 
 def _looks_like_shop(kw):
@@ -98,14 +120,32 @@ def classify(keyword, mode=None):
     elif words & POD_NOUNS:
         st, pt = POD_FIT, "pod"
     else:
-        # No literal product noun. If it's just generic seed words it's too broad;
-        # otherwise it's a DESIGN THEME (put it on any product) — still launchable.
+        # No literal product noun. Decide among: too-broad seed, a launch-ready
+        # theme (clear buyer intent), a theme that still needs a product chosen,
+        # or a low-value phrase (curiosity / ambiguous — unlikely to convert).
         non_generic = words - GENERIC
         if not non_generic:
             return {"status": BROAD_SEED_ONLY, "launchable": False,
                     "product_type": "", "reason": "too broad — a seed, not a specific product"}
-        return {"status": THEME_FIT, "launchable": True, "product_type": "theme",
-                "reason": "design theme — pair it with a POD/embroidery product"
+        if words & CURIOSITY_SIGNS:
+            return {"status": LOW_BUYER_INTENT, "launchable": False,
+                    "product_type": "theme",
+                    "reason": "curiosity/informational phrase — unlikely to convert"}
+        has_intent = bool(words & BUYER_INTENT_SIGNS)
+        lone = next(iter(non_generic)) if len(non_generic) == 1 else None
+        if lone and not has_intent and (len(lone) <= 3 or lone in VAGUE_MODIFIERS):
+            return {"status": AMBIGUOUS_PHRASE, "launchable": False,
+                    "product_type": "theme",
+                    "reason": "meaning/intent unclear — needs a clearer angle"}
+        if has_intent and risk != "CAUTION":
+            return {"status": THEME_FIT_READY, "launchable": True,
+                    "product_type": "theme",
+                    "reason": "clear design theme with buyer intent — launch on a "
+                    "default product (shirt / mug / tote)"}
+        return {"status": THEME_FIT_NEEDS_PRODUCT, "launchable": False,
+                "product_type": "theme",
+                "reason": "good design theme but no product — pair with a shirt, "
+                "sweatshirt, mug, tote, or pouch"
                 + ("; verify trademark" if risk == "CAUTION" else "")}
 
     # broad seed even with a noun? (e.g. just "shirt" / "gift mug")

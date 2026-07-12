@@ -59,11 +59,42 @@ def test_calendar_range_narrows():
     assert yr > mo
 
 
-def test_design_themes_are_launchable():
-    # a theme with no literal product noun is still a launch idea (put on a product)
-    for k in ("coastal grandmother", "retro sunset", "50th celebrations"):
+def test_theme_needs_product_is_not_launchable():
+    # A design theme with no product noun and no strong buyer intent must NOT be
+    # shown as launch-ready — the team has to choose a product first.
+    for k in ("funny raccoon", "retro sunset", "coastal grandmother"):
         c = classify(k)
-        assert c["status"] == "THEME_FIT" and c["launchable"], k
+        assert c["status"] == "THEME_FIT_NEEDS_PRODUCT" and not c["launchable"], k
+
+
+def test_theme_ready_with_buyer_intent_is_launchable():
+    # A theme carrying clear occasion / gift-recipient intent launches as-is.
+    for k in ("teacher appreciation", "nurse christmas", "50th celebrations"):
+        c = classify(k)
+        assert c["status"] == "THEME_FIT_READY" and c["launchable"], k
+
+
+def test_low_intent_and_ambiguous_hidden():
+    assert classify("cat facts")["status"] == "LOW_BUYER_INTENT"
+    assert not classify("cat facts")["launchable"]
+    for k in ("retro", "xy"):
+        c = classify(k)
+        assert c["status"] == "AMBIGUOUS_PHRASE" and not c["launchable"], k
+
+
+def test_spec_product_fit_cases():
+    # The exact classifications required by the V28.0 readiness spec (#4).
+    expect = {
+        "funny raccoon": "THEME_FIT_NEEDS_PRODUCT",
+        "retro sunset shirt": "POD_FIT",
+        "gift for her": "BROAD_SEED_ONLY",
+        "haticemediumstudio": "SHOP_NAME_LIKELY",
+        "contact spell": "POLICY_RISK",
+        "fathers day pokemon": "TRADEMARK_RISK",
+        "monogram tote bag": "EMBROIDERY_FIT",
+    }
+    for kw, status in expect.items():
+        assert classify(kw)["status"] == status, kw
 
 
 def test_opportunity_clusters_group_related_keywords():
@@ -75,6 +106,27 @@ def test_opportunity_clusters_group_related_keywords():
     assert "pouch" in names
     biggest = max(groups, key=lambda c: c["size"])
     assert biggest["size"] == 4
+    assert "coastal grandmother" in singles
+
+
+def test_opportunity_cluster_enrichment_and_honesty():
+    from src import clusters
+    cl, singles = clusters.build_opportunity_clusters(
+        ["summer pouch", "travel pouch", "bridesmaid pouch", "vacation pouch",
+         "coastal grandmother"])
+    assert cl, "expected at least one sellable cluster"
+    c = cl[0]
+    assert c["product_type"] == "pouch"
+    for field in ("cluster_id", "cluster_name", "primary_keyword",
+                  "related_keywords", "product_mode", "product_type",
+                  "supplier_status", "verdict", "next_action", "reason_shown"):
+        assert field in c, field
+    assert c["next_action"] == "Assign supplier check + competitor audit"
+    assert c["product_mode"] in ("pod", "embroidery")
+    assert c["cluster_name"].startswith("Personalized") and "Pouch" in c["cluster_name"]
+    # market scores are honestly pending — NOT fabricated
+    assert c["demand_score"] is None and c["profit_score"] is None
+    assert c["scores_status"].startswith("pending")
     assert "coastal grandmother" in singles
 
 
