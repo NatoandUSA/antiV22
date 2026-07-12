@@ -1,6 +1,16 @@
-# Etsy Product Manager V27.8
+# Etsy Product Manager V27.9
 
-**New in V27.8 — "How to Use" staff guide (Vietnamese).**
+**New in V27.9 — Competition & Design scores now discriminate.**
+- **Competition** was a 3-value bucket (low/med/high → 82/55/30), so most keywords
+  collapsed to the same number. It now uses the **continuous seller-concentration
+  index**, so it ranges finely (e.g. 27 → 87). Insight baked in: a niche with *few*
+  sellers can still be hard if a handful dominate it.
+- **Design Potential** now scales off that competition score (more design room in
+  less-dominated niches) instead of the coarse bucket.
+- Note: two *genuinely* similar niches still score alike (correct) — but different
+  keywords now clearly differ.
+
+**V27.8 — "How to Use" staff guide (Vietnamese).**
 - New **📖 How to Use** page (`/how-to-use`, home card + header link) — a full
   Vietnamese guide for the team, table-format: every dashboard section, all 8
   opportunity scores (what each means / how it's computed / why we picked it), key

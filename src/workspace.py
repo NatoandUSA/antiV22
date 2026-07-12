@@ -106,17 +106,24 @@ def compute_scores(kw, stats, comp, mo, mode):
     words = len(kw.split())
 
     demand = _clamp((math.log10(views + 1) - 1.5) / 3.5 * 100) if views else 35
-    competition = _clamp({"low": 82, "medium": 55, "high": 30}.get(sat, 52)
-                         + (8 if ner > 0.01 else 0))
+    # Competition = how easy to break in. Use the CONTINUOUS seller-concentration
+    # index (a niche with FEW sellers can still be hard if a handful dominate it)
+    # instead of the coarse 3-bucket saturation, so it discriminates keyword to
+    # keyword. Low concentration (well spread) -> high score (easy); high -> low.
+    conc = _f(comp.get("seller_concentration_index"))
+    if conc > 0:
+        competition = _clamp(176 - 38 * math.log10(conc + 1) + (6 if ner > 0.01 else 0))
+    else:
+        competition = _clamp({"low": 82, "medium": 55, "high": 30}.get(sat, 52)
+                             + (8 if ner > 0.01 else 0))
     conversion = _clamp(conv * 100 * 16 + 10)
     opportunity = _clamp(opp if opp is not None else (demand + competition) / 2)
     # SEO: 3-word buyer phrases are the sweet spot; 1-word is too broad, 5+ too niche
     seo = _clamp({1: 45, 2: 72, 3: 85, 4: 78}.get(words, 60) + (8 if len(mo) else 0))
     trend = _clamp(ms if ms is not None else
                    (72 if _f(stats.get("rank_change_7d")) < 0 else 48))
-    # Design room is bigger where the niche is LESS saturated (fewer rivals to beat).
-    design = _clamp((78 if mode != "embroidery" else 70)
-                    + (10 if sat == "low" else -8 if sat == "high" else 0))
+    # Design room grows where it's easier to break in (a less-dominated niche).
+    design = _clamp((78 if mode != "embroidery" else 70) + (competition - 55) * 0.28)
     production = 80 if mode == "pod" else 66 if mode == "embroidery" else 88
     overall = _clamp(demand * .2 + competition * .15 + opportunity * .2
                      + conversion * .15 + seo * .1 + trend * .1
@@ -134,8 +141,10 @@ def compute_scores(kw, stats, comp, mo, mode):
           "More buyers searching = better. Add high-intent long-tails.",
           "YTrends, Etsy"),
         s("Competition", competition,
-          f"Saturation is {sat or 'unknown'} ({_int(comp.get('sellers'))} sellers).",
-          "Higher = easier to rank. Narrow the sub-niche.", "YTrends"),
+          f"{_int(comp.get('sellers'))} sellers, "
+          + ("a few dominate" if conc > 3000 else "well spread" if conc < 1200
+             else "moderately concentrated") + ".",
+          "Higher score = easier to rank. Narrow the sub-niche.", "YTrends"),
         s("Opportunity", opportunity, "Low competition + real demand.",
           "Chase high-opportunity, low-competition angles.", "YTrends"),
         s("SEO", seo, f"'{kw}' is {words}-word.",
