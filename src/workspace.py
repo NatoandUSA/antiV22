@@ -97,7 +97,7 @@ def source_confidence(stats, data_flags):
 # --------------------------- scoring ---------------------------------------
 
 def compute_scores(kw, stats, comp, mo, mode):
-    views = _f(stats.get("avg_views_24h")) * _f(stats.get("listing_count"))
+    views = _f(stats.get("avg_views_24h")) * _f(stats.get("total_listings"))
     conv = _f(stats.get("avg_conversion_rate"))
     listings = _f(stats.get("total_listings"))
     sat = (comp.get("saturation") or "").lower()
@@ -110,11 +110,13 @@ def compute_scores(kw, stats, comp, mo, mode):
                          + (8 if ner > 0.01 else 0))
     conversion = _clamp(conv * 100 * 16 + 10)
     opportunity = _clamp(opp if opp is not None else (demand + competition) / 2)
-    seo = _clamp((70 if 2 <= words <= 4 else 45 if words == 1 else 55)
-                 + (10 if len(mo) else 0))
+    # SEO: 3-word buyer phrases are the sweet spot; 1-word is too broad, 5+ too niche
+    seo = _clamp({1: 45, 2: 72, 3: 85, 4: 78}.get(words, 60) + (8 if len(mo) else 0))
     trend = _clamp(ms if ms is not None else
                    (72 if _f(stats.get("rank_change_7d")) < 0 else 48))
-    design = 78 if mode != "embroidery" else 70
+    # Design room is bigger where the niche is LESS saturated (fewer rivals to beat).
+    design = _clamp((78 if mode != "embroidery" else 70)
+                    + (10 if sat == "low" else -8 if sat == "high" else 0))
     production = 80 if mode == "pod" else 66 if mode == "embroidery" else 88
     overall = _clamp(demand * .2 + competition * .15 + opportunity * .2
                      + conversion * .15 + seo * .1 + trend * .1
@@ -532,7 +534,7 @@ def better_angles(kw, related, mode):
 
 
 def sales_forecast(stats, price, cost, conv, data_flags):
-    tier = _f(stats.get("avg_views_24h")) * _f(stats.get("listing_count"))
+    tier = _f(stats.get("avg_views_24h")) * _f(stats.get("total_listings"))
     vlo, vhi = (10, 40) if tier < 5000 else (20, 80) if tier < 30000 else (40, 150)
     favs = (max(0, vlo // 15), max(1, vhi // 15))
     carts = (0, max(1, vhi // 40))

@@ -1,6 +1,18 @@
-# Etsy Product Manager V27.6
+# Etsy Product Manager V27.7
 
-**New in V27.6 — staff can REPORT their work, not just mark status.**
+**New in V27.7 — fix frozen opportunity scores (Demand/SEO/Design).**
+- **Demand was stuck at 35 on every keyword** — a wrong field name
+  (`listing_count` vs the real `total_listings`) made market views compute to 0.
+  Fixed: Demand now ranges with the real market (e.g. 40 for a thin niche → 100 for
+  a big one).
+- **SEO** was 80 for any 2–4 word phrase; now graded by phrase length (3-word buyer
+  phrases score highest).
+- **Design Potential** was a flat mode constant; now rises in **less-saturated**
+  niches (more room for a distinctive design to win).
+- **Production Feasibility** intentionally stays mode-based (how easily the product
+  ships as POD/embroidery doesn't depend on the keyword).
+
+**V27.6 — staff can REPORT their work, not just mark status.**
 - On **My Tasks**, each task now has a **"📝 What did you do?"** report box. Staff
   write what they did (links, findings, shortlist) and it saves when they
   **Submit for review** — or with a new **💾 Save report** button that stores the
