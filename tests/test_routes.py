@@ -48,7 +48,7 @@ def test_home_is_clean(client):
 
 
 @pytest.mark.parametrize("route", [
-    "/cheatsheet", "/workflow", "/suppliers", "/feedback", "/profit", "/grade",
+    "/cheatsheet", "/how-to-use", "/workflow", "/suppliers", "/feedback", "/profit", "/grade",
     "/alerts", "/launchpad", "/trackers", "/research", "/shops", "/listings",
     "/team", "/team/calendar", "/team/calendar?view=overdue", "/me/tasks",
     "/team/feedback",

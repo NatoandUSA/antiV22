@@ -1,6 +1,14 @@
-# Etsy Product Manager V27.7
+# Etsy Product Manager V27.8
 
-**New in V27.7 — fix frozen opportunity scores (Demand/SEO/Design).**
+**New in V27.8 — "How to Use" staff guide (Vietnamese).**
+- New **📖 How to Use** page (`/how-to-use`, home card + header link) — a full
+  Vietnamese guide for the team, table-format: every dashboard section, all 8
+  opportunity scores (what each means / how it's computed / why we picked it), key
+  terms (momentum, saturation, conversion, trademark, cluster…), POD vs Embroidery,
+  team workflow, and the golden rules. (Staff-training doc by request; Etsy
+  listings/reports stay English.)
+
+**V27.7 — fix frozen opportunity scores (Demand/SEO/Design).**
 - **Demand was stuck at 35 on every keyword** — a wrong field name
   (`listing_count` vs the real `total_listings`) made market views compute to 0.
   Fixed: Demand now ranges with the real market (e.g. 40 for a thin niche → 100 for

@@ -363,6 +363,8 @@ def build_app(password, secret):
             '<span>Trends over time: rising / falling / stable</span></a>'
             '<a class="toolcard" href="/profit"><b>💰 Profit Center</b>'
             '<span>Real P&amp;L per product / supplier / mode</span></a>'
+            '<a class="toolcard" href="/how-to-use"><b>📖 How to Use (Tiếng Việt)</b>'
+            '<span>Hướng dẫn đầy đủ cho nhân viên: mọi mục + điểm số + thuật ngữ</span></a>'
             '<a class="toolcard" href="/workflow"><b>📋 Workflow</b>'
             '<span>How the team works: find → collect → ship</span></a>'
             '<a class="toolcard" href="/cheatsheet"><b>📖 Cheat Sheet</b>'
@@ -1488,6 +1490,19 @@ def build_app(password, secret):
         return page("Cheat Sheet",
                     bar + f'<article class="md">{html}</article>' + COPY_JS)
 
+    # ---- Vietnamese staff guide (served from the repo's HOW_TO_USE.md) ----
+    @app.route("/how-to-use")
+    @login_required
+    def how_to_use():
+        p = ROOT / "HOW_TO_USE.md"
+        if not p.is_file():
+            abort(404)
+        html = md.markdown(p.read_text(encoding="utf-8"),
+                           extensions=["tables", "fenced_code", "sane_lists"])
+        bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
+        return page("How to Use",
+                    bar + f'<article class="md">{html}</article>' + COPY_JS)
+
     # ---- team workflow guide (served from the repo's WORKFLOW.md) ----
     @app.route("/workflow")
     @login_required
@@ -2509,7 +2524,7 @@ PORTAL = """
       <div class="kicker">Etsy Product Manager</div>
       <h1>Team Reports</h1>
     </div>
-    <div class="hright">{{UPDATED}}{{USER}}<a class="logout" href="/team">Team</a><a class="logout" href="/cheatsheet">Cheat Sheet</a><a class="logout" href="/logout">Sign out</a></div>
+    <div class="hright">{{UPDATED}}{{USER}}<a class="logout" href="/team">Team</a><a class="logout" href="/how-to-use">How to Use</a><a class="logout" href="/cheatsheet">Cheat Sheet</a><a class="logout" href="/logout">Sign out</a></div>
   </header>
   {{BODY}}
   <footer>Reports are prepared on the research machine and synced here.</footer>
