@@ -39,6 +39,28 @@ số bịa, không phải log tìm kiếm của nhân viên.
 | 7️⃣ Đăng (thủ công) | Chỉ khi **Publish-ready = yes** và quản lý ký duyệt | Ngoài Etsy, bằng tay | Manager/Seller |
 | 8️⃣ Học sau bán | Nhập số thực sau 3–7 ngày → nhận GIỮ/SỬA/BỎ/SCALE | 📉 Sales feedback | Seller |
 
+### 🔎 Ví dụ cụ thể: import 1 listing → làm bản Embroidery (mode được GIỮ NGUYÊN)
+
+Bạn thấy trên YTuong một listing **"monogram tote bag"** bán chạy, muốn làm bản **thêu**:
+
+1. **Trên YTuong:** copy link listing (hoặc chỉ cần nhớ keyword `monogram tote bag`).
+2. **Vào 📥 Import Center** và điền:
+   - *Kind:* Product idea · *Source:* YTuong
+   - *Mode:* **Embroidery** ← chọn tay để **ÉP** chế độ thêu (đừng để "Auto mode" nếu bạn đã chắc)
+   - *Value:* dán link **hoặc** gõ `monogram tote bag`
+   - *Note:* vd "bán 500+, personalization yếu — mình thắng bằng monogram đẹp hơn"
+   - Bấm **Import → create candidate**
+3. **Kết quả:** tạo candidate `monogram tote bag`, **product_mode = embroidery**,
+   product-fit = **EMBROIDERY_FIT**, trạng thái `NEW_IDEA` → tự nhảy vào 🧭 **Research Queue**.
+4. **Trong Research Queue:** thẻ hiện keyword + nhãn **Embroidery** + link (Open in
+   YTuong/HeyEtsy/Etsy) + nút **Build workspace**.
+5. Bấm **Build workspace** → Workspace mở **đúng chế độ Embroidery**: dùng **logic NCC thêu**,
+   sinh **design prompt thêu**, Publish Gate kiểm theo ràng buộc thêu. **KHÔNG** dùng giả định POD.
+
+> ⚠️ Nếu dán một URL mà công cụ **không đọc ra keyword** (vd link listing thiếu tiêu đề),
+> nó **không tạo candidate rác** — mà báo *"Could not extract a keyword… nhập keyword/title
+> bằng tay"*. Cứ gõ keyword rồi import lại.
+
 ---
 
 ## 3. Mọi khu vực trên Dashboard
