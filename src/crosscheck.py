@@ -131,10 +131,16 @@ def pinterest_signal(keyword):
             "https://api.pinterest.com/v5/trends/keywords/US/top/GROWING",
             headers={"Authorization": f"Bearer {PINTEREST_TOKEN}"},
             params={"limit": 50}, timeout=25)
-        if r.status_code in (401, 403):
+        if r.status_code == 401:
             out = {"status": "auth_error",
-                   "note": "PINTEREST_ACCESS_TOKEN rejected -- re-issue it in "
-                           "your Pinterest developer app."}
+                   "note": "token rejected (401) -- expired or invalid. The "
+                           "'Production Limited' test tokens are short-lived; "
+                           "regenerate PINTEREST_ACCESS_TOKEN and restart the app."}
+        elif r.status_code == 403:
+            out = {"status": "no_access",
+                   "note": "token valid but no Trends API access (403). Trial read "
+                           "scopes (pins/boards) can't read keyword trends -- request "
+                           "Trends/full access on the app, or wait for trial approval."}
         elif r.ok:
             kws = {t.get("keyword", "").lower()
                    for t in (r.json().get("trends") or [])}
