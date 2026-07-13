@@ -174,6 +174,22 @@ def test_confirm_and_assign_flow(client):
     assert cand["product_mode"] == "embroidery" and cand["assigned_to"] == owner["user_id"]
 
 
+def test_assign_defaults_to_24h_deadline(client):
+    """Auto-assigned tasks get a 24h default deadline (editable later);
+    unassigned tasks stay open-ended."""
+    from datetime import datetime
+    from src import auth, tasks as tk
+    owner = auth.get_user_by_email("owner@test.local")
+    client.post("/confirm/assign", data={"q": "24h deadline kw",
+                "assigned_to": str(owner["user_id"])})
+    t = [x for x in tk.list_tasks() if x["related_keyword"] == "24h deadline kw"][0]
+    assert t["due_date"], "assigned task should get a default deadline"
+    hrs = (datetime.strptime(t["due_date"], "%Y-%m-%dT%H:%M")
+           - datetime.now()).total_seconds() / 3600
+    assert 23 < hrs < 25, hrs
+    assert not tk.create_task(title="no assignee", task_type="SUPPLIER_CHECK")["due_date"]
+
+
 def test_confirm_cross_check_three_sources(client, monkeypatch):
     """Demand cross-check shows Google + Pinterest + X + Google 'rising' suggestions,
     and is opt-in (a button) so the page stays fast."""

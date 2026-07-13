@@ -1,7 +1,10 @@
 """Team task + review system (SQLite via src/appdb.py)."""
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from src import appdb
+
+# An auto-assigned task defaults to a 24h deadline (the team can change it later).
+DEFAULT_DUE_HOURS = 24
 
 TASK_TYPES = ["KEYWORD_RESEARCH", "SPY_RESEARCH", "SUPPLIER_CHECK",
               "COMPETITOR_AUDIT", "TRADEMARK_CHECK", "LISTING_DRAFT",
@@ -47,6 +50,12 @@ def _now():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def default_due(hours=DEFAULT_DUE_HOURS):
+    """Default deadline for an auto-assigned task: local now + `hours`, in the
+    datetime-local format (YYYY-MM-DDTHH:MM) the calendar + picker use."""
+    return (datetime.now() + timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M")
+
+
 def create_task(title, assigned_to_user_id=None, assigned_by_user_id=None,
                 task_type=None, priority="MEDIUM", description="", role_target="",
                 related_keyword="", related_workspace_id="", related_listing_id="",
@@ -54,6 +63,9 @@ def create_task(title, assigned_to_user_id=None, assigned_by_user_id=None,
     priority = (priority or "MEDIUM").upper()
     if priority not in PRIORITIES:
         priority = "MEDIUM"
+    # Auto-assigned task with no explicit deadline -> default 24h (changeable later).
+    if assigned_to_user_id and not (due_date or "").strip():
+        due_date = default_due()
     now = _now()
     tid = appdb.execute(
         "INSERT INTO tasks (title, description, assigned_to_user_id, "

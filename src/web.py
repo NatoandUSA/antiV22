@@ -1706,11 +1706,13 @@ def build_app(password, secret):
         assignee = (request.form.get("assigned_to") or "").strip()
         if assignee.isdigit():
             aid = int(assignee)
+            due = tk.default_due()            # 24h default deadline (editable later)
             rs.update_candidate(c["id"], assigned_to=aid, status="SUPPLIER_CHECK",
-                                next_action="Supplier check + competitor audit")
+                                next_action="Supplier check + competitor audit",
+                                due_date=due)
             tk.create_task(title=f"{kw} — supplier check + competitor audit",
                            assigned_to_user_id=aid, task_type="SUPPLIER_CHECK",
-                           related_keyword=kw)
+                           related_keyword=kw, due_date=due)
         _log("CONFIRM_ASSIGN", module="research", entity_type="candidate",
              entity_id=c["id"], keyword=kw, product_mode="embroidery",
              summary=f"assigned={assignee or 'unassigned'}")
