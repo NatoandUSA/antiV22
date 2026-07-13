@@ -139,6 +139,20 @@ def test_product_mode_preserved_import_to_workspace(client, monkeypatch):
     assert seen.get("supplier_type") == "embroidery"
 
 
+def test_home_daily_advanced_tiers(client):
+    """Scope Reduction: home leads with the Daily loop + an Advanced <details>;
+    every surface still links (hidden != removed)."""
+    b = client.get("/").get_data(as_text=True)
+    assert "Daily — your everyday loop" in b
+    assert "advtools" in b and "Advanced tools" in b
+    for href in ("/confirm", "/imports", "/research-queue", "/suppliers",
+                 "/team/calendar"):
+        assert href in b, href                       # daily loop, promoted
+    for href in ("/trending", "/opportunities", "/spy", "/grade", "/launchpad",
+                 "/profit", "/trackers", "/shops", "/listings", "/feedback"):
+        assert href in b, href                       # demoted, still live
+
+
 def test_confirm_and_assign_flow(client):
     """Confirm & Assign: verdict per keyword + one-click assign in Embroidery mode."""
     from src import auth, research as rs
