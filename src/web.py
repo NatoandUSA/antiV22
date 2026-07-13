@@ -1600,38 +1600,77 @@ def build_app(password, secret):
             reasons.append("Google Trends is falling")
         return "CHECK", "; ".join(reasons) or "Double-check before committing."
 
+    def _xcheck_rows(xc):
+        """Render the 3-source demand cross-check + Google rising suggestions.
+        Returns (table_rows_html, suggestions_html). Each source is non-blocking:
+        live sources show a number, off sources show how to turn them on."""
+        from src import crosscheck
+        g, p, x = xc.get("google") or {}, xc.get("pinterest"), xc.get("x")
+        st = crosscheck.status()
+        if g.get("status") == "ok":
+            arrow = {"rising": "↑ rising", "flat": "→ flat",
+                     "falling": "↓ falling"}.get(g.get("direction"), "?")
+            g_html = (f'<b>{arrow}</b> <span class="note">'
+                      f'({g.get("momentum_pct")}% vs 3 months ago)</span>')
+        else:
+            g_html = f'<span class="note">{_h_esc(g.get("note") or g.get("status") or "no data")}</span>'
+        if p is None:
+            p_html = f'<span class="note">off — {_h_esc(st["Pinterest"])}</span>'
+        elif p.get("status") == "ok":
+            p_html = ('<b>on growing list ✓</b>' if p.get("on_growing_list")
+                      else '<span class="note">not on the growing list right now</span>')
+        else:
+            p_html = f'<span class="note">{_h_esc(p.get("note") or p.get("status"))}</span>'
+        if x is None:
+            x_html = f'<span class="note">off — {_h_esc(st["X / Twitter"])}</span>'
+        elif x.get("status") == "ok":
+            n = x.get("tweets_7d")
+            x_html = f'<b>{n if n is not None else "?"}</b> <span class="note">tweets / 7 days</span>'
+        else:
+            x_html = f'<span class="note">{_h_esc(x.get("note") or x.get("status"))}</span>'
+        rows = (f'<tr><td>Google Trends</td><td>{g_html}</td></tr>'
+                f'<tr><td>Pinterest</td><td>{p_html}</td></tr>'
+                f'<tr><td>X / Twitter</td><td>{x_html}</td></tr>')
+        rising = [str(r) for r in (g.get("rising") or [])][:3]
+        sug = ""
+        if rising:
+            chips = " ".join(f'<a class="cbtn" href="/confirm?q={_h_esc(r)}">{_h_esc(r)}</a>'
+                             for r in rising)
+            sug = (f'<p class="note">💡 Also rising on Google (worth a look, click to '
+                   f'confirm): {chips}</p>')
+        return rows, sug
+
     @app.route("/confirm")
     @login_required
     def confirm_niche():
         from src import product_fit as pf, trademark, crosscheck
         raw = (request.args.get("q") or "").strip()[:80]
         kw = "".join(ch for ch in raw if ch.isalnum() or ch in " '&-.").strip()
-        want_google = request.args.get("google") == "1"
+        want_xcheck = request.args.get("google") == "1"
         form = ('<form class="savedform" method="get" action="/confirm">'
                 f'<input name="q" value="{_h_esc(kw)}" '
                 'placeholder="Paste a niche/keyword from YTuong, e.g. monogram tote bag" '
                 'required><button class="primary" type="submit">Confirm →</button></form>')
         body = ('<article class="md"><h1>✅ Confirm &amp; Assign</h1>'
                 '<p class="tklead">Confirm a YTuong niche in one glance — product fit, '
-                'trademark, and (optional) Google Trends — then hand it to a staff '
-                'member in <b>Embroidery</b> mode. Never publishes.</p>' + form)
+                'trademark, and (optional) demand cross-check (Google Trends · Pinterest '
+                '· X) — then hand it to a staff member in <b>Embroidery</b> mode. '
+                'Never publishes.</p>' + form)
         if kw:
             fit = pf.classify(kw, "embroidery")
             risk, why = trademark.check(kw)
-            google = crosscheck.google_trends_signal(kw) if want_google else None
+            xc = crosscheck.confirm(kw) if want_xcheck else None
+            google = xc.get("google") if xc else None
             verdict, note = _confirm_verdict(fit, risk, google)
             badge = {"GO": "✅ GO", "CHECK": "⚠️ CHECK", "NO": "⛔ NO"}[verdict]
             noticecls = "notice" if verdict == "GO" else "notice warn"
-            if google is None:
-                grow = (f'<a class="cbtn" href="/confirm?q={_h_esc(kw)}&amp;google=1">'
-                        'Cross-check on Google Trends →</a>')
-            elif google.get("status") == "ok":
-                arrow = {"rising": "↑ rising", "flat": "→ flat",
-                         "falling": "↓ falling"}.get(google.get("direction"), "?")
-                grow = (f'<b>{arrow}</b> '
-                        f'<span class="note">({google.get("momentum_pct")}% vs 3 months ago)</span>')
+            if xc is None:
+                xrows = ('<tr><td>Demand cross-check</td><td>'
+                         f'<a class="cbtn" href="/confirm?q={_h_esc(kw)}&amp;google=1">'
+                         'Run cross-check (Google · Pinterest · X) →</a></td></tr>')
+                xsug = ""
             else:
-                grow = f'<span class="note">{_h_esc(google.get("note") or google.get("status"))}</span>'
+                xrows, xsug = _xcheck_rows(xc)
             card = (
                 f'<div class="{noticecls}"><h2 style="margin:.2em 0">{badge} — {_h_esc(kw)}</h2>'
                 f'<p>{_h_esc(note)}</p></div>'
@@ -1640,7 +1679,7 @@ def build_app(password, secret):
                 f'<span class="note">{_h_esc(fit["reason"])}</span></td></tr>'
                 f'<tr><td>Trademark</td><td><b>{_h_esc(risk)}</b> '
                 f'<span class="note">{_h_esc(why)}</span></td></tr>'
-                f'<tr><td>Google Trends</td><td>{grow}</td></tr></table>'
+                f'{xrows}</table>' + xsug +
                 '<h2>Assign to a staff member</h2>'
                 '<form class="toolbar" method="post" action="/confirm/assign">'
                 f'<input type="hidden" name="q" value="{_h_esc(kw)}">'

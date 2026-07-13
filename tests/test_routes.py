@@ -174,6 +174,21 @@ def test_confirm_and_assign_flow(client):
     assert cand["product_mode"] == "embroidery" and cand["assigned_to"] == owner["user_id"]
 
 
+def test_confirm_cross_check_three_sources(client, monkeypatch):
+    """Demand cross-check shows Google + Pinterest + X + Google 'rising' suggestions,
+    and is opt-in (a button) so the page stays fast."""
+    from src import crosscheck
+    assert "Run cross-check" in client.get(
+        "/confirm?q=monogram tote bag").get_data(as_text=True)
+    monkeypatch.setattr(crosscheck, "confirm", lambda kw: {
+        "google": {"status": "ok", "direction": "rising", "momentum_pct": 42,
+                   "rising": ["monogram pouch", "bridesmaid tote"]},
+        "pinterest": None, "x": None})
+    b = client.get("/confirm?q=monogram tote bag&google=1").get_data(as_text=True)
+    assert "Google Trends" in b and "Pinterest" in b and "X / Twitter" in b
+    assert "Also rising" in b and "monogram pouch" in b   # clickable suggestions
+
+
 def test_import_url_without_keyword_shows_manual_message(client):
     """#8: an undecodable URL must not create a junk candidate — the user is asked
     to enter the keyword/title manually."""
