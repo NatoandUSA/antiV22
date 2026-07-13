@@ -331,6 +331,8 @@ def build_app(password, secret):
             '<b>YTuong / HeyEtsy</b> (the research engine), then <b>import</b> the '
             'finding here to turn it into tasks, drafts and a manual-publish plan.</p>'
             '<div class="toolgrid">'
+            '<a class="toolcard" href="/confirm"><b>✅ Confirm &amp; Assign</b>'
+            '<span>Start here: confirm a YTuong niche → hand it to staff (Embroidery)</span></a>'
             '<a class="toolcard" href="/imports"><b>📥 YTuong Import Center</b>'
             '<span>Import a YTuong/Etsy URL or keyword → candidate + product-fit</span></a>'
             '<a class="toolcard" href="/research-queue"><b>🧭 Research Queue</b>'
@@ -1566,6 +1568,102 @@ def build_app(password, secret):
         label = FIT_LABELS.get(status, status)
         return (f'<span class="pill {cls}" title="{_h_esc(status)}">'
                 f'{_h_esc(label)}</span>')
+
+    # ============ CONFIRM & ASSIGN — the simple daily loop ============
+    # Paste a YTuong niche -> confirm (fit + trademark + optional Google Trends)
+    # -> hand it to a staff member in Embroidery mode. Never publishes.
+    def _confirm_verdict(fit, risk, google):
+        st = fit["status"]
+        if risk == "HIGH" or st in ("POLICY_RISK", "TRADEMARK_RISK", "SHOP_NAME_LIKELY"):
+            return "NO", "Not safe or not a real product — skip it."
+        if fit["launchable"] and risk == "OK" and (
+                not google or google.get("direction") != "falling"):
+            return "GO", "Safe, makeable, and buyer intent is clear. Assign it."
+        reasons = []
+        if not fit["launchable"]:
+            reasons.append(fit["reason"])
+        if risk == "CAUTION":
+            reasons.append("verify the trademark on USPTO first")
+        if google and google.get("direction") == "falling":
+            reasons.append("Google Trends is falling")
+        return "CHECK", "; ".join(reasons) or "Double-check before committing."
+
+    @app.route("/confirm")
+    @login_required
+    def confirm_niche():
+        from src import product_fit as pf, trademark, crosscheck
+        raw = (request.args.get("q") or "").strip()[:80]
+        kw = "".join(ch for ch in raw if ch.isalnum() or ch in " '&-.").strip()
+        want_google = request.args.get("google") == "1"
+        form = ('<form class="savedform" method="get" action="/confirm">'
+                f'<input name="q" value="{_h_esc(kw)}" '
+                'placeholder="Paste a niche/keyword from YTuong, e.g. monogram tote bag" '
+                'required><button class="primary" type="submit">Confirm →</button></form>')
+        body = ('<article class="md"><h1>✅ Confirm &amp; Assign</h1>'
+                '<p class="tklead">Confirm a YTuong niche in one glance — product fit, '
+                'trademark, and (optional) Google Trends — then hand it to a staff '
+                'member in <b>Embroidery</b> mode. Never publishes.</p>' + form)
+        if kw:
+            fit = pf.classify(kw, "embroidery")
+            risk, why = trademark.check(kw)
+            google = crosscheck.google_trends_signal(kw) if want_google else None
+            verdict, note = _confirm_verdict(fit, risk, google)
+            badge = {"GO": "✅ GO", "CHECK": "⚠️ CHECK", "NO": "⛔ NO"}[verdict]
+            noticecls = "notice" if verdict == "GO" else "notice warn"
+            if google is None:
+                grow = (f'<a class="cbtn" href="/confirm?q={_h_esc(kw)}&amp;google=1">'
+                        'Cross-check on Google Trends →</a>')
+            elif google.get("status") == "ok":
+                arrow = {"rising": "↑ rising", "flat": "→ flat",
+                         "falling": "↓ falling"}.get(google.get("direction"), "?")
+                grow = (f'<b>{arrow}</b> '
+                        f'<span class="note">({google.get("momentum_pct")}% vs 3 months ago)</span>')
+            else:
+                grow = f'<span class="note">{_h_esc(google.get("note") or google.get("status"))}</span>'
+            card = (
+                f'<div class="{noticecls}"><h2 style="margin:.2em 0">{badge} — {_h_esc(kw)}</h2>'
+                f'<p>{_h_esc(note)}</p></div>'
+                '<table><tr><th>Check</th><th>Result</th></tr>'
+                f'<tr><td>Product fit (Embroidery)</td><td>{_fit_pill(fit["status"], fit["launchable"])} '
+                f'<span class="note">{_h_esc(fit["reason"])}</span></td></tr>'
+                f'<tr><td>Trademark</td><td><b>{_h_esc(risk)}</b> '
+                f'<span class="note">{_h_esc(why)}</span></td></tr>'
+                f'<tr><td>Google Trends</td><td>{grow}</td></tr></table>'
+                '<h2>Assign to a staff member</h2>'
+                '<form class="toolbar" method="post" action="/confirm/assign">'
+                f'<input type="hidden" name="q" value="{_h_esc(kw)}">'
+                f'<select name="assigned_to"><option value="">— pick staff —</option>'
+                f'{_user_options()}</select>'
+                '<button class="primary" type="submit">Assign in Embroidery mode →</button>'
+                '</form>'
+                f'<p class="note"><a href="/run?q={_h_esc(kw)}&amp;mode=embroidery">'
+                'Or open the full workspace →</a></p>')
+            body += card
+        return page("Confirm & Assign", _bar() + body + '</article>')
+
+    @app.route("/confirm/assign", methods=["POST"])
+    @login_required
+    def confirm_assign():
+        from src import research as rs, tasks as tk
+        u = current_user()
+        kw = _no_tags((request.form.get("q") or "").strip())[:80]
+        if not kw:
+            return redirect(url_for("confirm_niche"))
+        c = rs.import_candidate("product_idea", "confirm", kw, mode="embroidery",
+                                note="Confirmed via Confirm & Assign",
+                                by=u["display_name"])
+        assignee = (request.form.get("assigned_to") or "").strip()
+        if assignee.isdigit():
+            aid = int(assignee)
+            rs.update_candidate(c["id"], assigned_to=aid, status="SUPPLIER_CHECK",
+                                next_action="Supplier check + competitor audit")
+            tk.create_task(title=f"{kw} — supplier check + competitor audit",
+                           assigned_to_user_id=aid, task_type="SUPPLIER_CHECK",
+                           related_keyword=kw)
+        _log("CONFIRM_ASSIGN", module="research", entity_type="candidate",
+             entity_id=c["id"], keyword=kw, product_mode="embroidery",
+             summary=f"assigned={assignee or 'unassigned'}")
+        return redirect(url_for("research_queue"))
 
     @app.route("/imports")
     @login_required

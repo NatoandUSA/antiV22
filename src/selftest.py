@@ -969,8 +969,8 @@ def run_selftest():
           all("launch_status" in h for h in _hh)
           and any(h["launch_status"] == "LATE_TEST_ONLY" for h in _hh)
           and isinstance(_sea.RANGES, dict) and "Status" in _sea.calendar_plan("pod", _date(2026, 7, 8)))
-    check("Workflow shown as a table; decision + reference docs present",
-          "| Step | Team Role | Action |" in Path("WORKFLOW.md").read_text(encoding="utf-8")
+    check("Workflow shown as a table (Vietnamese); decision + reference docs present",
+          "| Bước | Vai trò | Hành động |" in Path("WORKFLOW.md").read_text(encoding="utf-8")
           and Path("docs/UPGRADE_DECISION_LOG.md").exists()
           and Path("docs/GITHUB_REFERENCE_RESEARCH.md").exists())
 

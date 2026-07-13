@@ -52,7 +52,7 @@ def test_home_is_clean(client):
     "/alerts", "/launchpad", "/trackers", "/research", "/shops", "/listings",
     "/team", "/team/calendar", "/team/calendar?view=overdue",
     "/team/calendar?view=month", "/me/tasks",
-    "/team/feedback", "/imports", "/research-queue",
+    "/team/feedback", "/imports", "/research-queue", "/confirm",
 ])
 def test_pages_render(client, route):
     assert client.get(route).status_code == 200
@@ -137,6 +137,27 @@ def test_product_mode_preserved_import_to_workspace(client, monkeypatch):
                         lambda kw, opts: seen.update(opts) or "<div>ws</div>")
     client.get("/run?q=sunset+tote+bag&mode=embroidery")
     assert seen.get("supplier_type") == "embroidery"
+
+
+def test_confirm_and_assign_flow(client):
+    """Confirm & Assign: verdict per keyword + one-click assign in Embroidery mode."""
+    from src import auth, research as rs
+    owner = auth.get_user_by_email("owner@test.local")
+    # verdicts
+    assert "✅ GO" in client.get("/confirm?q=monogram tote bag").get_data(as_text=True)
+    assert "⛔ NO" in client.get("/confirm?q=fathers day pokemon").get_data(as_text=True)
+    assert "⚠" in client.get("/confirm?q=funny raccoon").get_data(as_text=True)  # CHECK
+    # Google cross-check is opt-in (a button), not on the first load
+    assert "google=1" in client.get("/confirm?q=monogram tote bag").get_data(as_text=True)
+    # assign creates an embroidery candidate assigned to the staff member
+    before = len(rs.list_candidates())
+    r = client.post("/confirm/assign", data={"q": "monogram tote bag",
+                    "assigned_to": str(owner["user_id"])})
+    assert r.status_code in (301, 302)
+    after = rs.list_candidates()
+    assert len(after) == before + 1
+    cand = [x for x in after if x["title"] == "monogram tote bag"][0]
+    assert cand["product_mode"] == "embroidery" and cand["assigned_to"] == owner["user_id"]
 
 
 def test_import_url_without_keyword_shows_manual_message(client):

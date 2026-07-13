@@ -1,6 +1,7 @@
-# Etsy Product Manager V28.0
+# Etsy Product Manager V28.1
 
-**New in V28.0 — repositioned as the EXECUTION engine on top of YTuong.**
+**New in V28.1 — release-safety + audit-truth fixes, Embroidery default, and a
+Confirm & Assign daily loop; built on the V28.0 EXECUTION-engine repositioning.**
 YTuong/HeyEtsy is the **research engine** (trending, hot listings, shops, tags);
 this dashboard is the **execution engine** that turns findings into team action. We
 link out to YTuong instead of cloning it.
