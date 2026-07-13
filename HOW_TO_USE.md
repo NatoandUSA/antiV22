@@ -28,6 +28,15 @@ số bịa, không phải log tìm kiếm của nhân viên.
 
 ## 2. Quy trình chuẩn (làm theo thứ tự này)
 
+> ⚡ **Đường tắt hằng ngày (nhanh nhất):** dùng **✅ Confirm & Assign** ngay trên trang
+> chủ — dán 1 niche từ YTuong → xem verdict (product-fit + trademark, tuỳ chọn Google
+> Trends) → **giao cho nhân viên trong chế độ Embroidery** bằng 1 nút. Đủ cho phần lớn
+> việc hằng ngày. Bảng dưới là quy trình đầy đủ khi cần đào sâu.
+>
+> 🏠 **Trang chủ giờ gọn hơn:** phần **🎯 Daily** (vòng lặp hằng ngày) ở trên cùng; công
+> cụ nghiên cứu / thư viện / phân tích gom vào **🧰 Advanced tools** (bấm mở khi cần).
+> 🧵 **Mode mặc định giờ là Embroidery** (POD / Both vẫn 1 cú bấm).
+
 | Bước | Việc làm | Ở đâu | Ai làm |
 |---|---|---|---|
 | 1️⃣ Tìm ý tưởng | Xem từ khóa đang lên / ngách ít cạnh tranh | Trending · Opportunities · Seasonal calendar | Researcher |
@@ -67,6 +76,7 @@ Bạn thấy trên YTuong một listing **"monogram tote bag"** bán chạy, mu�
 
 | Khu vực | Dùng để | Nhập gì | Nhận lại gì |
 |---|---|---|---|
+| ✅ **Confirm & Assign** | **Bắt đầu ở đây** — xác nhận nhanh 1 niche rồi giao việc | Dán/gõ 1 keyword (+ tuỳ chọn cross-check Google) | Verdict **GO / CHECK / NO** + nút giao cho nhân viên (Embroidery) |
 | ⚡ **Command Center** | Việc chính: 1 từ khóa → cả bộ hồ sơ | Chọn **Product mode** + gõ từ khóa | Verdict, 8 điểm, listing, design, kế hoạch |
 | 📥 **Import Center** | Import phát hiện từ YTuong/HeyEtsy/Etsy | Dán **URL listing/shop** hoặc gõ keyword (+ chọn mode) | Candidate vào Research Queue (**giữ product mode**). URL không đọc được → báo nhập keyword bằng tay |
 | 🧭 **Research Queue** | Đường ống ý tưởng → duyệt đăng | Bấm **Build workspace** / giao task | Mỗi ý tưởng chạy NEW_IDEA → NCC → audit → design → nháp → duyệt → đăng thủ công; **mode giữ nguyên** |
@@ -123,6 +133,9 @@ Bạn thấy trên YTuong một listing **"monogram tote bag"** bán chạy, mu�
 ---
 
 ## 6. POD hay Embroidery? Chọn Product Mode
+
+> 🧵 **Mặc định của công cụ giờ là Embroidery** (Command Center + Import Center) vì team
+> làm thêu là chính. Muốn POD / Both thì bấm chọn — mode bạn chọn luôn được ưu tiên.
 
 | | **POD (Print on Demand)** | **Embroidery (Thêu)** |
 |---|---|---|
