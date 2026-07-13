@@ -1734,26 +1734,37 @@ def build_app(password, secret):
             err = str(exc).splitlines()[0][:200]
         except Exception as exc:  # noqa: BLE001
             err = str(exc)[:200]
-        vlabel = {"GO": "✅ GO", "CONDITIONAL": "⚠️ CONDITIONAL",
-                  "WATCH": "👀 WATCH", "SKIP": "⛔ SKIP"}
-        trs = ""
-        for i, r in enumerate(rows, 1):
-            sc = r["score"] if isinstance(r["score"], (int, float)) else "pending"
-            cls = "apill" if r["verdict"] == "GO" else ""
-            trs += (
-                f'<tr><td>{i}</td><td><b>{_h_esc(r["keyword"])}</b></td>'
-                f'<td>{_h_esc(r["product_type"])}</td><td><b>{sc}</b></td>'
-                f'<td><span class="pill {cls}">{vlabel.get(r["verdict"], r["verdict"])}</span></td>'
-                f'<td>{_h_esc(str(r["competition"] or "-"))}</td>'
-                f'<td>{_h_esc(r["tm"])}</td>'
+        vlabel = {"GO": "🔥 PURSUE NOW", "CONDITIONAL": "⚠️ VALIDATE FIRST",
+                  "WATCH": "👀 WATCH / SAVE", "SKIP": "⛔ SKIP"}
+
+        def _row(i, r):
+            sc = r["score"] if isinstance(r.get("score"), (int, float)) else "pending"
+            cls = "apill" if r.get("verdict") == "GO" else ""
+            return (
+                f'<tr><td>{i}</td>'
+                f'<td><b>{_h_esc(r["keyword"])}</b><br>'
+                f'<span class="note">→ {_h_esc(r.get("next_action", ""))}</span></td>'
+                f'<td>{_h_esc(r.get("product_type", ""))}</td><td><b>{sc}</b></td>'
+                f'<td><span class="pill {cls}">'
+                f'{vlabel.get(r.get("verdict"), r.get("verdict", ""))}</span></td>'
+                f'<td><span class="note">{_h_esc(r.get("reason", ""))}</span></td>'
                 f'<td><a class="tkbtn primary" href="/confirm?q={_h_esc(r["keyword"])}">'
                 'Confirm →</a></td></tr>')
-        empty = (_h_esc(err) if err else
-                 'No launch-ready opportunities cached yet — run <code>warm</code> on '
-                 'the laptop (the VPS reads that cache).')
-        table = ('<table><tr><th>#</th><th>Keyword</th><th>Fit</th><th>Score</th>'
-                 '<th>Verdict</th><th>Competition</th><th>TM</th><th></th></tr>'
-                 + (trs or f'<tr><td colspan="8">{empty}</td></tr>') + '</table>')
+
+        def _tbl(items, start=1):
+            return ('<table><tr><th>#</th><th>Keyword / next step</th><th>Fit</th>'
+                    '<th>Score</th><th>Verdict</th><th>Why it matters</th><th></th></tr>'
+                    + "".join(_row(start + n, r) for n, r in enumerate(items))
+                    + '</table>')
+
+        if rows:
+            top5, rest = rows[:5], rows[5:]
+            table = ('<h2>🔝 Top 5 today</h2>' + _tbl(top5)
+                     + (('<h2>More shortlist</h2>' + _tbl(rest, start=6)) if rest else ''))
+        else:
+            table = ('<p class="empty">' + (_h_esc(err) if err else
+                     'No launch-ready opportunities cached yet — run <code>warm</code> on '
+                     'the laptop (the VPS reads that cache).') + '</p>')
         sw = ('<div class="pullbar"><div class="pulltxt"><b>Mode</b></div>'
               '<div class="pullbtns">'
               f'<a class="pullbtn{" primary" if mode == "embroidery" else ""}" '

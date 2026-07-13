@@ -403,6 +403,14 @@ def opportunities(mode=None, show_all=False):
     return "\n".join(L + _hidden_block(hidden, "tag", show_all))
 
 
+_SHORTLIST_NEXT = {
+    "GO": "Confirm & Assign -> supplier check",
+    "CONDITIONAL": "Validate: supplier + competitor audit",
+    "WATCH": "Save & recheck in 1-2 weeks",
+    "SKIP": "Skip",
+}
+
+
 def _verdict_from(score, risk):
     """Map a real YTrends opportunity_score (0-100) to a verdict. HIGH trademark is
     never launchable; a missing score can't be ranked, so it's WATCH (not invented)."""
@@ -435,16 +443,30 @@ def shortlist(mode="embroidery", limit=10):
             continue
         risk, _ = tm_check(tag.lower())
         score = r.get("opportunity_score")
+        verdict = _verdict_from(score, risk)
+        comp = _clean(r.get("competition_level"))
+        # "Why it matters" — built only from real fields present on the row.
+        bits = []
+        if isinstance(score, (int, float)):
+            bits.append(f"opportunity {score}/100")
+        if comp:
+            bits.append(f"{comp} competition")
+        if isinstance(r.get("momentum_score"), (int, float)):
+            bits.append(f"momentum {r.get('momentum_score')}")
+        if risk == "CAUTION":
+            bits.append("verify trademark")
         out.append({
             "keyword": tag,
             "product_type": r["_fit"]["product_type"] or "theme",
             "score": score,
             "momentum": r.get("momentum_score"),
-            "competition": _clean(r.get("competition_level")),
+            "competition": comp,
             "conversion": r.get("avg_conversion_rate"),
             "price": r.get("avg_price_usd"),
             "tm": risk,
-            "verdict": _verdict_from(score, risk),
+            "verdict": verdict,
+            "reason": ", ".join(bits) or "limited signal - needs research",
+            "next_action": _SHORTLIST_NEXT.get(verdict, "Review"),
         })
     out.sort(key=lambda x: (x["score"] or 0), reverse=True)
     return out[:limit]

@@ -217,10 +217,12 @@ def test_shortlist_page_and_verdicts(client, monkeypatch):
     monkeypatch.setattr(iv, "shortlist", lambda mode="embroidery", limit=10: [
         {"keyword": "monogram tote bag", "product_type": "embroidery", "score": 82,
          "momentum": 40, "competition": "low", "conversion": 0.03, "price": 24,
-         "tm": "OK", "verdict": "GO"}])
+         "tm": "OK", "verdict": "GO", "reason": "opportunity 82/100, low competition",
+         "next_action": "Confirm & Assign -> supplier check"}])
     b = client.get("/shortlist").get_data(as_text=True)
-    assert "monogram tote bag" in b and "GO" in b
-    assert "/confirm?q=monogram tote bag" in b             # one-click into the loop
+    assert "monogram tote bag" in b and "PURSUE NOW" in b   # verdict label
+    assert "Top 5 today" in b and "Why it matters" in b     # buckets + reason
+    assert "/confirm?q=monogram tote bag" in b              # one-click into the loop
 
     def _boom(*a, **k):
         raise SystemExit("MCP cold")
