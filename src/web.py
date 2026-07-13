@@ -335,6 +335,8 @@ def build_app(password, secret):
             '<div class="toolgrid">'
             '<a class="toolcard" href="/confirm"><b>✅ Confirm &amp; Assign</b>'
             '<span>Start here: confirm a YTuong niche → hand it to staff (Embroidery)</span></a>'
+            '<a class="toolcard" href="/shortlist"><b>🎯 Shortlist</b>'
+            '<span>Top opportunities ranked → GO/CONDITIONAL → one-click Confirm</span></a>'
             '<a class="toolcard" href="/imports"><b>📥 YTuong Import Center</b>'
             '<span>Import a YTuong/Etsy URL or keyword → candidate + product-fit</span></a>'
             '<a class="toolcard" href="/research-queue"><b>🧭 Research Queue</b>'
@@ -1717,6 +1719,54 @@ def build_app(password, secret):
              entity_id=c["id"], keyword=kw, product_mode="embroidery",
              summary=f"assigned={assignee or 'unassigned'}")
         return redirect(url_for("research_queue"))
+
+    @app.route("/shortlist")
+    @login_required
+    def shortlist_page():
+        from src import interactive as iv
+        m = (request.args.get("supplier_type") or request.args.get("mode")
+             or "embroidery").lower()
+        mode = m if m in ("pod", "embroidery") else "embroidery"
+        err, rows = "", []
+        try:
+            rows = iv.shortlist(mode, limit=10)
+        except SystemExit as exc:
+            err = str(exc).splitlines()[0][:200]
+        except Exception as exc:  # noqa: BLE001
+            err = str(exc)[:200]
+        vlabel = {"GO": "✅ GO", "CONDITIONAL": "⚠️ CONDITIONAL",
+                  "WATCH": "👀 WATCH", "SKIP": "⛔ SKIP"}
+        trs = ""
+        for i, r in enumerate(rows, 1):
+            sc = r["score"] if isinstance(r["score"], (int, float)) else "pending"
+            cls = "apill" if r["verdict"] == "GO" else ""
+            trs += (
+                f'<tr><td>{i}</td><td><b>{_h_esc(r["keyword"])}</b></td>'
+                f'<td>{_h_esc(r["product_type"])}</td><td><b>{sc}</b></td>'
+                f'<td><span class="pill {cls}">{vlabel.get(r["verdict"], r["verdict"])}</span></td>'
+                f'<td>{_h_esc(str(r["competition"] or "-"))}</td>'
+                f'<td>{_h_esc(r["tm"])}</td>'
+                f'<td><a class="tkbtn primary" href="/confirm?q={_h_esc(r["keyword"])}">'
+                'Confirm →</a></td></tr>')
+        empty = (_h_esc(err) if err else
+                 'No launch-ready opportunities cached yet — run <code>warm</code> on '
+                 'the laptop (the VPS reads that cache).')
+        table = ('<table><tr><th>#</th><th>Keyword</th><th>Fit</th><th>Score</th>'
+                 '<th>Verdict</th><th>Competition</th><th>TM</th><th></th></tr>'
+                 + (trs or f'<tr><td colspan="8">{empty}</td></tr>') + '</table>')
+        sw = ('<div class="pullbar"><div class="pulltxt"><b>Mode</b></div>'
+              '<div class="pullbtns">'
+              f'<a class="pullbtn{" primary" if mode == "embroidery" else ""}" '
+              'href="/shortlist?mode=embroidery">Embroidery</a>'
+              f'<a class="pullbtn{" primary" if mode == "pod" else ""}" '
+              'href="/shortlist?mode=pod">POD</a></div></div>')
+        return page("Shortlist", _bar()
+                    + '<article class="md"><h1>🎯 Shortlist — top opportunities</h1>'
+                    '<p class="tklead">The current YTuong opportunities, ranked by their '
+                    'real YTrends opportunity score and product-fit filtered for '
+                    f'<b>{mode.title()}</b>. GO = launch now. One click sends it to '
+                    'Confirm &amp; Assign. Never fabricated — a missing score shows as '
+                    '"pending".</p>' + sw + table + '</article>')
 
     @app.route("/imports")
     @login_required

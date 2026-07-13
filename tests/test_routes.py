@@ -205,6 +205,29 @@ def test_confirm_cross_check_three_sources(client, monkeypatch):
     assert "Also rising" in b and "monogram pouch" in b   # clickable suggestions
 
 
+def test_shortlist_page_and_verdicts(client, monkeypatch):
+    """Shortlist ranks opportunities by the real score, shows verdicts + one-click
+    Confirm, and degrades gracefully when the cache is cold."""
+    from src import interactive as iv
+    assert iv._verdict_from(80, "OK") == "GO"
+    assert iv._verdict_from(65, "OK") == "CONDITIONAL"
+    assert iv._verdict_from(50, "OK") == "WATCH"
+    assert iv._verdict_from(90, "HIGH") == "SKIP"          # trademark hard-block
+    assert iv._verdict_from(None, "OK") == "WATCH"         # missing score, not invented
+    monkeypatch.setattr(iv, "shortlist", lambda mode="embroidery", limit=10: [
+        {"keyword": "monogram tote bag", "product_type": "embroidery", "score": 82,
+         "momentum": 40, "competition": "low", "conversion": 0.03, "price": 24,
+         "tm": "OK", "verdict": "GO"}])
+    b = client.get("/shortlist").get_data(as_text=True)
+    assert "monogram tote bag" in b and "GO" in b
+    assert "/confirm?q=monogram tote bag" in b             # one-click into the loop
+
+    def _boom(*a, **k):
+        raise SystemExit("MCP cold")
+    monkeypatch.setattr(iv, "shortlist", _boom)
+    assert client.get("/shortlist").status_code == 200     # cold cache != crash
+
+
 def test_import_url_without_keyword_shows_manual_message(client):
     """#8: an undecodable URL must not create a junk candidate — the user is asked
     to enter the keyword/title manually."""

@@ -403,6 +403,53 @@ def opportunities(mode=None, show_all=False):
     return "\n".join(L + _hidden_block(hidden, "tag", show_all))
 
 
+def _verdict_from(score, risk):
+    """Map a real YTrends opportunity_score (0-100) to a verdict. HIGH trademark is
+    never launchable; a missing score can't be ranked, so it's WATCH (not invented)."""
+    if risk == "HIGH":
+        return "SKIP"
+    if not isinstance(score, (int, float)):
+        return "WATCH"
+    if score >= 75:
+        return "GO"
+    if score >= 60:
+        return "CONDITIONAL"
+    if score >= 45:
+        return "WATCH"
+    return "SKIP"
+
+
+def shortlist(mode="embroidery", limit=10):
+    """Rank the current cached Opportunities into an actionable top-N.
+
+    The composite IS the YTrends real `opportunity_score` (0-100) — we never invent a
+    number. Only launch-ready, product-fit rows for `mode`; trademark flagged; verdict
+    from the real score. Feeds Confirm & Assign. Returns a list of dicts (structured,
+    not markdown) so the web layer renders one-click actions."""
+    raw = mcp.scout_opportunities(limit=PULL)
+    picks, _ = _split_fit(raw, "tag", mode)
+    out = []
+    for r in picks:
+        tag = _clean(r.get("tag"))
+        if not tag:
+            continue
+        risk, _ = tm_check(tag.lower())
+        score = r.get("opportunity_score")
+        out.append({
+            "keyword": tag,
+            "product_type": r["_fit"]["product_type"] or "theme",
+            "score": score,
+            "momentum": r.get("momentum_score"),
+            "competition": _clean(r.get("competition_level")),
+            "conversion": r.get("avg_conversion_rate"),
+            "price": r.get("avg_price_usd"),
+            "tm": risk,
+            "verdict": _verdict_from(score, risk),
+        })
+    out.sort(key=lambda x: (x["score"] or 0), reverse=True)
+    return out[:limit]
+
+
 def warm_cache(fresh=False):
     """Pre-fetch the heavy paginated surfaces so the first web load of the day is
     instant. The raw pull is mode-independent, so one pass warms pod/embroidery/all.
