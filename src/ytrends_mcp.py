@@ -166,6 +166,15 @@ def _ensure_session():
                                              url=MCP_URL))
 
 
+def _reset_session():
+    """Drop the cached MCP session so the next call re-runs `initialize`. The MCP
+    session expires server-side after idle time; a long-running dashboard would
+    otherwise keep sending a dead session id and get 'Mcp-Session-Id required'."""
+    global _session_id, _tool_names
+    _session_id = None
+    _tool_names = None
+
+
 def call(tool, cache=True, response_format="concise", skip_bad=False,
          refresh=False, **arguments):
     """Call an MCP tool, return the parsed payload dict. Cached per day.
@@ -198,6 +207,18 @@ def call(tool, cache=True, response_format="concise", skip_bad=False,
     _ensure_session()
     resp = _post("tools/call", {"name": tool, "arguments": arguments})
     parsed = _parse(resp)
+
+    # The MCP session expires server-side; this process caches it, so a
+    # long-running dashboard eventually gets "Mcp-Session-Id ... required" (or an
+    # invalid-session error). Re-establish the session once and retry before
+    # giving up, so the workspace build recovers on its own instead of erroring.
+    if parsed and parsed.get("error") \
+            and "session" in json.dumps(parsed["error"]).lower():
+        _reset_session()
+        _ensure_session()
+        resp = _post("tools/call", {"name": tool, "arguments": arguments})
+        parsed = _parse(resp)
+
     result = (parsed or {}).get("result") or {}
 
     if parsed and parsed.get("error"):
