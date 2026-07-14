@@ -36,12 +36,39 @@ EVIDENCE = {"supplier_confirmed", "product_url_recorded",
             "trademark_verified_or_approved"}
 REVIEW = {"title_quality_pass", "tag_quality_pass", "manual_review_complete"}
 
+MIN_NET_PROFIT = 6.0     # dollars floor per sale
+MIN_NET_MARGIN = 30.0    # percent net margin hard floor (target is 35-40%)
+
+
+def _profit_ok(pm):
+    """True only if we clear BOTH the $ floor and the net-margin floor.
+
+    Margin is enforced only when the profit model reports it (the real
+    pipeline always does); callers that pass just {"net_profit": N} still
+    work off the dollar floor."""
+    if not pm:
+        return False
+    if (pm.get("net_profit") or 0) < MIN_NET_PROFIT:
+        return False
+    margin = pm.get("profit_margin_pct")
+    if margin is not None and margin < MIN_NET_MARGIN:
+        return False
+    return True
+
+
+def _profit_reason(pm):
+    pm = pm or {}
+    return (f"net=${pm.get('net_profit', '?')}, "
+            f"margin={pm.get('profit_margin_pct', '?')}% "
+            f"(need >=${MIN_NET_PROFIT:.0f} and >={MIN_NET_MARGIN:.0f}%)")
+
 
 def publish_gate(c):
     """c: dict candidate. Returns structured gate result."""
     sup = c.get("supplier_record") or {}
     material = sup.get("material", "")
-    title_ok, title_issues = validate_title(c.get("title", ""), material)
+    title_ok, title_issues = validate_title(c.get("title", ""), material,
+                                            c.get("primary_keyword", ""))
     tags_ok, tag_issues = validate_tags(c.get("tags", []), material)
     tm_states = c.get("tm_states") or []
     desc = c.get("description", "")
@@ -108,9 +135,8 @@ def publish_gate(c):
              "flagged rows exist in cluster - researcher must clear them"
              if c.get("cluster_has_flagged") else "clean"),
         "profitability_verified":
-            (bool(c.get("profit_model"))
-             and (c["profit_model"].get("net_profit") or 0) >= 6,
-             f"net=${(c.get('profit_model') or {}).get('net_profit', '?')}"),
+            (_profit_ok(c.get("profit_model")),
+             _profit_reason(c.get("profit_model"))),
         "title_quality_pass": (title_ok, "; ".join(title_issues) or "clean"),
         "tag_quality_pass": (tags_ok, "; ".join(tag_issues) or "clean"),
         "no_placeholders":

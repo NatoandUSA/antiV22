@@ -292,7 +292,13 @@ def harvest(append=True, cap_pod=140, cap_emb=90, log=lambda s: None):
     chosen = emb + pod
 
     wrote_data = 0
-    if append:
+    # Never overwrite the report fuel with an EMPTY pull. A total source
+    # outage yields a zero-tag store; writing it would blank keyword_data.csv
+    # (header only) until the next good pull. Keep the previous file instead.
+    if append and not store:
+        log("  [!] pull returned ZERO tags (source outage?) -- KEEPING the "
+            "existing keyword_data.csv, not overwriting it with an empty file")
+    elif append:
         # Fuel the reports: overwrite keyword_data.csv from the full live pull.
         # (keywords.csv, the small curated Google-Trends seed list, is left
         #  alone; the permanent archive of discoveries is the DB below.)

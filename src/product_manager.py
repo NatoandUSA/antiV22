@@ -17,7 +17,8 @@ from src.discover import (SERVICE_TERMS, looks_like_shop_name, demand_signal,
                           matches_mode)
 from src.idea_report import (CLUSTER_MAP, cluster_of, intents_of, season_of,
                              TRANSACTION_FEE, PAYMENT_FEE_PCT,
-                             PAYMENT_FEE_FLAT, LISTING_FEE, ADS_RESERVE)
+                             PAYMENT_FEE_FLAT, LISTING_FEE, ADS_RESERVE,
+                             CURRENCY_RATE)
 from src.trademark import check as tm_check
 from src.ytrends_client import top_keywords, trending, hidden_gems, top_listings
 from src.supplier_pull import (classify_production_type, best_record_for,
@@ -32,7 +33,7 @@ GENERIC_GIFT = {"gift for her", "gift for him", "birthday gift", "wedding gift",
                 "gift for dad", "bridesmaid gift", "baby shower gift"}
 GENERIC_MAP = "personalized pouch, makeup bag, travel organizer, tote bag"
 
-FEE_PCT = TRANSACTION_FEE + PAYMENT_FEE_PCT + ADS_RESERVE
+FEE_PCT = TRANSACTION_FEE + PAYMENT_FEE_PCT + ADS_RESERVE + CURRENCY_RATE
 FEE_FLAT = PAYMENT_FEE_FLAT + LISTING_FEE
 
 TM_STATES = ("TM_VERIFIED_CLEAR", "TM_HEURISTIC_OK_NOT_VERIFIED",
@@ -211,7 +212,8 @@ def profit_model(price, sup):
     tx = round(price * TRANSACTION_FEE, 2)
     pay = round(price * PAYMENT_FEE_PCT + PAYMENT_FEE_FLAT, 2)
     ads = round(price * ADS_RESERVE, 2)
-    total = round(base + ship + LISTING_FEE + tx + pay + ads, 2)
+    cur = round(price * CURRENCY_RATE, 2)   # USD->VND payout conversion
+    total = round(base + ship + LISTING_FEE + tx + pay + ads + cur, 2)
     net = round(price - total, 2)
     fixed = base + ship + FEE_FLAT
     return {
@@ -219,6 +221,7 @@ def profit_model(price, sup):
         "base_cost": base, "shipping_cost": ship,
         "etsy_listing_fee": LISTING_FEE, "etsy_transaction_fee": tx,
         "payment_processing_fee": pay, "ad_allowance": ads,
+        "currency_conversion_fee": cur,
         "offsite_ad_risk": "N/A (under $10k/yr revenue; 15% if mandatory tier)",
         "total_cost": total, "net_profit": net,
         "profit_margin_pct": round(net / price * 100, 1) if price else 0,
@@ -565,6 +568,7 @@ def listing_package(name, sup, audit_status, primary_data_check=False,
     from src.publish_gate import publish_gate
     gate_result = publish_gate({
         "title": p["title"], "tags": p["tags"], "description": desc,
+        "primary_keyword": p.get("primary", ""),
         "supplier_status": sup_status, "supplier_record": sup_rec,
         "tm_states": list(tm_states),
         "manager_tm_approval": MANAGER_TM_APPROVAL,

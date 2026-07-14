@@ -10,8 +10,9 @@ best cluster's keywords against independent sources:
    The system NEVER invents a social signal.
 
 Verdicts per keyword:
-  CONFIRMED   - Etsy demand + at least one independent source agrees
-  MIXED       - independent sources disagree
+  CONFIRMED   - Etsy demand + at least one independent source is RISING
+  MIXED       - independent sources disagree (both rising and declining)
+  STABLE      - only steady signals: demand holds but isn't growing (not a green light)
   ETSY_ONLY   - no independent confirmation yet (not bad - just unverified)
   DECLINING   - independent sources point down: extra caution
 """
@@ -78,14 +79,16 @@ def cross_check(keywords):
         signals = ([g_dir] if g_dir else []) + s_dirs
         if not signals:
             verdict = "ETSY_ONLY"
-        elif "DECLINING" in signals and "RISING" in signals:
+        elif "RISING" in signals and "DECLINING" in signals:
             verdict = "MIXED"
-        elif all(s == "DECLINING" for s in signals):
-            verdict = "DECLINING"
         elif "RISING" in signals:
             verdict = "CONFIRMED"
+        elif "DECLINING" in signals:
+            # any independent down-signal (no rising) = caution, never green
+            verdict = "DECLINING"
         else:
-            verdict = "CONFIRMED" if signals else "ETSY_ONLY"
+            # only STABLE signals: steady, not growing -- NOT a "confirmed" green
+            verdict = "STABLE"
         evidence = []
         if g:
             evidence.append(f"Google Trends {g['momentum_pct']:+.0f}% "

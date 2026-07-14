@@ -19,11 +19,13 @@ TRANSACTION_RATE = 0.065      # 6.5% of item + shipping
 PAYMENT_RATE = 0.03           # ~3% ...
 PAYMENT_FIXED = 0.25          # ... + $0.25 (US)
 OFFSITE_ADS_RATE = 0.15       # only when the sale came from an offsite ad
+CURRENCY_RATE = 0.025         # ~2.5% USD->VND payout conversion (VN shops).
+                              #   Set to 0.0 if your Etsy payout account is USD.
 
 COLS = ["record_id", "date", "keyword", "product_mode", "supplier",
         "sale_price", "product_cost", "shipping_cost", "listing_fee",
-        "transaction_fee", "payment_fee", "offsite_ad_fee", "refund_or_issue",
-        "net_profit", "margin", "notes"]
+        "transaction_fee", "payment_fee", "offsite_ad_fee", "currency_fee",
+        "refund_or_issue", "net_profit", "margin", "notes"]
 
 
 def _f(v):
@@ -41,16 +43,20 @@ def compute(price, product_cost, shipping_cost=0.0, offsite_ad=False,
         # refund: you lose the product+ship cost and keep no revenue.
         net = -(pc + sc)
         return {"listing_fee": LISTING_FEE, "transaction_fee": 0.0,
-                "payment_fee": 0.0, "offsite_ad_fee": 0.0,
+                "payment_fee": 0.0, "offsite_ad_fee": 0.0, "currency_fee": 0.0,
                 "net_profit": round(net, 2),
                 "margin": round(net / price, 4) if price else 0.0}
     txn = TRANSACTION_RATE * (price + sc)
     pay = PAYMENT_RATE * price + PAYMENT_FIXED
-    offsite = OFFSITE_ADS_RATE * price if offsite_ad else 0.0
-    net = price - pc - sc - LISTING_FEE - txn - pay - offsite
+    # Etsy charges offsite ads on the full order (item + shipping), not item only.
+    offsite = OFFSITE_ADS_RATE * (price + sc) if offsite_ad else 0.0
+    # Currency conversion applies to the whole payout (item + shipping).
+    currency = CURRENCY_RATE * (price + sc)
+    net = price - pc - sc - LISTING_FEE - txn - pay - offsite - currency
     return {"listing_fee": round(LISTING_FEE, 2),
             "transaction_fee": round(txn, 2), "payment_fee": round(pay, 2),
-            "offsite_ad_fee": round(offsite, 2), "net_profit": round(net, 2),
+            "offsite_ad_fee": round(offsite, 2),
+            "currency_fee": round(currency, 2), "net_profit": round(net, 2),
             "margin": round(net / price, 4) if price else 0.0}
 
 

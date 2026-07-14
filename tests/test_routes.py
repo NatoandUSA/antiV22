@@ -27,6 +27,20 @@ def client():
     c = app.test_client()
     with c.session_transaction() as s:
         s["uid"] = u["user_id"]
+        s["_csrf"] = "t"          # seed the CSRF token like a browser's first GET
+    # A real browser submits the injected CSRF token on every POST; mirror that
+    # so the blanket CSRF guard doesn't 403 legitimate test POSTs.
+    _orig_post = c.post
+
+    def _post(*a, **k):
+        d = k.get("data")
+        if d is None:
+            k["data"] = {"_csrf": "t"}
+        elif isinstance(d, dict) and "_csrf" not in d:
+            d["_csrf"] = "t"
+        return _orig_post(*a, **k)
+
+    c.post = _post
     return c
 
 

@@ -6,9 +6,9 @@ from src.trademark import check as tm
 # ------------------------------------------------------------- profit ----
 def test_profit_compute_positive():
     f = profit.compute(30, 8, 0)
-    # 30 - 8 - 0.20 - 6.5%*30 - (3%*30+0.25) = 30-8-0.20-1.95-1.15 = 18.70
-    assert f["net_profit"] == 18.70
-    assert 0.6 < f["margin"] < 0.65
+    # 30 - 8 - 0.20 - 6.5%*30 - (3%*30+0.25) - 2.5%*30 (currency) = 17.95
+    assert f["net_profit"] == 17.95
+    assert 0.58 < f["margin"] < 0.61
 
 
 def test_profit_refund_is_a_loss():

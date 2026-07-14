@@ -25,12 +25,18 @@ GENERIC_TAGS = {"gift", "gifts", "cute", "trendy", "new", "best seller",
 STOP = {"a", "an", "the", "for", "with", "and", "of", "to", "in", "on"}
 
 
-def validate_title(title, confirmed_material=""):
+def validate_title(title, confirmed_material="", primary_keyword=""):
     """Return (passed, issues). Buyer-friendly title rules."""
     issues = []
     words = [w.strip(",").lower() for w in title.split() if w.strip(",")]
     if len(title) > 140:
         issues.append(f"over Etsy's 140 chars ({len(title)})")
+    # Relevancy is Etsy's #1 signal and mobile shows only ~40 chars, so the
+    # main keyword must appear in the first 40 characters of the title.
+    pk = (primary_keyword or "").strip().lower()
+    if pk and pk not in title[:40].lower():
+        issues.append(f"main keyword '{primary_keyword}' not in first 40 "
+                      "chars (mobile cuts off ~40; Etsy weights the front)")
     if len(words) > 15:
         issues.append(f"too long for buyers ({len(words)} words; keep <=15)")
     if title.count(",") > 3:

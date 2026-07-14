@@ -78,6 +78,7 @@ PAYMENT_FEE_PCT = 0.03
 PAYMENT_FEE_FLAT = 0.25
 LISTING_FEE = 0.20
 ADS_RESERVE = 0.10  # save 10% of price for Etsy Ads / offsite ads exposure
+CURRENCY_RATE = 0.025  # ~2.5% USD->VND payout conversion (VN shops); 0.0 if USD payout
 
 
 def load_costs(path="costs.csv", mode=None):

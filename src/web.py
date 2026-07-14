@@ -125,6 +125,37 @@ def build_app(password, secret):
             "frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
         return resp
 
+    @app.before_request
+    def _csrf_guard():
+        # Blanket CSRF backstop: every POST must carry the per-session token.
+        # Login is exempt (its token is seeded by the GET that renders the form,
+        # but we never want the very first POST to /login to hard-fail on it).
+        # Per-route _check_csrf() calls remain as a harmless double-check.
+        if request.method == "POST" and request.endpoint not in ("login",):
+            if request.form.get("_csrf") != session.get("_csrf"):
+                abort(403)
+
+    @app.after_request
+    def _inject_csrf(resp):
+        # Universal "tokenize every form": inject the per-session CSRF token into
+        # every method="post" form in an HTML response, so no hand-built form can
+        # ship unprotected and the guard above can stay strict. Also seeds
+        # session["_csrf"] on the GET that first renders a form. Never fatal.
+        try:
+            if ("text/html" in resp.headers.get("Content-Type", "")
+                    and resp.direct_passthrough is False):
+                import re as _re
+                field = f'<input type="hidden" name="_csrf" value="{_csrf()}">'
+                body = resp.get_data(as_text=True)
+                new = _re.sub(r'(<form\b[^>]*\bmethod=["\']post["\'][^>]*>)',
+                              lambda m: m.group(1) + field, body,
+                              flags=_re.IGNORECASE)
+                if new != body:
+                    resp.set_data(new)
+        except Exception:  # noqa: BLE001 - CSRF injection must never break a page
+            pass
+        return resp
+
     auth.appdb.init_db()
 
     def _ip():
@@ -1086,8 +1117,9 @@ def build_app(password, secret):
             items += ('<div class="saveditem"><div class="sihead">'
                       f'<b>{_h.escape((r.get("title") or r.get("listing_url") or "")[:58])}</b> '
                       f'<span class="pill apill">{_h.escape(a7)}</span> '
-                      f'<a class="cbtn" href="/feedback/del/{r["id"]}">delete</a></div>'
-                      f'<div class="note">{_h.escape(r.get("product_mode",""))} · '
+                      + _post_btn(f'/feedback/del/{r["id"]}', "delete",
+                                  confirm="Delete this feedback entry?") + '</div>'
+                      + f'<div class="note">{_h.escape(r.get("product_mode",""))} · '
                       f'{v} views · {r.get("favorites",0)} favs · '
                       f'{r.get("carts",0)} carts · {r.get("orders",0)} orders · '
                       f'logged {r.get("added_at","")}</div>'
@@ -1115,9 +1147,10 @@ def build_app(password, secret):
              product_mode=d.get("product_mode"))
         return redirect(url_for("feedback"))
 
-    @app.route("/feedback/del/<int:fid>")
+    @app.route("/feedback/del/<int:fid>", methods=["POST"])
     @login_required
     def feedback_del(fid):
+        _check_csrf()
         from src import feedback as fb
         fb.delete(fid)
         return redirect(url_for("feedback"))
@@ -2555,12 +2588,20 @@ def build_app(password, secret):
     @require_perm("users.manage")
     def admin_users_role():
         target = request.form.get("email")
-        # only OWNER may change another OWNER
+        new_role = request.form.get("role")
+        actor = current_user()
         tu = auth.get_user_by_email(target or "")
-        if tu and tu["role"] == "OWNER" and current_user()["role"] != "OWNER":
+        # nobody may change their own role (no self-escalation)
+        if (target or "").strip().lower() == (actor["email"] or "").strip().lower():
+            return redirect(url_for("admin_users"))
+        # only OWNER may change an existing OWNER
+        if tu and tu["role"] == "OWNER" and actor["role"] != "OWNER":
+            return redirect(url_for("admin_users"))
+        # only an OWNER may GRANT the OWNER role (blocks ADMIN->OWNER escalation)
+        if new_role == "OWNER" and actor["role"] != "OWNER":
             return redirect(url_for("admin_users"))
         try:
-            auth.set_role(target, request.form.get("role"))
+            auth.set_role(target, new_role)
         except Exception:  # noqa: BLE001
             pass
         return redirect(url_for("admin_users"))

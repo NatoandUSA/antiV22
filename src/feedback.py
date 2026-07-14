@@ -68,8 +68,17 @@ def recommend(m, day=7):
     carts = _i(m.get("carts"))
     orders = _i(m.get("orders"))
     weeks = _i(m.get("weeks_live"))
-    price, cost = _f(m.get("price")), _f(m.get("product_cost")) + _f(m.get("shipping_cost"))
-    margin = (price - cost) / price if price else 0.0
+    price = _f(m.get("price"))
+    # True NET margin after ALL Etsy fees (was gross margin, which overstated
+    # profit and let sub-target listings pass as healthy).
+    try:
+        from src.profit import compute as _profit_compute
+        margin = (_profit_compute(price, _f(m.get("product_cost")),
+                                  _f(m.get("shipping_cost")))["margin"]
+                  if price else 0.0)
+    except Exception:  # noqa: BLE001 - never let profit import break the recommender
+        cost = _f(m.get("product_cost")) + _f(m.get("shipping_cost"))
+        margin = (price - cost) / price if price else 0.0
 
     # nothing logged yet -> can't recommend (a logged 0 counts as data).
     metric_keys = ("day_1_impressions", "impressions", "day_3_views",

@@ -891,7 +891,7 @@ def run_selftest():
           and "track_snapshots" in _ops_src)
     _pfc = _pf.compute(30, 8, 0)
     check("Profit Center: Etsy fee model + supplier learning + route",
-          _pfc["net_profit"] == 18.70 and callable(_pf.add)
+          _pfc["net_profit"] == 17.95 and callable(_pf.add)
           and "/profit" in _web_src and 'href="/profit"' in _web_src)
     check("Launchpad board: columns + self-populating from saved runs",
           isinstance(_lp.COLUMNS, list) and len(_lp.COLUMNS) >= 8
