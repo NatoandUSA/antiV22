@@ -2718,8 +2718,20 @@ def run_server(args):
         print("Fix: py -m pip install flask markdown")
         sys.exit(1)
 
-    secret = (os.getenv("APP_SECRET_KEY") or os.getenv("WEB_SECRET")
-              or os.urandom(24).hex())
+    secret = os.getenv("APP_SECRET_KEY") or os.getenv("WEB_SECRET")
+    if not secret:
+        # Pin a STABLE key so sessions + CSRF tokens survive a restart. A random
+        # per-boot key logs the whole team out and invalidates every CSRF token
+        # on every deploy. Persist one under data/ (gitignored) if no env key.
+        keyfile = Path("data/.secret_key")
+        try:
+            secret = keyfile.read_text(encoding="utf-8").strip() if keyfile.exists() else ""
+            if not secret:
+                secret = os.urandom(24).hex()
+                keyfile.parent.mkdir(parents=True, exist_ok=True)
+                keyfile.write_text(secret, encoding="utf-8")
+        except Exception:  # noqa: BLE001 - fall back to an ephemeral key
+            secret = os.urandom(24).hex()
     # Per-user login now. Seed the first OWNER from .env on first run so nobody
     # is locked out; after that, manage users with `py main.py auth ...`.
     from src import auth
