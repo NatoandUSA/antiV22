@@ -2282,12 +2282,15 @@ def build_app(password, secret):
                 s["od"] += 1
         whos = ""
         if staff:
+            def _staff_row(nm, s):
+                od = (f'<b style="color:var(--stop)">{s["od"]}</b>'
+                      if s["od"] else "0")
+                return (f'<tr><td><b>{_h_esc(nm)}</b></td>'
+                        f'<td>{s["todo"]}</td><td>{s["prog"]}</td>'
+                        f'<td>{od}</td><td>{s["rev"]}</td></tr>')
             body_rows = "".join(
-                f'<tr><td><b>{_h_esc(nm)}</b></td><td>{s["todo"]}</td>'
-                f'<td>{s["prog"]}</td>'
-                f'<td>{f"<b style=color:var(--stop)>{s["od"]}</b>" if s["od"] else "0"}</td>'
-                f'<td>{s["rev"]}</td></tr>'
-                for nm, s in sorted(staff.items(), key=lambda kv: (kv[0] == "Unassigned", -kv[1]["n"])))
+                _staff_row(nm, s) for nm, s in
+                sorted(staff.items(), key=lambda kv: (kv[0] == "Unassigned", -kv[1]["n"])))
             whos = ('<h3 class="whosh">👥 Who\'s on what</h3>'
                     '<table class="whos"><thead><tr><th>Staff</th><th>To do</th>'
                     '<th>In progress</th><th>Overdue</th><th>Awaiting review</th>'
