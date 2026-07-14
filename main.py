@@ -1,7 +1,6 @@
 """Etsy niche research agent.
 
 Commands:
-  py main.py                     -> validate keywords.csv via Google Trends
   py main.py discover            -> pull live YTrends data and rank new ideas
   py main.py discover pod        -> print-on-demand keywords only
   py main.py discover embroidery -> embroidery keywords only (also: ideas pod / ideas embroidery)
@@ -35,57 +34,7 @@ Commands:
   py main.py printify "pouch"    -> find Printify products + real US shipping
   py main.py printify cost 1090  -> shipping costs per print provider
 """
-import csv
 import sys
-
-
-def load_keywords(path="keywords.csv"):
-    rows = []
-    with open(path, newline="", encoding="utf-8") as f:
-        for row in csv.DictReader(f):
-            kw = (row.get("keyword") or "").strip()
-            comp_raw = (row.get("competition") or "").strip()
-            comp = int(comp_raw) if comp_raw.isdigit() else None
-            if kw:
-                rows.append((kw, comp))
-    return rows
-
-
-def research():
-    from src.gtrends import fetch_momentum
-    from src.scoring import opportunity_score
-    from src.db import save_snapshot
-    from src.report import write_report
-
-    kws = load_keywords()
-    print(f"Researching {len(kws)} keywords via Google Trends (takes a few minutes)...")
-    stats = fetch_momentum([k for k, _ in kws])
-
-    results = []
-    for kw, comp in kws:
-        s = stats.get(kw)
-        if not s:
-            print(f"  No trend data for: {kw}")
-            continue
-        results.append({
-            "keyword": kw,
-            "competition": comp,
-            "opportunity": opportunity_score(s["avg_interest"], s["momentum_pct"], comp),
-            **s,
-        })
-
-    results.sort(key=lambda r: r["opportunity"], reverse=True)
-    save_snapshot([
-        (r["keyword"], r["avg_interest"], r["momentum_pct"], r["competition"], r["opportunity"])
-        for r in results
-    ])
-    path = write_report(results)
-
-    print(f"\nDone. Full report: {path}\n")
-    print("Top opportunities:")
-    for i, r in enumerate(results[:10], 1):
-        print(f"{i:2}. {r['keyword']:<32} "
-              f"opportunity={r['opportunity']:<8} momentum={r['momentum_pct']}%")
 
 
 def expand(tag):
@@ -705,14 +654,8 @@ def main(argv):
         pass
 
     if len(argv) <= 1:
-        # Bare command: Google Trends validation of keywords.csv.
-        try:
-            research()
-        except ImportError as exc:
-            print(f"Google Trends check unavailable: {exc}")
-            print("Fix: py -m pip install pytrends")
-            print("Or use: python main.py listreports / allreports / manager")
-            sys.exit(1)
+        # Bare command: show the list of available commands.
+        print(__doc__)
         return
 
     cmd = argv[1]

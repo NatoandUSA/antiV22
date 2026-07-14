@@ -391,8 +391,8 @@ def run_selftest():
               for d in ("requests", "python-dotenv")))
     check("live-API commands have hang guard in main",
           "LIVE_API_CMDS" in main_src and "probe" in main_src)
-    check("bare command guards missing pytrends",
-          "pip install pytrends" in main_src)
+    check("bare command shows the command list",
+          "print(__doc__)" in main_src)
     check("user guide exists",
           Path("USER_GUIDE.md").exists())
     pass
