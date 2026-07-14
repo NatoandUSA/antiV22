@@ -49,9 +49,9 @@
 | 2 | Researcher | **Import** phát hiện YTuong (dán URL hoặc gõ keyword) | 📥 Import Center | Candidate (giữ **product mode**) |
 | 3 | Researcher/Manager | Phân loại product-fit + **giao việc** (hạn mặc định 24h) | 🧭 Research Queue | Task nghiên cứu (có người phụ trách) |
 | 4 | Seller | **Build Workspace** (mode **giữ nguyên**) → đọc Verdict | 🛠️ Workspace | Quyết định GO / CHECK / NO |
-| 5 | Seller | Kiểm tra NCC (URL, giá gốc, ship, chất liệu, thời gian) | Workspace → Supplier | Trạng thái NCC + margin |
-| 6 | Researcher | Soi + audit đối thủ; xem bảng **Can we win** | 🕵️ Spy / Workspace | Khe hở để thắng |
-| 7 | Designer | Ảnh đầu (first image) + design prompt | Workspace → Design | Task thiết kế |
+| 5 | Seller | Kiểm tra NCC — bấm **🏭 Open Supplier panel** → **Match** (gõ sản phẩm), xác nhận URL + giá gốc/ship. **Không cần terminal** | Workspace → Supplier panel | Trạng thái NCC + margin (đã trừ phí + đổi tiền) |
+| 6 | Researcher | Soi đối thủ; đọc **🎯 Biggest gaps to exploit** (đo thật từ đối thủ) + **Trend phase** (RISING/PEAKED) | 🕵️ Spy / Workspace | Khe hở lớn nhất để đánh vào |
+| 7 | Designer | Kiểm **Producibility** (thêu được không) → ảnh đầu + design prompt | Workspace → Design | Task thiết kế (mẫu thêu-sạch) |
 | 8 | Seller | Dựng nháp listing: title + 13 tag + mô tả (**tiếng Anh**) | Workspace → Listing | Nháp listing |
 | 9 | Manager | Duyệt **Publish Gate** (đọc báo cáo nhân viên) | 🔍 Review Queue | Duyệt / Cần sửa / Từ chối |
 | 10 | Seller | Đăng **THỦ CÔNG** trên Etsy (chỉ khi được duyệt) | Etsy (ngoài công cụ) | Listing lên sàn |

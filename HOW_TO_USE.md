@@ -123,7 +123,7 @@ Bạn thấy trên YTuong listing **"monogram tote bag"** bán chạy, muốn l�
 
 | Khu vực | Dùng để | Nhập gì | Nhận lại gì |
 |---|---|---|---|
-| ✅ **Confirm & Assign** | **Bắt đầu ở đây** — xác nhận nhanh 1 niche rồi giao việc | Dán/gõ 1 keyword (+ tuỳ chọn cross-check) | Verdict **GO / CHECK / NO** + nút giao nhân viên |
+| ✅ **Confirm & Assign** | **Bắt đầu ở đây** — xác nhận nhanh 1 niche rồi giao việc | Dán/gõ 1 keyword (+ tuỳ chọn cross-check **Google · Pinterest · Reddit · X**) | Verdict **GO / CHECK / NO** + nút giao nhân viên |
 | ⚡ **Command Center** | 1 từ khóa → cả bộ hồ sơ | Chọn **Product mode** + gõ từ khóa | Verdict, 8 điểm, listing, design, kế hoạch |
 | 📥 **Import Center** | Import phát hiện YTuong/HeyEtsy/Etsy | Dán URL hoặc gõ keyword (+ mode) | Candidate vào Research Queue (**giữ mode**); bảng *Recently imported* có **cột Assigned** (ai đang phụ trách) |
 | 🧭 **Research Queue** | Đường ống ý tưởng → duyệt đăng | Bấm **Build workspace** / giao task | NEW_IDEA → NCC → audit → design → nháp → duyệt → đăng; **mode giữ nguyên** |
@@ -133,7 +133,7 @@ Bạn thấy trên YTuong listing **"monogram tote bag"** bán chạy, muốn l�
 | 📅 **Seasonal calendar** | Lịch mùa vụ | Bấm | Ngày lễ sắp tới + **hạn chót launch** |
 | 📝 **Listing Analyzer** | Chấm điểm listing | Dán title+tag+mô tả | Điểm SEO/Trust/Image + cổng duyệt |
 | 🏪 **Saved shops / 📌 Saved listings** | Thư viện tình báo | Bấm **Auto-pull** | Shop mới bán chạy · listing trẻ đang thắng |
-| 🏭 **Suppliers** | Thư viện nhà cung cấp | Xem/Upload CSV | Bảng giá POD/Embroidery/ShineOn |
+| 🏭 **Supplier panel** (MỚI) | Tìm + xác nhận NCC — **không cần terminal nữa** | Gõ tên sản phẩm → **Match**; hoặc Upload CSV / Sync catalog | Danh sách NCC khớp (điểm fit, giá gốc, link, trạng thái). Từ Workspace bấm **"🏭 Open Supplier panel"** là tới thẳng |
 | 💰 **Profit Center** | Lời lỗ thật | Nhập giá bán, giá vốn, ship | P&L đã trừ phí Etsy, theo NCC |
 | 🚀 **Launchpad** | Bảng theo dõi launch | Tự động | Ý tưởng → duyệt → Day-7 → scale/kill |
 | 📊 **Market & keyword tracker** | Xu hướng theo thời gian | Thêm từ khóa theo dõi | Đang lên / xuống / ổn định |
@@ -181,6 +181,18 @@ còn lại 1 cú bấm — nhanh, sắc, tập trung vào **có nên làm không
 
 **Bảng "Can we win" (đã gộp):** trước có 2 bảng trùng nhau; giờ **gộp 1 bảng**
 `Lợi thế | Điểm | Cách mình thắng` + 1 dòng **"Our edge in one line"** tóm tắt.
+
+### 🆕 3 công cụ quyết định mới trong Workspace
+
+| Công cụ | Ở đâu | Nói gì | Dùng sao |
+|---|---|---|---|
+| 🎯 **Biggest gaps to exploit** (đo thật từ đối thủ) | Mục **🏆 Can we win** | KHÔNG còn điểm chung chung — công cụ **đo từ listing đối thủ thật**: bao nhiêu % đối thủ **không personalization**, **title cụt/rộng**, **giống clip-art**, **giá thấp còn chỗ premium**, niche **chưa bị khóa**… rồi **xếp hạng khe hở lớn nhất** kèm bằng chứng | Đánh vào khe hở #1 (điểm cao nhất) — đó là chỗ dễ thắng nhất của **riêng** ngách này |
+| 🧵 **Producibility (thêu được không)** | Mục **🎨 Design** | Chấm 0–100 xem mẫu **có thêu sạch được không** (cờ đỏ: gradient, ảnh thật/photoreal, màu nước, nét mảnh, chữ nhỏ). **STITCH_SAFE / NEEDS_SIMPLIFYING / NOT_STITCH_SAFE** | Nếu **NOT_STITCH_SAFE** → đơn giản hóa mẫu **hoặc chuyển POD** trước khi giao designer. (POD in được gần như mọi thứ) |
+| 📈 **Trend phase (đang lên hay đã đỉnh)** | Mục **🔑 Market** | Phân biệt **RISING** (còn tăng — vào sớm) với **PEAKED/PEAKING** (đã đỉnh/đang chững — cửa sổ đang đóng) | RISING → làm ngay; PEAKED → cân nhắc bỏ hoặc chỉ test nhỏ |
+
+> 💰 **Số lời giờ chuẩn hơn:** mọi phép tính lợi nhuận đã **trừ thêm ~2.5% phí đổi tiền USD→VND**
+> (shop trả về VND) và cổng đăng **bắt buộc biên lời ròng ≥ 30%** (mục tiêu 35–40%). Nên nếu
+> "Profit target met" báo đỏ → **nâng giá / đổi NCC rẻ hơn / thêm personalization** để đạt biên.
 
 ---
 
@@ -234,6 +246,9 @@ làm thắng được không* — hai câu hỏi khác nhau, cần tách bạch 
 | **Cluster** (Cụm) | Gom nhiều từ khóa liên quan thành **1 ý tưởng** | VD "summer/travel/bridesmaid pouch" → cụm **Pouch**. Làm 1 listing mạnh phủ cả cụm |
 | **Design theme** (chủ đề, không có danh từ sản phẩm) | VD "funny raccoon" | 4 mức: **THEME_FIT_READY** (làm ngay) · **NEEDS_PRODUCT** (chọn sản phẩm trước) · **AMBIGUOUS** · **LOW_BUYER_INTENT** |
 | **Verdict** | Kết luận nên/không | GO = làm ngay · CÓ ĐIỀU KIỆN = test 2 listing · WATCH = chờ 2–4 tuần · SKIP/BLOCKED = bỏ |
+| **Producibility** (MỚI) | Điểm 0–100: mẫu **có thêu sạch được không** (chỉ chế độ thêu) | **NOT_STITCH_SAFE** → đơn giản hóa mẫu hoặc chuyển POD trước khi thiết kế |
+| **Trend phase** (MỚI) | **RISING** (còn lên) / **PEAKING** (chững) / **PEAKED** (đã đỉnh) | RISING = vào sớm; PEAKED = coi chừng đã muộn, chỉ test nhỏ |
+| **DATA DEGRADED** (MỚI) | Banner đỏ trang chủ khi dữ liệu YTrends **cũ >48h / mất** | Kiểm tra lại số trước khi quyết; chờ lần refresh sau (tự chạy ~6h/lần) |
 
 ---
 
