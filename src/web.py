@@ -1548,7 +1548,7 @@ def build_app(password, secret):
         if not p.is_file():
             abort(404)
         html = md.markdown(p.read_text(encoding="utf-8"),
-                           extensions=["tables", "fenced_code", "sane_lists"])
+                           extensions=["tables", "fenced_code", "sane_lists", "toc"])
         bar = _bar()
         return page("How to Use",
                     bar + f'<article class="md">{html}</article>' + COPY_JS)
@@ -1561,7 +1561,7 @@ def build_app(password, secret):
         if not p.is_file():
             abort(404)
         html = md.markdown(p.read_text(encoding="utf-8"),
-                           extensions=["tables", "fenced_code", "sane_lists"])
+                           extensions=["tables", "fenced_code", "sane_lists", "toc"])
         bar = _bar()
         return page("Team Workflow",
                     bar + f'<article class="md">{html}</article>' + COPY_JS)
