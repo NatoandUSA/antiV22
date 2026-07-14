@@ -428,23 +428,74 @@ CWW_FACTORS = [
 
 
 def can_we_win(kw, comp, listings, opts, mode, supplier_ok):
-    """0-100: if rivals have the same data + AI, why can WE still win? Potential
-    edge, scored from where the market is weak."""
+    """Per-niche win potential MEASURED from the actual top rivals, not constants.
+    A factor scores higher where the rivals are measurably weak = a real gap to
+    exploit. Returns (overall, scores, gaps): `gaps` is the ranked list of the
+    biggest MEASURED weaknesses (name, score, evidence), strongest first."""
+    ls = [r for r in (listings or []) if _g(r, "title")]
+    n = len(ls)
+    titles = [str(_g(r, "title") or "").lower() for r in ls]
+    prices = sorted(p for p in (_f(_g(r, "price")) for r in ls) if p > 0)
+    solds = sorted(_f(_g(r, "total_sold")) for r in ls)
     sat = (comp.get("saturation") or "").lower()
-    titles = " ".join(str(r.get("title") or "").lower() for r in listings)
-    rivals_personalize = any(w in titles for w in
-                             ("name", "custom", "personal", "monogram"))
-    base = {
-        "First image": 80, "Mockup": 78,
-        "Personalization": 60 if rivals_personalize else 86,
-        "SEO": 75, "Niche angle": 78 if (opts.get("niche") or opts.get("occasion")) else 64,
-        "Bundle": 72, "Price/value": 70, "Trust": 74, "Design originality": 80,
-        "Speed": 68, "Supplier": 80 if supplier_ok else 55, "Product-line": 76,
-    }
-    damp = {"high": -12, "medium": -4, "low": 4}.get(sat, 0)
-    scores = {k: _clamp(v + damp) for k, v in base.items()}
+    damp = {"high": -10, "medium": -3, "low": 5}.get(sat, 0)
+
+    def cnt(words):
+        return sum(1 for t in titles if any(w in t for w in words))
+
+    PERS = ("name", "custom", "personal", "monogram", "initial", "personalised",
+            "personalized")
+    CLIP = ("clipart", "clip art", "svg", "png", "sublimation", "digital",
+            "printable", "vector")
+
+    measured = {}   # name -> (score, evidence) -- only where we have real data
+    if n:
+        no_pers = n - cnt(PERS)
+        measured["Personalization"] = (
+            _clamp(42 + 56 * (no_pers / n)),
+            f"{no_pers}/{n} top rivals show no personalization in the title")
+        broad = sum(1 for t in titles if len(t.split()) <= 4)
+        measured["SEO"] = (
+            _clamp(40 + 52 * (broad / n)),
+            f"{broad}/{n} rivals use short/broad titles -- beat them with specific "
+            "long-tails")
+        clip = cnt(CLIP)
+        measured["Design originality"] = (
+            _clamp(48 + 48 * (clip / n)),
+            (f"{clip}/{n} rivals look like clip-art / digital prints -- win on "
+             "original stitched art" if clip else
+             "rivals aren't obvious clip-art -- still win on genuinely original art"))
+    if prices:
+        med = prices[len(prices) // 2]
+        headroom = 1.0 if med < 18 else 0.6 if med < 28 else 0.3
+        measured["Price/value"] = (
+            _clamp(45 + 45 * headroom),
+            f"rivals cluster at ~{_money(med)} median -- room to premium on "
+            "personalization + quality")
+    if solds:
+        med_sold = solds[len(solds) // 2]
+        beat = 1.0 if med_sold < 50 else 0.6 if med_sold < 300 else 0.25
+        ang = opts.get("niche") or opts.get("occasion")
+        measured["Niche angle"] = (
+            _clamp(44 + 46 * beat),
+            f"top rivals' median ~{_int(med_sold)} sold -- niche isn't locked up"
+            + (f"; sharpen a '{ang}' angle" if ang else ""))
+
+    # Execution levers we can't read from the index (our craft, not a measured
+    # rival gap) -- honest moderate defaults, dampened by saturation.
+    execution = {"First image": 78, "Mockup": 76, "Bundle": 70, "Trust": 74,
+                 "Speed": 70, "Product-line": 74,
+                 "Supplier": 82 if supplier_ok else 52}
+    scores = {k: v for k, (v, _ev) in measured.items()}
+    for k, v in execution.items():
+        scores[k] = _clamp(v + damp)
+    for name, _play in CWW_FACTORS:          # fill any factor missing for lack of data
+        scores.setdefault(name, _clamp(64 + damp))
+
     overall = _clamp(sum(scores.values()) / len(scores))
-    return overall, scores
+    gaps = sorted(((k, s, ev) for k, (s, ev) in measured.items()),
+                  key=lambda x: x[1], reverse=True)
+    return overall, scores, gaps
 
 
 def launch_readiness(supplier_ok, tags, risk, L, opts, confirms=None):
@@ -867,7 +918,8 @@ def _gather(kw, opts=None):
     confirms = {k: bool(opts.get("confirm_" + k)) for k in
                 ("supplier", "competitor_audit", "material", "image", "trademark")}
     supplier_ok = confirms["supplier"]   # supplier is confirmed only by the manager
-    cww_score, cww_scores = can_we_win(kw, comp, listings, opts, mode, supplier_ok)
+    cww_score, cww_scores, cww_gaps = can_we_win(kw, comp, listings, opts, mode,
+                                                 supplier_ok)
     try:
         from src import learning
         learn_notes, learn_delta = learning.learning_note(
@@ -900,7 +952,8 @@ def _gather(kw, opts=None):
         conv=conv, L=L, ready=ready, failed=failed, pod_prompt=pod_prompt,
         emb_prompt=emb_prompt, design_risks=design_risks, fc=fc,
         audit_html=audit_html, audit_status=audit_status, timeline=timeline,
-        cww_score=cww_score, cww_scores=cww_scores, lr_score=lr_score,
+        cww_score=cww_score, cww_scores=cww_scores, cww_gaps=cww_gaps,
+        lr_score=lr_score,
         lr_status=lr_status, lr_reasons=lr_reasons, fib_score=fib_score,
         fib_pattern=fib_pattern, fib_plan=fib_plan, offer_html=offer_html,
         offer_score=offer_score, offer_factors=offer_factors, supplier_ok=supplier_ok,
@@ -923,6 +976,7 @@ def build_workspace(kw, opts=None):
     fc, audit_html, audit_status = G["fc"], G["audit_html"], G["audit_status"]
     timeline = G["timeline"]
     cww_score, cww_scores = G["cww_score"], G["cww_scores"]
+    cww_gaps = G["cww_gaps"]
     lr_score, lr_status, lr_reasons = G["lr_score"], G["lr_status"], G["lr_reasons"]
     fib_score, fib_pattern, fib_plan = G["fib_score"], G["fib_pattern"], G["fib_plan"]
     offer_score = G["offer_score"]
@@ -1106,29 +1160,43 @@ def build_workspace(kw, opts=None):
         'page — use your browser\'s <b>Print → Save as PDF</b>. Never '
         'auto-published.</p>')
 
-    # Can We Win, First Image Battle, Offer Builder, Better Angles.
-    # ONE merged table (Advantage | Score | Our play) instead of two, plus a
-    # single-line edge summary in place of the old 10-bullet recap.
+    # Can We Win: ONE merged table (Advantage | Score | Our play), where the play
+    # is the MEASURED gap evidence for factors we could read from the rivals, and
+    # the generic play otherwise. Plus a ranked "biggest gaps to exploit" list.
+    _gap_play = {name: ev for name, _s, ev in cww_gaps}
     cww_rows = ["| Advantage | Score | Our play |", "|---|---|---|"]
     for _name, _play in CWW_FACTORS:
-        cww_rows.append(f"| {_name} | {cww_scores.get(_name, '-')} | {_esc(_play)} |")
+        _p = _gap_play.get(_name, _play)   # measured evidence beats the generic play
+        cww_rows.append(f"| {_name} | {cww_scores.get(_name, '-')} | {_esc(_p)} |")
     learn_html = ""
     if G.get("learn_notes"):
         learn_html = ('<div class="learnbox"><b>🔒 Our private sales data</b><ul>'
                       + "".join(f"<li>{_esc(n)}</li>" for n in G["learn_notes"])
                       + '</ul></div>')
-    _pers = opts.get("personalization") or "name / date / initials"
-    edge_html = (
-        '<div class="edge"><b>Our edge in one line:</b> better first image + real '
-        f'personalization ({_esc(_pers)}) + tighter long-tail SEO vs their broad '
-        f'"{_esc(kw)}" titles. Biggest rival weakness: generic art + a weak first '
-        'image.</div>')
+    # ranked, evidence-backed gaps measured from THIS niche's rivals
+    _nl = len(listings or [])
+    if cww_gaps:
+        _items = "".join(
+            f'<li><b>{_esc(name)}</b> ({int(sc)}/100) — {_esc(ev)}</li>'
+            for name, sc, ev in cww_gaps[:3])
+        gaps_html = (f'<h3>🎯 Biggest gaps to exploit (measured from {_nl} rivals)</h3>'
+                     f'<ul class="facts">{_items}</ul>')
+        _top, _ts, _tev = cww_gaps[0]
+        edge_html = (f'<div class="edge"><b>Our biggest measured edge:</b> '
+                     f'{_esc(_top)} — {_esc(_tev)}. Pair it with a strong first '
+                     'image + original stitched art.</div>')
+    else:
+        gaps_html = ('<p class="note">No competitor listings returned — scores use '
+                     'baseline defaults; re-run when rival data is available.</p>')
+        edge_html = ('<div class="edge"><b>Our edge:</b> better first image + real '
+                     'personalization + tighter long-tail SEO. (No rival data to '
+                     'measure specific gaps this run.)</div>')
     cww_html = (
         f'<div class="gate {"g-ok" if cww_score >= 70 else "g-no"}">Can We Win '
         f'score: {cww_score}/100 — '
         + ("yes, we can differentiate" if cww_score >= 70
            else "edge is thin — do not SELL NOW") + '</div>'
-        + learn_html + md_table(cww_rows) + edge_html)
+        + learn_html + md_table(cww_rows) + gaps_html + edge_html)
 
     fib_html = (
         f'<div class="gate {"g-ok" if fib_score >= 75 else "g-no"}">First-image '
