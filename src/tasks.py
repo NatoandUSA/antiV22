@@ -51,9 +51,12 @@ def _now():
 
 
 def default_due(hours=DEFAULT_DUE_HOURS):
-    """Default deadline for an auto-assigned task: local now + `hours`, in the
-    datetime-local format (YYYY-MM-DDTHH:MM) the calendar + picker use."""
-    return (datetime.now() + timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M")
+    """Default deadline for an auto-assigned task: ICT now + `hours`, in the
+    datetime-local format (YYYY-MM-DDTHH:MM) the calendar + picker use. Uses the
+    team's ICT clock (not the server's) so the shown due time matches the rest of
+    the dashboard, regardless of the VPS timezone."""
+    from src.timestamp import tz
+    return (datetime.now(tz()) + timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M")
 
 
 def create_task(title, assigned_to_user_id=None, assigned_by_user_id=None,

@@ -38,6 +38,25 @@ def run_selftest():
     check("report file created", report.exists())
     check("json file created", data_p.exists())
     check("tasks file created", rp("tasks", "tasks_selftest.md").exists())
+
+    # Version-safety net: flag grammar the VPS's older Python (<3.12) can't run.
+    # NOTE: ast.feature_version does NOT downgrade the 3.12 f-string tokenizer, so
+    # on a 3.12+ machine PEP 701 nested f-strings slip through HERE. The
+    # authoritative guard is `compileall` under the VPS's own Python in the deploy
+    # command (DEPLOY_VPS.md), which is what actually prevents a 502. This check
+    # still catches PEP 701 when selftest runs on the VPS, plus other version-only
+    # grammar (except*, PEP 695 type params) on any machine.
+    import ast as _ast
+    _bad = []
+    for _f in sorted(Path("src").glob("*.py")):
+        try:
+            _ast.parse(_f.read_text(encoding="utf-8"), filename=str(_f),
+                       feature_version=(3, 10))
+        except SyntaxError as _e:
+            _bad.append(f"{_f.name}: {_e}")
+    check("all src/*.py parse under Python 3.10 (deploy-safe)", not _bad)
+    for _b in _bad:
+        print("    3.10 SYNTAX ERROR:", _b)
     if data_p.exists():
         d = json.loads(data_p.read_text(encoding="utf-8"))
         check("QA_REPORT_READY true", d["qa_checks"]["result"] == "READY")

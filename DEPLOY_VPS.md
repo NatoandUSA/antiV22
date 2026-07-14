@@ -181,13 +181,19 @@ reports (no command buttons), so nothing on the server can try to fetch.
   never prompts. Combined with the SSH key, updating from your laptop is fully
   passwordless:
   ```powershell
-  ssh -p 55317 etsy@51.79.200.65 "cd ~/etsy-agent && git pull && sudo systemctl restart etsy-web"
+  ssh -p 55317 etsy@51.79.200.65 "cd ~/etsy-agent && git pull && .venv/bin/python -m compileall -q src && sudo systemctl restart etsy-web && sleep 2 && systemctl is-active etsy-web"
   ```
   (Run that from your **laptop**, not from the VPS itself — VPS→VPS SSH won't use
   the key.)
 
+  > 🛡️ **The `compileall` step is a safety gate:** it compiles the new code under
+  > the VPS's own Python **before** the restart. If anything won't parse (e.g. a
+  > newer-Python-only syntax the VPS doesn't support), the `&&` chain stops and the
+  > service is **not** restarted — so the live site stays up on the old code instead
+  > of 502'ing. Fix the syntax, push, and re-run.
+
 ## Running it day to day
-- **Update the tool:** `cd ~/etsy-agent && git pull && .venv/bin/python -m pip install -r requirements.txt && sudo systemctl restart etsy-web`
+- **Update the tool:** `cd ~/etsy-agent && git pull && .venv/bin/python -m pip install -r requirements.txt && .venv/bin/python -m compileall -q src && sudo systemctl restart etsy-web`
 - **See logs:** `journalctl -u etsy-web -f` (app) · `journalctl -u etsy-tunnel -f` (tunnel)
 - **Restart / stop:** `sudo systemctl restart etsy-web` · `sudo systemctl stop etsy-tunnel`
 - **Rotate the team password:** edit `.env`, then `sudo systemctl restart etsy-web`.
