@@ -47,6 +47,11 @@ def _esc(t):
     return _html.escape(str(t or ""))
 
 
+def _urlquote(s):
+    from urllib.parse import quote
+    return quote(str(s or ""), safe="")
+
+
 def md_table(lines):
     import markdown as _md
     # Wrap in .tw so the table gets real border/striping styling (the base
@@ -1093,10 +1098,12 @@ def build_workspace(kw, opts=None):
                 f'<li>Status: <b>{"SUPPLIER_PARTIAL (costs on file, confirm product URL)" if L["supplier"] else "NEED_SUPPLIER_DETAILS"}</b> · product match: '
                 f'<b>{"70/100" if L["supplier"] else "—"}</b></li>'
                 f'<li>{_esc(L["margin_line"])}</li></ul>'
+                f'<p><a class="cbtn" href="/suppliers?match={_urlquote(kw)}'
+                f'&mode={req_mode}">🏭 Open Supplier panel — match / upload / '
+                'confirm →</a></p>'
                 '<p class="note">Confirm the exact product URL, base/shipping cost, '
-                'material, size, and processing time before publish. Full supplier '
-                'panel (Pull products / Upload CSV / Use supplier) is the next '
-                'upgrade — for now use <code>py main.py supplier</code>.</p>')
+                'material, size, and processing time before publish (no terminal '
+                'needed — everything is on the Supplier panel).</p>')
 
     # listing builder + publish gate
     save_label = "Publish-ready ✅" if ready else "DRAFT ONLY — DO NOT PUBLISH"

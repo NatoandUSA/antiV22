@@ -1032,16 +1032,61 @@ def build_app(password, secret):
                         f"<td>{typ}</td><td>{', '.join(info.get('modes',[]))}</td>"
                         f"<td>{link}</td><td>{n}</td><td>{action}</td></tr>")
         rows.append("</table>")
+
+        # --- product -> supplier match panel (was terminal-only: `supplier match`)
+        mq = (request.args.get("match") or "").strip()[:80]
+        mmode = request.args.get("mode") if request.args.get("mode") in ("embroidery", "pod") else ""
+        modeopts = "".join(
+            f'<option value="{m}"{" selected" if mmode == m else ""}>{m}</option>'
+            for m in ("embroidery", "pod"))
+        match_html = (
+            '<h2>🔎 Match a product to a supplier</h2>'
+            '<form class="savedform" method="get" action="/suppliers">'
+            f'<input name="match" value="{_h.escape(mq)}" placeholder="Product '
+            'keyword, e.g. chenille name bag" required>'
+            f'<select name="mode"><option value="">Auto mode</option>{modeopts}</select>'
+            '<button class="primary" type="submit">Find supplier →</button></form>')
+        if mq:
+            scored = so.match(mq, mmode or None, verbose=False)
+            if scored:
+                mr = ['<table><tr><th>Fit</th><th>Supplier</th><th>Product</th>'
+                      '<th>Mode</th><th>Base cost</th><th>Status</th><th>URL</th></tr>']
+                for sc, r in scored[:8]:
+                    band = ("strong" if sc >= 90 else "usable" if sc >= 70
+                            else "weak" if sc >= 50 else "do-not-use")
+                    url = r.get("product_url") or ""
+                    ucell = (f'<a href="{_h.escape(url)}" target="_blank" '
+                             'rel="noopener">open ↗</a>' if url.startswith("http") else "—")
+                    mr.append(
+                        f'<tr><td><b>{sc}</b>/100 {band}</td>'
+                        f'<td>{_h.escape(r.get("supplier_name",""))}</td>'
+                        f'<td>{_h.escape((r.get("product_name") or "")[:44])}</td>'
+                        f'<td>{_h.escape(r.get("production_mode",""))}</td>'
+                        f'<td>{_h.escape(str(r.get("base_cost","") or "—"))}</td>'
+                        f'<td>{_h.escape(r.get("supplier_status",""))}</td>'
+                        f'<td>{ucell}</td></tr>')
+                mr.append("</table>")
+                match_html += ("".join(mr) + '<p class="note">Pick a strong/usable '
+                               'match, confirm its product URL + base/shipping cost, '
+                               'then tick <b>Supplier confirmed</b> on the run. '
+                               'PUBLISH_READY stays false until a supplier is confirmed.</p>')
+            else:
+                match_html += ('<p class="note">No supplier products on file for that '
+                               'yet — upload a CSV or sync a catalog below, then match '
+                               'again.</p>')
+        match_html += "<hr>"
+
         bar = _bar()
-        return page("Suppliers", bar + '<article class="md"><h1>Supplier library</h1>'
+        return page("Suppliers", bar + '<article class="md"><h1>🏭 Supplier panel</h1>'
+                    + match_html
+                    + '<h2>Supplier library</h2>'
                     '<p>POD catalogs (open + pull manually) and CSV suppliers '
                     '(ShineOn / Embroidery — upload to normalize into the library). '
                     'Nothing is scraped; uploaded CSVs are the truth. A product is '
                     'only publish-ready once a supplier reaches SUPPLIER_CONFIRMED.'
-                    '</p>' + "".join(rows) + '<p class="note">CLI: <code>py main.py '
-                    'supplier import-csv --source shineon --file &lt;csv&gt;</code> · '
-                    '<code>supplier match --product "..." --mode embroidery</code></p>'
-                    '</article>')
+                    '</p>' + "".join(rows) + '<p class="note">CLI still works too: '
+                    '<code>py main.py supplier import-csv --source shineon --file '
+                    '&lt;csv&gt;</code></p></article>')
 
     @app.route("/suppliers/sync/<source>")
     @login_required
