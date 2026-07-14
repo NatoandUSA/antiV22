@@ -783,8 +783,9 @@ def build_app(password, secret):
                 f'<b>{_h.escape(r.get("shop_name",""))}</b> '
                 f'<span class="pill{" apill" if is_auto else ""}">{pill}</span>'
                 + (f' · <a href="{url}" target="_blank" rel="noopener">open</a>' if url else "")
-                + f' <a class="cbtn" href="/shops/del/{r["id"]}">delete</a></div>'
-                f'<div class="note">{_h.escape(r.get("category",""))} · '
+                + ' ' + _post_btn(f'/shops/del/{r["id"]}', "delete",
+                                  confirm="Delete this saved shop?") + '</div>'
+                + f'<div class="note">{_h.escape(r.get("category",""))} · '
                 f'{_h.escape(r.get("niche",""))} · '
                 + ("new-shop proxy (listing age)" if is_auto
                    else f'learning score {ov if ov is not None else "—"}/100')
@@ -819,9 +820,10 @@ def build_app(password, secret):
             "scores": _parse_scores(saved.SHOP_SCORES)})
         return redirect(url_for("shops"))
 
-    @app.route("/shops/del/<int:sid>")
+    @app.route("/shops/del/<int:sid>", methods=["POST"])
     @login_required
     def shops_del(sid):
+        _check_csrf()
         from src import saved
         saved.delete_shop(sid)
         return redirect(url_for("shops"))
@@ -902,8 +904,9 @@ def build_app(password, secret):
                 f'<b>{_h.escape(r.get("listing_title","")[:70])}</b> '
                 f'<span class="pill{" apill" if is_auto else ""}">{pill}</span>'
                 + (f' · <a href="{url}" target="_blank" rel="noopener">open on Etsy</a>' if url else "")
-                + f' <a class="cbtn" href="/listings/del/{r["id"]}">delete</a></div>'
-                f'<div class="note">{_h.escape(r.get("shop_name",""))} · '
+                + ' ' + _post_btn(f'/listings/del/{r["id"]}', "delete",
+                                  confirm="Delete this saved listing?") + '</div>'
+                + f'<div class="note">{_h.escape(r.get("shop_name",""))} · '
                 + ("young high-performer" if is_auto
                    else f'listing score {ov if ov is not None else "—"}/100')
                 + f' · saved {r.get("last_analyzed_at","")}</div>'
@@ -948,9 +951,10 @@ def build_app(password, secret):
             "scores": _parse_scores(saved.LISTING_SCORES)})
         return redirect(url_for("listings"))
 
-    @app.route("/listings/del/<int:lid>")
+    @app.route("/listings/del/<int:lid>", methods=["POST"])
     @login_required
     def listings_del(lid):
+        _check_csrf()
         from src import saved
         saved.delete_listing(lid)
         return redirect(url_for("listings"))
@@ -1349,8 +1353,8 @@ def build_app(password, secret):
             items += ('<div class="saveditem"><div class="sihead">'
                       f'<span class="pill lvl-{r.get("level")}">{_h.escape(r.get("level",""))}</span> '
                       f'<b>{_h.escape(r.get("message",""))}</b> '
-                      f'<a class="cbtn" href="/alerts/resolve/{r.get("id")}">resolve</a>'
-                      f'</div><div class="note">{_h.escape(r.get("kind",""))} · '
+                      + _post_btn(f'/alerts/resolve/{r.get("id")}', "resolve")
+                      + f'</div><div class="note">{_h.escape(r.get("kind",""))} · '
                       f'{_h.escape(r.get("source",""))} · {r.get("updated_at","")}</div></div>')
         bar = _bar()
         return page("Alerts", bar + '<article class="md"><h1>🔔 Alerts Center</h1>'
@@ -1359,9 +1363,10 @@ def build_app(password, secret):
                     + (items or '<p class="empty">✅ Nothing needs attention right now.</p>')
                     + '</article>')
 
-    @app.route("/alerts/resolve/<int:aid>")
+    @app.route("/alerts/resolve/<int:aid>", methods=["POST"])
     @login_required
     def alerts_resolve(aid):
+        _check_csrf()
         from src import alerts
         alerts.resolve(aid)
         return redirect(url_for("alerts_page"))
@@ -1903,8 +1908,10 @@ def build_app(password, secret):
                 f'<select name="assigned_to"><option value="">— assign —</option>{_user_options(c.get("assigned_to"))}</select>'
                 '<input name="due_date" type="datetime-local" placeholder="Due">'
                 '<button class="primary" type="submit">Update</button>'
-                f'<a class="cbtn" href="/research-queue/del/{c["id"]}">delete</a>'
-                '</form></div>')
+                '</form>'
+                + _post_btn(f'/research-queue/del/{c["id"]}', "delete",
+                            confirm="Delete this candidate?")
+                + '</div>')
         return page("Research Queue", _bar()
                     + '<article class="md"><h1>🧭 Research Queue</h1>'
                     '<p class="tklead">Every imported idea, moving from spark to '
@@ -1928,9 +1935,10 @@ def build_app(password, secret):
              entity_id=cid, summary=request.form.get("status"))
         return redirect(url_for("research_queue"))
 
-    @app.route("/research-queue/del/<int:cid>")
+    @app.route("/research-queue/del/<int:cid>", methods=["POST"])
     @login_required
     def research_queue_del(cid):
+        _check_csrf()
         from src import research as rs
         rs.delete_candidate(cid)
         _log("RESEARCH_DELETE", module="research", entity_type="candidate", entity_id=cid)
@@ -1966,6 +1974,34 @@ def build_app(password, secret):
     def _h_esc(s):
         import html as _h
         return _h.escape(str(s or ""))
+
+    # ---- CSRF: destructive actions are POST-only + carry a per-session token ----
+    def _csrf():
+        tok = session.get("_csrf")
+        if not tok:
+            tok = os.urandom(16).hex()
+            session["_csrf"] = tok
+        return tok
+
+    def _csrf_field():
+        return f'<input type="hidden" name="_csrf" value="{_csrf()}">'
+
+    def _check_csrf():
+        if request.form.get("_csrf") != session.get("_csrf"):
+            abort(403)
+
+    def _post_btn(action, label, hidden=None, confirm=None):
+        """A small inline POST form styled like the old .cbtn link — for
+        destructive actions (delete/resolve/disable) so they can't be triggered
+        by a cross-site GET."""
+        onsub = (f' onsubmit="return confirm(&#39;{_h_esc(confirm)}&#39;)"'
+                 if confirm else "")
+        extra = "".join(
+            f'<input type="hidden" name="{_h_esc(k)}" value="{_h_esc(v)}">'
+            for k, v in (hidden or {}).items())
+        return (f'<form method="post" action="{action}" class="pf"{onsub}>'
+                f'{_csrf_field()}{extra}'
+                f'<button class="cbtn" type="submit">{label}</button></form>')
 
     @app.route("/team")
     @login_required
@@ -2471,8 +2507,10 @@ def build_app(password, secret):
                      f'<select name="role" onchange="this.form.submit()">{role_sel}</select></form></td>'
                      '<td>' + _h_esc(u["status"]) + '</td><td>' + _h_esc(u.get("last_login_at") or "—")
                      + '</td><td>'
-                     f'<a class="cbtn" href="/admin/users/disable?email={_h_esc(u["email"])}">disable</a>'
-                     '</td></tr>')
+                     + _post_btn('/admin/users/disable', "disable",
+                                 hidden={"email": u["email"]},
+                                 confirm="Disable this user?")
+                     + '</td></tr>')
         roles_opt = "".join(f"<option>{r}</option>" for r in auth.ROLES)
         form = ('<form method="post" action="/admin/users/create" class="gradeform">'
                 '<label>Email<input name="email" type="email" required></label>'
@@ -2516,10 +2554,11 @@ def build_app(password, secret):
             pass
         return redirect(url_for("admin_users"))
 
-    @app.route("/admin/users/disable")
+    @app.route("/admin/users/disable", methods=["POST"])
     @require_perm("users.manage")
     def admin_users_disable():
-        target = request.args.get("email") or ""
+        _check_csrf()
+        target = request.form.get("email") or ""
         tu = auth.get_user_by_email(target)
         if tu and tu["role"] == "OWNER":
             return redirect(url_for("admin_users"))   # never disable an OWNER here
@@ -2820,6 +2859,7 @@ padding:9px 12px;font-size:.9rem;white-space:pre-wrap}
 background:var(--surface);border:1px solid var(--line-strong);border-radius:6px;
 padding:4px 9px;cursor:pointer;text-decoration:none;display:inline-block}
 .cbtn:hover{border-color:var(--accent)}
+.pf{display:inline;margin:0}.pf .cbtn{vertical-align:middle}
 .facts,.check{margin:0;padding-left:18px;font-size:.87rem}.facts li,.check li{margin:4px 0}
 .expbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .modetoggle{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;font-size:.85rem}
