@@ -52,6 +52,12 @@ def get_command():
     return _COMMAND
 
 
+def tz():
+    """The team timezone (ICT / Asia/Ho_Chi_Minh) — one source of truth for
+    "today" so day-bucketing matches the timestamps shown on the dashboard."""
+    return _TZ
+
+
 def get_report_timestamp():
     now = datetime.now(_TZ)
     return {

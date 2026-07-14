@@ -49,7 +49,12 @@ def _esc(t):
 
 def md_table(lines):
     import markdown as _md
-    return _md.markdown("\n".join(lines), extensions=["tables"])
+    # Wrap in .tw so the table gets real border/striping styling (the base
+    # table CSS is scoped to .md pages) and can scroll horizontally on mobile
+    # without pushing the whole page sideways.
+    return ('<div class="tw">'
+            + _md.markdown("\n".join(lines), extensions=["tables"])
+            + '</div>')
 
 
 # --------------------------- data-quality checks ---------------------------
@@ -1088,8 +1093,10 @@ def build_workspace(kw, opts=None):
         'page — use your browser\'s <b>Print → Save as PDF</b>. Never '
         'auto-published.</p>')
 
-    # Can We Win, First Image Battle, Offer Builder, Better Angles
-    cww_rows = ["| Advantage | Score | Play |", "|---|---|---|"]
+    # Can We Win, First Image Battle, Offer Builder, Better Angles.
+    # ONE merged table (Advantage | Score | Our play) instead of two, plus a
+    # single-line edge summary in place of the old 10-bullet recap.
+    cww_rows = ["| Advantage | Score | Our play |", "|---|---|---|"]
     for _name, _play in CWW_FACTORS:
         cww_rows.append(f"| {_name} | {cww_scores.get(_name, '-')} | {_esc(_play)} |")
     learn_html = ""
@@ -1097,12 +1104,18 @@ def build_workspace(kw, opts=None):
         learn_html = ('<div class="learnbox"><b>🔒 Our private sales data</b><ul>'
                       + "".join(f"<li>{_esc(n)}</li>" for n in G["learn_notes"])
                       + '</ul></div>')
+    _pers = opts.get("personalization") or "name / date / initials"
+    edge_html = (
+        '<div class="edge"><b>Our edge in one line:</b> better first image + real '
+        f'personalization ({_esc(_pers)}) + tighter long-tail SEO vs their broad '
+        f'"{_esc(kw)}" titles. Biggest rival weakness: generic art + a weak first '
+        'image.</div>')
     cww_html = (
         f'<div class="gate {"g-ok" if cww_score >= 70 else "g-no"}">Can We Win '
         f'score: {cww_score}/100 — '
         + ("yes, we can differentiate" if cww_score >= 70
            else "edge is thin — do not SELL NOW") + '</div>'
-        + learn_html + md_table(cww_rows) + beat_competitors(kw, listings, opts, mode))
+        + learn_html + md_table(cww_rows) + edge_html)
 
     fib_html = (
         f'<div class="gate {"g-ok" if fib_score >= 75 else "g-no"}">First-image '
@@ -1179,44 +1192,66 @@ def build_workspace(kw, opts=None):
         f'<span class="chip wide">Next → <b>{next_act}</b></span></div>')
     hero = f'<section class="ws hero" id="top">{verdict_html}{glance}</section>'
     nav = ('<nav class="wsnav"><a href="#top">Verdict</a>'
-           '<a href="#g1">① Decision</a><a href="#g2">② Listing</a>'
-           '<a href="#g3">③ Design</a><a href="#g4">④ Do next</a>'
-           '<a href="#g5">⑤ Export</a></nav>')
+           '<a href="#g1">① Decision</a><a href="#g2">🔬 Deeper</a>'
+           '<a href="#g3">🚦 Listing</a><a href="#g4">🎨 Design</a>'
+           '<a href="#g5">✅ Do next</a></nav>')
 
     def grp(gid, title):
         return f'<h2 class="wsgroup" id="{gid}">{title}</h2>'
+
+    def dgrp(gid, title, hint, inner):
+        # A collapsible group — keeps the page decision-first: the detail lives
+        # one click away instead of scrolling past it every time.
+        return (f'<details class="wsgrp" id="{gid}"><summary>'
+                f'<span class="gt">{title}</span><span class="gh">{hint}</span>'
+                f'<span class="chev">▸</span></summary>'
+                f'<div class="wsgrpbody">{inner}</div></details>')
 
     inputs_block = ('<details class="ws inputsbox" id="inputs"><summary>📝 Run '
                     'inputs — AI-suggested &amp; editable (click to open)</summary>'
                     f'{inputs_html}</details>')
 
-    out = inputs_block + hero + nav + grp("g1", "① Decision")
+    # ① Decision — always open: the four things you actually decide on.
+    out = inputs_block + hero + nav + grp("g1", "① The decision")
     if compare_html:
         out += sec("compare", "⚖️", "POD vs Embroidery — recommendation", compare_html)
     out += (
         sec("scores", "📊", "Opportunity scores (0–100)", _score_grid(scores))
-        + sec("sources", "🛰️", "Source confidence", src_html)
-        + sec("canwin", "🏆", "Can we win? + how we beat competitors", cww_html)
-        + sec("firstimage", "🖼️", "First image battle", fib_html)
+        + sec("canwin", "🏆", "Can we win?", cww_html)
         + sec("market", "🔑", "Market &amp; keyword opportunity", market_html)
+        + sec("sources", "🛰️", "Source confidence", src_html))
+    # Everything else — one click away.
+    out += dgrp(
+        "g2", "🔬 Deeper analysis",
+        "First image · niches · angles · offer · forecast · competitors",
+        sec("firstimage", "🖼️", "First image battle", fib_html)
         + sec("niches", "💡", "Niche &amp; angle discovery", niche_html)
         + sec("angles", "🧭", "Better angle generator", angle_html)
         + sec("offer", "🎁", "Offer builder", offer_html)
         + sec("forecast", "📈", "7-day sales forecast", fc_html)
-        + sec("competitors", "🔍", "Competitor audit", audit_html)
-        + grp("g2", "② Listing &amp; supplier")
-        + sec("readiness", "🚦", "Launch readiness", lr_html)
+        + sec("competitors", "🔍", "Competitor audit", audit_html))
+    out += dgrp(
+        "g3", "🚦 Listing &amp; supplier",
+        "Launch readiness · supplier · listing builder · preview",
+        sec("readiness", "🚦", "Launch readiness", lr_html)
         + sec("supplier", "🏭", "Supplier recommendation", sup_html)
         + sec("listing", "🛠️", "Listing builder + publish gate", listing_html)
-        + sec("preview", "👁️", "Internal product preview", _preview_html(L, tags, vd["cls"]))
-        + grp("g3", "③ Design")
-        + sec("design", "🎨", "Design prompt generator", design_html)
-        + sec("designer", "✏️", "Designer brief", designer_html)
-        + grp("g4", "④ Do next")
-        + sec("seller", "✅", "Seller execution checklist", seller_html)
+        + sec("preview", "👁️", "Internal product preview", _preview_html(L, tags, vd["cls"])))
+    out += dgrp(
+        "g4", "🎨 Design", "Design prompt · designer brief",
+        sec("design", "🎨", "Design prompt generator", design_html)
+        + sec("designer", "✏️", "Designer brief", designer_html))
+    out += dgrp(
+        "g5", "✅ Do next &amp; export",
+        "Seller checklist · product-line · save / export",
+        sec("seller", "✅", "Seller execution checklist", seller_html)
         + sec("expand", "🌱", "Product-line expansion", product_line_expansion(kw, mode))
-        + grp("g5", "⑤ Save &amp; export")
         + sec("export", "📤", "Save / export", export_html))
+    # Open a collapsed group when the sticky nav jumps to it.
+    out += ('<script>(function(){function o(){var h=location.hash;if(!h)return;'
+            'var e;try{e=document.querySelector(h);}catch(_){return;}'
+            'while(e){if(e.tagName==="DETAILS")e.open=true;e=e.parentElement;}}'
+            'window.addEventListener("hashchange",o);o();})();</script>')
 
     # stash structured data for save_run
     build_workspace._last = {

@@ -65,8 +65,9 @@ def _g(d, *keys):
 
 def _rel_rows(items, limit=15):
     """Render a related-keyword list (shapes vary by tool) as a Markdown table."""
-    out = ["| Keyword | Listings | Avg price | Conv | Trademark |",
-           "|---|---|---|---|---|"]
+    # Listings + avg-price aren't returned by the suggestions feed (they'd always
+    # render "-"), so we drop those dead columns rather than show empty cells.
+    out = ["| Keyword | Conv | Trademark |", "|---|---|---|"]
     n = 0
     for r in items or []:
         tag = _clean(_g(r, "tag", "keyword", "title", "term"))
@@ -74,8 +75,7 @@ def _rel_rows(items, limit=15):
             continue
         risk, _ = tm_check(tag.lower())
         out.append(
-            f"| {tag} | {_int(_g(r, 'listing_count', 'listings', 'total_listings'))} "
-            f"| {_money(_g(r, 'avg_price', 'avg_price_usd'))} "
+            f"| {tag} "
             f"| {_pct(_g(r, 'avg_conversion_rate', 'conversion', 'conversion_rate'))} "
             f"| {risk} |")
         n += 1

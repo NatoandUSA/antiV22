@@ -420,7 +420,12 @@ def build_app(password, secret):
                       or auth.has_perm(_mu["role"], "tasks.review"))
             if is_mgr:
                 blocked = len(_tk.list_tasks(status="BLOCKED")) + cc.get("BLOCKED", 0)
+                # "In flight" = the team is actively working, even if nothing has
+                # reached the manager's own queue yet (keeps the desk from reading
+                # as empty while staff have tasks in progress).
+                inflight = len(_tk.list_tasks(status="IN_PROGRESS"))
                 tiles = [("Imported today", len(rs.imported_today()), "/imports"),
+                         ("In flight", inflight, "/admin/tasks"),
                          ("To review", len(_tk.review_queue()), "/admin/reviews"),
                          ("Ready to publish", cc.get("READY_FOR_MANUAL_PUBLISH", 0), "/research-queue"),
                          ("Blocked", blocked, "/research-queue"),
@@ -2258,6 +2263,36 @@ def build_app(password, secret):
             f'<div class="tkstat{c}"><span class="n">{n}</span><span class="l">{l}</span></div>'
             for l, n, c in tiles) + '</div>'
 
+        # who's on what — per-staff open workload, so a manager can see at a glance
+        # which task each person is on without scanning all four board columns.
+        staff = {}
+        for t in rows:
+            if t["status"] not in tk.OPEN_STATUSES:
+                continue
+            nm = by_id.get(t["assigned_to_user_id"], {}).get("display_name") or "Unassigned"
+            s = staff.setdefault(nm, {"todo": 0, "prog": 0, "od": 0, "rev": 0, "n": 0})
+            s["n"] += 1
+            if t["status"] == "TODO":
+                s["todo"] += 1
+            elif t["status"] in ("IN_PROGRESS", "BLOCKED"):
+                s["prog"] += 1
+            elif t["status"] == "READY_FOR_REVIEW":
+                s["rev"] += 1
+            if tk.is_overdue(t):
+                s["od"] += 1
+        whos = ""
+        if staff:
+            body_rows = "".join(
+                f'<tr><td><b>{_h_esc(nm)}</b></td><td>{s["todo"]}</td>'
+                f'<td>{s["prog"]}</td>'
+                f'<td>{f"<b style=color:var(--stop)>{s["od"]}</b>" if s["od"] else "0"}</td>'
+                f'<td>{s["rev"]}</td></tr>'
+                for nm, s in sorted(staff.items(), key=lambda kv: (kv[0] == "Unassigned", -kv[1]["n"])))
+            whos = ('<h3 class="whosh">👥 Who\'s on what</h3>'
+                    '<table class="whos"><thead><tr><th>Staff</th><th>To do</th>'
+                    '<th>In progress</th><th>Overdue</th><th>Awaiting review</th>'
+                    f'</tr></thead><tbody>{body_rows}</tbody></table>')
+
         form = ('<details class="tknew"' + (" open" if pk else "") + '>'
                 '<summary>➕ New task</summary>'
                 '<form method="post" action="/admin/tasks/create" class="gradeform">'
@@ -2298,7 +2333,7 @@ def build_app(password, secret):
                     '<p class="tklead">Great products ship when everyone knows their next '
                     'move. Assign the work, watch it flow left → right, and clear the board '
                     'together — momentum is a team sport.</p>'
-                    + pulse + form + '</article><div class="lpboard">' + cols + '</div>')
+                    + pulse + whos + form + '</article><div class="lpboard">' + cols + '</div>')
 
     @app.route("/admin/tasks/create", methods=["POST"])
     @require_perm("tasks.assign")
@@ -2800,6 +2835,28 @@ padding:4px 9px;cursor:pointer;text-decoration:none;display:inline-block}
 .wsgroup{font-size:1.1rem;font-weight:800;margin:30px 0 2px;padding-top:12px;border-top:2px solid var(--accent);color:var(--ink);scroll-margin-top:56px}
 .ws{scroll-margin-top:56px}
 .inputsbox summary{cursor:pointer;font-weight:700;font-size:1rem;color:var(--accent)}
+/* workspace tables — base table CSS is scoped to .md, so style .ws tables here */
+.tw{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:10px;margin:10px 0;background:var(--surface)}
+.ws table{border-collapse:collapse;width:100%;font-size:.85rem}
+.ws th,.ws td{padding:8px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+.ws thead th{background:var(--paper);font-size:.68rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-faint);white-space:nowrap}
+.ws tbody tr:last-child td{border-bottom:none}
+.ws tbody tr:hover{background:var(--paper)}
+.edge{font-size:.86rem;color:var(--ink);background:var(--accent-bg);border-radius:8px;padding:10px 12px;margin-top:10px}
+.edge b{color:var(--accent)}
+/* collapsible detail groups — decision-first: detail is one click away */
+.wsgrp{background:var(--surface);border:1px solid var(--line);border-radius:14px;margin:12px 0;box-shadow:var(--shadow);scroll-margin-top:56px;overflow:hidden}
+.wsgrp>summary{cursor:pointer;list-style:none;padding:15px 18px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.wsgrp>summary::-webkit-details-marker{display:none}
+.wsgrp>summary .gt{font-size:1.05rem;font-weight:800}
+.wsgrp>summary .gh{font-size:.75rem;color:var(--ink-faint)}
+.wsgrp>summary .chev{margin-left:auto;color:var(--ink-faint);transition:transform .18s}
+.wsgrp[open]>summary .chev{transform:rotate(90deg)}
+.wsgrp[open]>summary{border-bottom:1px solid var(--line)}
+.wsgrpbody{padding:2px 16px 10px}
+.wsgrpbody .ws{box-shadow:none;border:0;border-top:1px solid var(--line);border-radius:0;margin:0;padding:16px 0}
+.wsgrpbody .ws:first-child{border-top:0;padding-top:8px}
+@media(prefers-reduced-motion:reduce){.wsgrp>summary .chev{transition:none}}
 /* internal product preview */
 .pv{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:16px;
 border:1px solid var(--line-strong);border-radius:12px;padding:14px;background:var(--paper)}

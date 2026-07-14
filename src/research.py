@@ -137,5 +137,18 @@ def counts_by_status():
 
 
 def imported_today():
-    today = _now()[:10]
-    return [r for r in _load(IMPORT_FILE) if (r.get("at") or "")[:10] == today]
+    # Bucket by the TEAM's day (ICT), not UTC: records store `at` in UTC, so an
+    # early-morning ICT import lands on the previous UTC day and would miscount.
+    from datetime import datetime
+    from src.timestamp import tz
+    _tz = tz()
+    today = datetime.now(_tz).strftime("%Y-%m-%d")
+
+    def _day(at):
+        try:
+            dt = datetime.fromisoformat(at)
+            return (dt.astimezone(_tz) if dt.tzinfo else dt).strftime("%Y-%m-%d")
+        except ValueError:
+            return (at or "")[:10]
+
+    return [r for r in _load(IMPORT_FILE) if _day(r.get("at") or "") == today]
