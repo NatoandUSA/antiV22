@@ -90,6 +90,8 @@ def source_confidence(stats, data_flags):
         ("Google Trends", google, "Medium" if google == "live" else "—"),
         ("Pinterest", "off (add token)" if "off" in cc.get("Pinterest", "")
          else "live", "—"),
+        ("Reddit", "off" if "off" in cc.get("Reddit", "") else "live (free)",
+         "Low"),
         ("X / Twitter", "off (add token)" if "off" in cc.get("X / Twitter", "")
          else "live", "—"),
         ("Supplier catalog", "on file (supplier_costs.csv)", "High"),

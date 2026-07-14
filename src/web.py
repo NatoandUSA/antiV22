@@ -1640,8 +1640,19 @@ def build_app(password, secret):
             x_html = f'<b>{n if n is not None else "?"}</b> <span class="note">tweets / 7 days</span>'
         else:
             x_html = f'<span class="note">{_h_esc(x.get("note") or x.get("status"))}</span>'
+        rd = xc.get("reddit") or {}
+        if rd.get("status") == "ok":
+            subs = ", ".join(f"r/{s}" for s in (rd.get("top_subreddits") or [])[:3])
+            rd_html = (f'<b>{_h_esc(rd.get("buzz", "?"))} buzz</b> '
+                       f'<span class="note">({rd.get("posts_30d")} posts · '
+                       f'{rd.get("upvotes_30d")} upvotes / 30d'
+                       + (f' · {_h_esc(subs)}' if subs else '') + ')</span>')
+        else:
+            rd_html = ('<span class="note">'
+                       f'{_h_esc(rd.get("note") or rd.get("status") or "no data")}</span>')
         rows = (f'<tr><td>Google Trends</td><td>{g_html}</td></tr>'
                 f'<tr><td>Pinterest</td><td>{p_html}</td></tr>'
+                f'<tr><td>Reddit</td><td>{rd_html}</td></tr>'
                 f'<tr><td>X / Twitter</td><td>{x_html}</td></tr>')
         rising = [str(r) for r in (g.get("rising") or [])][:3]
         sug = ""
@@ -1666,7 +1677,7 @@ def build_app(password, secret):
         body = ('<article class="md"><h1>✅ Confirm &amp; Assign</h1>'
                 '<p class="tklead">Confirm a YTuong niche in one glance — product fit, '
                 'trademark, and (optional) demand cross-check (Google Trends · Pinterest '
-                '· X) — then hand it to a staff member in <b>Embroidery</b> mode. '
+                '· Reddit · X) — then hand it to a staff member in <b>Embroidery</b> mode. '
                 'Never publishes.</p>' + form)
         if kw:
             fit = pf.classify(kw, "embroidery")
@@ -1679,7 +1690,7 @@ def build_app(password, secret):
             if xc is None:
                 xrows = ('<tr><td>Demand cross-check</td><td>'
                          f'<a class="cbtn" href="/confirm?q={_h_esc(kw)}&amp;google=1">'
-                         'Run cross-check (Google · Pinterest · X) →</a></td></tr>')
+                         'Run cross-check (Google · Pinterest · Reddit · X) →</a></td></tr>')
                 xsug = ""
             else:
                 xrows, xsug = _xcheck_rows(xc)

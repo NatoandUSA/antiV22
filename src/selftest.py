@@ -612,8 +612,9 @@ def run_selftest():
           and "trends.ytuong.ai" in _dl.YTUONG and "ytuong.me" in _dl.HEYETSY)
 
     from src import crosscheck as _cc
-    check("cross-check sources present (Google Trends + Pinterest + X)",
-          set(_cc.status()) == {"Google Trends", "Pinterest", "X / Twitter"}
+    check("cross-check sources present (Google + Pinterest + Reddit + X)",
+          set(_cc.status()) == {"Google Trends", "Pinterest", "Reddit",
+                                "X / Twitter"}
           and callable(_cc.confirm))
 
     from src import market_pulse as _mp

@@ -28,6 +28,10 @@ load_dotenv()
 
 PINTEREST_TOKEN = os.getenv("PINTEREST_ACCESS_TOKEN", "").strip() or None
 X_BEARER = os.getenv("X_BEARER_TOKEN", "").strip() or None
+# Reddit needs no token for read-only search. A descriptive UA is required or
+# Reddit 429s you fast. Overridable in .env if you ever want a custom one.
+REDDIT_UA = os.getenv("REDDIT_USER_AGENT",
+                      "22etsy-agent/1.0 (Etsy demand research; read-only)")
 
 # Keep external calls small: only the strongest few keywords get cross-checked.
 MAX_CROSSCHECK = 8
@@ -188,6 +192,63 @@ def x_signal(keyword):
 
 
 # --------------------------------------------------------------------------
+# Reddit -- free craft/gift buzz. No token; read-only public search.
+# --------------------------------------------------------------------------
+
+def reddit_signal(keyword):
+    """Reddit buzz for a keyword over the last month (read-only public search,
+    no token). A rough cross-platform DEMAND read: how many posts + upvotes the
+    phrase gets and which subreddits care. Free, but Reddit throttles hard and
+    often blocks datacenter IPs, so on a VPS this may read 'rate_limited' /
+    'blocked' -- that's fine, it's non-blocking. Cached per day."""
+    today = str(date.today())
+    ckey = f"reddit:{keyword.lower()}"
+    hit = cache_get(ckey, today)
+    if hit is not None:
+        import json
+        return json.loads(hit)
+
+    import json
+    import requests
+    out = {"status": "no_data"}
+    try:
+        r = requests.get(
+            "https://www.reddit.com/search.json",
+            headers={"User-Agent": REDDIT_UA},
+            params={"q": keyword, "sort": "top", "t": "month",
+                    "limit": 25, "type": "link"}, timeout=20)
+        if r.status_code == 429:
+            out = {"status": "rate_limited",
+                   "note": "Reddit rate-limited (429) -- datacenter IPs get "
+                           "throttled hard; try again later."}
+        elif r.status_code in (401, 403):
+            out = {"status": "blocked",
+                   "note": f"Reddit blocked the request ({r.status_code}) -- "
+                           "common from a VPS IP."}
+        elif r.ok:
+            posts = [c.get("data", {}) for c in
+                     (r.json().get("data", {}).get("children") or [])]
+            if not posts:
+                out = {"status": "no_data",
+                       "note": "no Reddit posts in the last month (niche or very "
+                               "new -- can mean you're early)"}
+            else:
+                from collections import Counter
+                ups = sum(int(p.get("ups", 0) or 0) for p in posts)
+                subs = Counter(p.get("subreddit", "") for p in posts
+                               if p.get("subreddit"))
+                buzz = ("high" if (ups >= 2000 or len(posts) >= 20) else
+                        "medium" if (ups >= 300 or len(posts) >= 8) else "low")
+                out = {"status": "ok", "posts_30d": len(posts),
+                       "upvotes_30d": ups, "buzz": buzz,
+                       "top_subreddits": [s for s, _ in subs.most_common(3)]}
+    except Exception as exc:
+        out = {"status": "error", "note": f"Reddit unreachable ({exc})"}
+    cache_put(ckey, today, json.dumps(out))
+    return out
+
+
+# --------------------------------------------------------------------------
 # Public API
 # --------------------------------------------------------------------------
 
@@ -197,7 +258,8 @@ def status():
          else "off (pip install pytrends)")
     p = "live" if PINTEREST_TOKEN else "off (set PINTEREST_ACCESS_TOKEN in .env)"
     x = "live" if X_BEARER else "off (set X_BEARER_TOKEN in .env; paid API)"
-    return {"Google Trends": g, "Pinterest": p, "X / Twitter": x}
+    rd = "live (free, no token)"   # requests is always available
+    return {"Google Trends": g, "Pinterest": p, "X / Twitter": x, "Reddit": rd}
 
 
 def confirm(keyword):
@@ -206,6 +268,7 @@ def confirm(keyword):
     return {
         "google": google_trends_signal(keyword),
         "pinterest": pinterest_signal(keyword),
+        "reddit": reddit_signal(keyword),
         "x": x_signal(keyword),
     }
 
