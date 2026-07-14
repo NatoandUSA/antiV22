@@ -165,7 +165,7 @@ def margin_at(price, cluster, costs):
     if not c or not price:
         return None
     base, ship = c[0], c[1]
-    fees = price * (TRANSACTION_FEE + PAYMENT_FEE_PCT + ADS_RESERVE) \
+    fees = price * (TRANSACTION_FEE + PAYMENT_FEE_PCT + ADS_RESERVE + CURRENCY_RATE) \
         + PAYMENT_FEE_FLAT + LISTING_FEE
     return round(price - fees - base - ship, 2)
 

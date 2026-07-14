@@ -222,7 +222,10 @@ def run_selftest():
                if f.read_text(encoding="utf-8").startswith("Generated on: ")]
     check("every .md report starts with timestamp header",
           len(md_files) > 0 and len(stamped) == len(md_files))
-    sample_txt = md_files[0].read_text(encoding="utf-8") if md_files else ""
+    # Sample the report THIS run just generated (current VERSION + fresh header),
+    # not an arbitrary/stale archived report that md_files[0] might point at.
+    sample_txt = (report.read_text(encoding="utf-8") if report.exists()
+                  else (md_files[0].read_text(encoding="utf-8") if md_files else ""))
     check("timestamp includes seconds + ICT label",
           bool(re.search(r"Generated on: \d{4}-\d{2}-\d{2} "
                          r"\d{2}:\d{2}:\d{2} ICT", sample_txt)))

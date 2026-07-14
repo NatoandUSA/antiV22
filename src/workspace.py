@@ -454,7 +454,11 @@ def launch_readiness(supplier_ok, tags, risk, L, opts, confirms=None):
     confirms = confirms or {}
     checks = {
         "Supplier confirmed": supplier_ok,
-        "Profit target met": bool(L.get("rec_price")),
+        # True net floor (same as the report pipeline's gate): a viable price
+        # exists that clears >=$6 net profit AND >=30% net margin after all fees.
+        "Profit target met": (bool(L.get("rec_price"))
+                              and (L.get("rec_profit") or 0) >= 6
+                              and (L.get("rec_margin_pct") or 0) >= 30),
         "13 clean tags": sum(1 for t in tags if t["publish_safe"]) == 13,
         "Photo / mockup ready": bool(confirms.get("image")),
         "Competitor advantage ready": True,   # the tool produces the beat plan
@@ -556,7 +560,9 @@ def sales_forecast(stats, price, cost, conv, data_flags):
     carts = (0, max(1, vhi // 40))
     conv = conv or 0.025
     slo, shi = 0, max(1, round(vhi * conv))
-    profit_each = max(0, (price or 0) - (cost or 0) - ((price or 0) * .095 + .45))
+    # per-sale fees ~12% = 6.5% txn + 3% payment + 2.5% USD->VND currency, + ~$0.45
+    # flat (listing + payment fixed). Excludes the discretionary ad reserve.
+    profit_each = max(0, (price or 0) - (cost or 0) - ((price or 0) * .12 + .45))
     return {
         "visits": f"{vlo}–{vhi}", "favorites": f"{favs[0]}–{favs[1]}",
         "carts": f"{carts[0]}–{carts[1]}", "sales": f"{slo}–{shi}",
@@ -638,6 +644,7 @@ def _listing_data(kw, opts, stats, related, mode, tags):
     lo, hi = stats.get("price_p25"), stats.get("price_p75")
     mid = stats.get("median_price") or stats.get("avg_price")
     cost_line, margin_line, rec_price, supplier, cost_total = "", "", None, None, None
+    rec_profit, rec_margin_pct = 0.0, 0.0
     try:
         from src.idea_report import cluster_of, load_costs, margin_at
         cluster = cluster_of(kw.lower())
@@ -655,6 +662,9 @@ def _listing_data(kw, opts, stats, related, mode, tags):
                     rec_price = p
                     break
                 p += 1
+            if rec_price:   # true net profit + net margin % at the recommended price
+                rec_profit = margin_at(rec_price, cluster, costs) or 0.0
+                rec_margin_pct = round(rec_profit / rec_price * 100, 1) if rec_price else 0.0
             at_mid = margin_at(mid, cluster, costs) if mid else None
             if at_mid is not None:
                 lowprofit = at_mid < 5
@@ -676,7 +686,8 @@ def _listing_data(kw, opts, stats, related, mode, tags):
     return {"title": title, "desc": desc, "price_lo": lo, "price_hi": hi,
             "price_mid": mid, "rec_price": rec_price, "cost_line": cost_line,
             "margin_line": margin_line, "supplier": supplier,
-            "cost_total": cost_total}
+            "cost_total": cost_total, "rec_profit": rec_profit,
+            "rec_margin_pct": rec_margin_pct}
 
 
 # --------------------------- HTML bits -------------------------------------
