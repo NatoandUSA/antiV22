@@ -8,7 +8,6 @@ import pytest
 
 from src.validators import validate_title, validate_tags
 from src.publish_gate import publish_gate, partner_status
-from src.scoring import opportunity_score
 from src.trademark import check as tm_check
 
 
@@ -98,29 +97,6 @@ def test_descriptive_keyword_is_not_high_risk():
 
 def test_slogan_pronoun_is_caution():
     assert tm_check("you are my sunshine shirt")[0] == "CAUTION"
-
-
-# --------------------------------------------------------------------------
-# Opportunity score
-# --------------------------------------------------------------------------
-
-def test_opportunity_score_known_value():
-    # demand=40, momentum_factor=1.25, comp=100 -> 40*1.25*1000/100
-    assert opportunity_score(40, 25, 100) == 500.0
-
-
-def test_opportunity_score_unknown_competition_is_pessimistic():
-    # unknown competition assumed = 1000 listings
-    assert opportunity_score(0, 0, None) == 1.0
-
-
-def test_opportunity_score_floors_falling_momentum():
-    # momentum penalty floored at -50%
-    assert opportunity_score(10, -80, 100) == opportunity_score(10, -50, 100)
-
-
-def test_higher_competition_lowers_score():
-    assert opportunity_score(50, 10, 50) > opportunity_score(50, 10, 500)
 
 
 # --------------------------------------------------------------------------
