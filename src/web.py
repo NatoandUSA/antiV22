@@ -78,6 +78,24 @@ def _last_updated(mdir):
     return None
 
 
+def _data_degraded():
+    """Empty string when fresh; else a short reason. YTrends is a single primary
+    source, so when its data is stale/missing we say so loudly instead of serving
+    old numbers as if they were live."""
+    from datetime import datetime
+    fuel = Path("keyword_data.csv")
+    if not fuel.exists():
+        return "no keyword data on file yet — run a harvest / daily build"
+    try:
+        age_h = (datetime.now().timestamp() - fuel.stat().st_mtime) / 3600
+    except Exception:  # noqa: BLE001
+        return ""
+    if age_h > 48:
+        return (f"primary data is ~{int(age_h)}h old (auto-refresh runs ~every "
+                "6h) — YTrends may be down; verify before acting")
+    return ""
+
+
 def _available_modes():
     """Report sets the team sees: Print on Demand + Embroidery only.
 
@@ -481,7 +499,10 @@ def build_app(password, secret):
             focus = (f'<section class="focus"><h2 class="grouph">{title}</h2>'
                      f'<div class="tkstats">{tilehtml}</div>'
                      f'<div class="tkactions">{actbtns}</div></section>')
-        body = focus + tools + arch
+        _deg = _data_degraded()
+        deg_banner = ('<div class="notice warn">⚠️ <b>DATA DEGRADED:</b> '
+                      f'{_h_esc(_deg)}</div>' if _deg else "")
+        body = deg_banner + focus + tools + arch
         upd = _last_updated(mdir)
         updated = f'<span class="updated">Updated {upd}</span>' if upd else ""
         _u = current_user()
