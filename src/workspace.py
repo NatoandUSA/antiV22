@@ -52,6 +52,20 @@ def _urlquote(s):
     return quote(str(s or ""), safe="")
 
 
+def _best_image_note():
+    """Surface the best-converting mockup style from our own logged orders."""
+    try:
+        from src import learning
+        bi = learning.best_image_style()
+        if bi:
+            return (f'<p class="edge"><b>🔒 Our data:</b> best-converting mockup '
+                    f'style so far is <b>{_esc(bi[0])}</b> ({bi[1]} orders) — '
+                    'reuse what works.</p>')
+    except Exception:  # noqa: BLE001 - private learning must never break a run
+        pass
+    return ""
+
+
 def md_table(lines):
     import markdown as _md
     # Wrap in .tw so the table gets real border/striping styling (the base
@@ -1239,7 +1253,8 @@ def build_workspace(kw, opts=None):
         + '</div><h3>Top competitor image pattern</h3><ul class="facts">'
         + "".join(f'<li>{_esc(p)}</li>' for p in fib_pattern)
         + '</ul><h3>Our first-image plan</h3><ul class="facts">'
-        + "".join(f'<li>{_esc(p)}</li>' for p in fib_plan) + '</ul>')
+        + "".join(f'<li>{_esc(p)}</li>' for p in fib_plan) + '</ul>'
+        + _best_image_note())
 
     lr_reason_html = "".join(f'<li>{_esc(r)}</li>' for r in lr_reasons)
     lr_html = (

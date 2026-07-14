@@ -134,6 +134,42 @@ def problem_suppliers():
     return out
 
 
+def supplier_edge(supplier):
+    """(delta:int, note) for a supplier from our OWN logged P&L + refunds.
+    Profitable-for-us -> boost; refund-prone or net-negative -> warning. This is
+    what makes the supplier net-profit that profit.add logs actually affect
+    future scoring (it was recorded but never read)."""
+    if not supplier:
+        return 0, None
+    row = _load("supplier").get("suppliers", {}).get(supplier.strip().lower())
+    if not row:
+        return 0, None
+    issues = _i(row.get("issues"))
+    sales = _i(row.get("sales")) or _i(row.get("orders"))
+    net = _i(row.get("net_profit_cents")) / 100.0
+    if issues >= 1:
+        return -3, f"Supplier '{supplier}' caused {issues} refund/issue(s) in our data."
+    if sales >= 2 and net > 0:
+        return 2, (f"Supplier '{supplier}' has been profitable for us "
+                   f"(~${net / sales:.2f}/sale over {sales} sales).")
+    if sales >= 2 and net <= 0:
+        return -2, (f"Supplier '{supplier}' has been net-negative for us over "
+                    f"{sales} sales.")
+    return 0, None
+
+
+def best_image_style():
+    """The mockup/image style with the most orders in our data (or None) -- reads
+    the image magnitudes that were recorded but never surfaced. Returns
+    (style, orders)."""
+    styles = _load("image").get("styles", {})
+    best = max(styles.items(), key=lambda kv: _i(kv[1].get("orders")),
+               default=None)
+    if not best or _i(best[1].get("orders")) < 1:
+        return None
+    return best[0], _i(best[1].get("orders"))
+
+
 def learning_note(kw, tags=None, supplier=None):
     """A short list of private-data notes + a small can-we-win nudge (int).
 
@@ -141,22 +177,32 @@ def learning_note(kw, tags=None, supplier=None):
     or supplier has a bad track record for us."""
     notes, delta = [], 0
     kwl = (kw or "").strip().lower()
-    wk, wt = winner_keywords(), winner_tags()
-    if kwl in wk:
-        notes.append(f"Private data: '{kw}' has produced sales for us before.")
-        delta += 5
-    hit_tags = [t for t in (tags or []) if str(t).strip().lower() in wt]
-    if hit_tags:
-        notes.append("Proven tags in our own sales data: "
-                     + ", ".join(hit_tags[:4]))
-        delta += 3
+    w = _load("winner")
+    wk_rows, wt_rows = w.get("keywords", {}), w.get("tags", {})
+    # winner keyword: weighted by how many orders it actually sold for us
+    if kwl in wk_rows:
+        o = _i(wk_rows[kwl].get("orders"))
+        b = 4 + min(6, o)                     # 1 order -> +5 ... 6+ orders -> +10
+        delta += b
+        notes.append(f"Private data: '{kw}' has sold {o} order(s) for us (+{b}).")
+    # proven tags: weighted by their combined orders, not mere presence
+    hits = [(t, _i(wt_rows.get(str(t).strip().lower(), {}).get("orders")))
+            for t in (tags or []) if str(t).strip().lower() in wt_rows]
+    if hits:
+        tot = sum(o for _t, o in hits)
+        b = 2 + min(6, tot)
+        delta += b
+        top = sorted(hits, key=lambda x: -x[1])[:4]
+        notes.append("Proven tags in our sales data: "
+                     + ", ".join(f"{t} ({o})" for t, o in top) + f" (+{b}).")
     if kwl in _load("failed").get("keywords", {}):
-        notes.append(f"Caution: '{kw}' has died for us before (low/zero traffic).")
         delta -= 4
-    prob = problem_suppliers()
-    if supplier and supplier.strip().lower() in prob:
-        notes.append(f"Supplier '{supplier}' has caused refunds/issues for us.")
-        delta -= 3
+        notes.append(f"Caution: '{kw}' has died for us before (low/zero traffic).")
+    # supplier: real P&L + refund history (not just presence of an issue)
+    s_delta, s_note = supplier_edge(supplier)
+    if s_note:
+        delta += s_delta
+        notes.append(s_note)
     return notes, delta
 
 
@@ -170,4 +216,5 @@ def summary():
         "tags_tracked": len(_load("tag").get("tags", {})),
         "suppliers_tracked": len(_load("supplier").get("suppliers", {})),
         "problem_suppliers": len(problem_suppliers()),
+        "best_image_style": best_image_style(),
     }
