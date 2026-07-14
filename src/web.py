@@ -247,7 +247,7 @@ def build_app(password, secret):
                        f"<td>{_h.escape(r['event_type'])}</td>"
                        f"<td>{_h.escape(r.get('keyword') or r.get('module') or '')}</td></tr>"
                        for r in recent)
-        bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
+        bar = _bar()
         return page("My profile", bar + '<article class="md"><h1>👤 My profile</h1>'
                     f'<p><b>{_h.escape(u["display_name"])}</b> · role '
                     f'<b>{u["role"]}</b> · {_h.escape(u["email"])}</p>'
@@ -555,7 +555,7 @@ def build_app(password, secret):
     def run():
         import html as _html
         q, opts = _run_inputs()
-        bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
+        bar = _bar()
         if not q:
             return page("Keyword Run", bar + '<article class="md"><h1>Keyword Run '
                         'Workspace</h1><p class="empty">Type a keyword in the '
@@ -794,7 +794,7 @@ def build_app(password, secret):
                 + '<details><summary>Analysis rubric — what to examine</summary>'
                 f'<ul class="facts">{fw}</ul><p class="note">{saved.DO_NOT_COPY}</p>'
                 '</details></div>')
-        bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
+        bar = _bar()
         pull = _pull_bar("shops/pull", "new shops already selling",
                          "New shops (recent listings &lt; 1 year) with real sales + "
                          "the highest conversion. Auto-saved + ranked. Refresh anytime.")
@@ -917,7 +917,7 @@ def build_app(password, secret):
                 'personalization, tighter long-tail SEO, a bundle/gift angle — '
                 f'your own design.</p><p class="note">{saved.DO_NOT_COPY}</p>'
                 '</details></div>')
-        bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
+        bar = _bar()
         pull = _pull_bar("listings/pull", "young winning listings",
                          "Listings under ~3 months old already outperforming their "
                          "niche — highest conversion, views &amp; favorites. "
@@ -997,7 +997,7 @@ def build_app(password, secret):
                         f"<td>{typ}</td><td>{', '.join(info.get('modes',[]))}</td>"
                         f"<td>{link}</td><td>{n}</td><td>{action}</td></tr>")
         rows.append("</table>")
-        bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
+        bar = _bar()
         return page("Suppliers", bar + '<article class="md"><h1>Supplier library</h1>'
                     '<p>POD catalogs (open + pull manually) and CSV suppliers '
                     '(ShineOn / Embroidery — upload to normalize into the library). '
@@ -1091,7 +1091,7 @@ def build_app(password, secret):
                       f'{_h.escape(r.get("day3_reason",""))}</p>'
                       f'<p><b>Day 7 → {_h.escape(a7)}:</b> '
                       f'{_h.escape(r.get("day7_reason") or r.get("rec_reason",""))}</p></div>')
-        bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
+        bar = _bar()
         return page("Sales feedback", bar + '<article class="md"><h1>Sales feedback '
                     'loop</h1><p>After you MANUALLY publish, log the listing\'s real '
                     'numbers to get a Day-3/7 <b>KEEP / CHANGE / KILL / SCALE</b> '
@@ -1135,13 +1135,13 @@ def build_app(password, secret):
     def _render_tool(title, txt, switch=""):
         html = md.markdown(txt, extensions=["tables", "fenced_code",
                                             "sane_lists"])
-        bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
+        bar = _bar()
         return page(title, bar + switch
                     + f'<article class="md">{html}</article>' + COPY_JS)
 
     def _tool_error(title, exc):
         import html as _html
-        bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
+        bar = _bar()
         return page(title, bar + f'<article class="md"><h1>{title}</h1>'
                     f'<p class="empty">The live data source is unavailable right '
                     f'now: {_html.escape(str(exc)[:200])}</p></article>')
@@ -1151,7 +1151,7 @@ def build_app(password, secret):
         raw = (request.args.get("q") or "").strip()[:80]
         q = "".join(c for c in raw if c.isalnum() or c in " '&-.").strip()
         if not q:
-            bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
+            bar = _bar()
             return page(title, bar + f'<article class="md"><h1>{title}</h1>'
                         '<p class="empty">Type a keyword in the search box on the '
                         '<a href="/">home page</a>, then pick this tool.</p></article>')
@@ -1245,7 +1245,7 @@ def build_app(password, secret):
             src_note = (f'<p class="note">🔗 Decoded from Etsy listing <b>#{lid}</b> → '
                         f'market keyword "<b>{_h_esc(q)}</b>" (broadened from the title '
                         'so the market data isn\'t empty).</p>')
-        bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
+        bar = _bar()
         msel = "".join(
             f'<option value="{v}"{" selected" if v == (mode or "pod") else ""}>{lbl}</option>'
             for v, lbl in (("pod", "Print on Demand"), ("embroidery", "Embroidery"),
@@ -1284,7 +1284,7 @@ def build_app(password, secret):
     @login_required
     def grade():
         import html as _html
-        bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
+        bar = _bar()
         # Strip tag-injection chars: the analysis RESULT echoes these back through
         # markdown (raw-HTML passthrough), so neutralize XSS at the boundary.
         title = _no_tags((request.form.get("title") or "").strip())
@@ -1352,7 +1352,7 @@ def build_app(password, secret):
                       f'<a class="cbtn" href="/alerts/resolve/{r.get("id")}">resolve</a>'
                       f'</div><div class="note">{_h.escape(r.get("kind",""))} · '
                       f'{_h.escape(r.get("source",""))} · {r.get("updated_at","")}</div></div>')
-        bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
+        bar = _bar()
         return page("Alerts", bar + '<article class="md"><h1>🔔 Alerts Center</h1>'
                     '<p>Internal only — no Etsy automation, no publishing. Auto-refreshed '
                     'from system state + the 6 AM run.</p>'
@@ -1391,7 +1391,7 @@ def build_app(password, secret):
             body = "".join(_card_html(card) for card in cards)
             cols += (f'<div class="lpcol"><h3>{_h.escape(c)} '
                      f'<span class="count">{len(cards)}</span></h3>{body or "<p class=note>—</p>"}</div>')
-        bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
+        bar = _bar()
         pulse = '<div class="tkstats">' + "".join(
             f'<div class="tkstat"><span class="n">{len(b.get(c, []))}</span>'
             f'<span class="l">{_h.escape(c)}</span></div>' for c in lp.COLUMNS) + '</div>'
@@ -1430,7 +1430,7 @@ def build_app(password, secret):
                                f"<td>{r.get('listings','-')}</td><td>{r.get('sellers','-')}</td>"
                                f"<td>${r.get('avg_price','-')}</td><td>{r['snapshots']}</td></tr>")
             return "".join(out) + "</table>"
-        bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
+        bar = _bar()
         addf = ('<form method="post" action="/trackers/add" class="toolbar">'
                 '<input name="keyword" placeholder="Track a keyword or niche now">'
                 '<button class="primary" name="kind" value="keyword">Track keyword</button>'
@@ -1485,7 +1485,7 @@ def build_app(password, secret):
                 ' Came from an Etsy offsite ad (15% fee)</label>'
                 '<label>Refund / issue<input name="refund_or_issue" placeholder="or none"></label>'
                 '<button class="primary" type="submit">Log sale + compute profit</button></form>')
-        bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
+        bar = _bar()
         netcls = " good" if s["net_total"] > 0 else (" bad" if s["net_total"] < 0 else "")
         ptiles = [("Sales logged", str(s["sales"]), ""),
                   ("Net profit", f'${s["net_total"]:,.0f}', netcls),
@@ -1549,7 +1549,7 @@ def build_app(password, secret):
             abort(404)
         html = md.markdown(p.read_text(encoding="utf-8"),
                            extensions=["tables", "fenced_code", "sane_lists"])
-        bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
+        bar = _bar()
         return page("How to Use",
                     bar + f'<article class="md">{html}</article>' + COPY_JS)
 
@@ -1562,7 +1562,7 @@ def build_app(password, secret):
             abort(404)
         html = md.markdown(p.read_text(encoding="utf-8"),
                            extensions=["tables", "fenced_code", "sane_lists"])
-        bar = '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
+        bar = _bar()
         return page("Team Workflow",
                     bar + f'<article class="md">{html}</article>' + COPY_JS)
 
@@ -1809,17 +1809,23 @@ def build_app(password, secret):
                 '<input name="value" placeholder="Paste a YTuong/Etsy URL, or type a keyword" required>'
                 '<textarea name="note" placeholder="Note (why this is interesting, screenshot ref, pasted data)"></textarea>'
                 '<button type="submit">Import → create candidate</button></form>')
+        by_id = {x["user_id"]: x for x in auth.list_users()}
         recent = rs.list_candidates()[:8]
-        rows = "".join(
-            f'<tr><td><b>{_h_esc(c["title"])}</b></td><td>{_h_esc(c["source"])}</td>'
-            f'<td>{_h_esc(c["product_mode"])}</td>'
-            f'<td>{_fit_pill(c["fit_status"], c["launchable"])}</td>'
-            f'<td>{_h_esc(c["status"])}</td>'
-            f'<td><a class="cbtn" href="/research-queue">open queue →</a></td></tr>'
-            for c in recent)
+
+        def _imp_row(c):
+            who = by_id.get(c.get("assigned_to"), {}).get("display_name") or "— unassigned"
+            return (f'<tr><td><b>{_h_esc(c["title"])}</b></td>'
+                    f'<td>{_h_esc(c["source"])}</td>'
+                    f'<td>{_h_esc(c["product_mode"])}</td>'
+                    f'<td>{_fit_pill(c["fit_status"], c["launchable"])}</td>'
+                    f'<td>{_h_esc(c["status"])}</td>'
+                    f'<td>{_h_esc(who)}</td>'
+                    f'<td><a class="cbtn" href="/research-queue">open queue →</a></td></tr>')
+        rows = "".join(_imp_row(c) for c in recent)
         table = ('<h2>Recently imported</h2><table><tr><th>Idea</th><th>Source</th>'
-                 '<th>Mode</th><th>Product fit</th><th>Status</th><th></th></tr>'
-                 + (rows or '<tr><td colspan="6">Nothing imported yet.</td></tr>')
+                 '<th>Mode</th><th>Product fit</th><th>Status</th><th>Assigned</th>'
+                 '<th></th></tr>'
+                 + (rows or '<tr><td colspan="7">Nothing imported yet.</td></tr>')
                  + '</table>') if recent else ""
         notice = ""
         if request.args.get("notice") == "kw_manual":
@@ -1932,7 +1938,22 @@ def build_app(password, secret):
 
     # ======================= TEAM MANAGEMENT =======================
     def _bar():
-        return '<div class="rbar"><a class="back" href="/">&larr; Home</a></div>'
+        # Global top nav — jump straight between the main sections from any page,
+        # no round-trip through Home. Role-aware; current section is highlighted.
+        u = current_user()
+        is_mgr = bool(u and (auth.has_perm(u["role"], "tasks.assign")
+                             or auth.has_perm(u["role"], "tasks.review")))
+        cur = request.path
+        links = [("/", "🏠 Home"), ("/research-queue", "🧭 Research"),
+                 ("/imports", "📥 Import")]
+        links += ([("/admin/tasks", "📋 Team"), ("/admin/reviews", "🔍 Review")]
+                  if is_mgr else [("/me/tasks", "✅ My Tasks")])
+        links += [("/how-to-use", "📖 Guide")]
+        items = ""
+        for h, l in links:
+            on = " on" if (cur == h or (h != "/" and cur.startswith(h))) else ""
+            items += f'<a class="navbtn{on}" href="{h}">{l}</a>'
+        return f'<nav class="rbar">{items}</nav>'
 
     def _user_options(sel=None):
         from src import auth as _a
@@ -2903,14 +2924,20 @@ padding:7px 11px;cursor:pointer}
 border-radius:12px;padding:22px;text-align:center;font-size:.9rem}
 /* single report */
 .rbar{position:sticky;top:0;z-index:80;display:flex;align-items:center;
-justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0 0 18px;
-padding:10px 16px;background:var(--paper);border-bottom:1px solid var(--line-strong);
+gap:8px;flex-wrap:wrap;margin:0 0 18px;
+padding:9px 14px;background:var(--paper);border-bottom:1px solid var(--line-strong);
 box-shadow:0 2px 8px rgba(0,0,0,.06)}
 .back{display:inline-flex;align-items:center;gap:7px;font-family:var(--sans);
 font-size:.92rem;font-weight:700;color:var(--paper);background:var(--accent);
 border:1px solid var(--accent);border-radius:10px;padding:9px 16px;text-decoration:none;
 line-height:1}
 .back:hover{filter:brightness(1.08)}
+.navbtn{display:inline-flex;align-items:center;gap:6px;font-family:var(--sans);
+font-size:.85rem;font-weight:700;color:var(--ink-soft);background:var(--surface);
+border:1px solid var(--line-strong);border-radius:9px;padding:8px 13px;
+text-decoration:none;line-height:1;white-space:nowrap}
+.navbtn:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-bg)}
+.navbtn.on{color:var(--paper);background:var(--accent);border-color:var(--accent)}
 .md{background:var(--surface);border:1px solid var(--line);border-radius:14px;
 padding:26px 30px;box-shadow:var(--shadow);overflow-x:auto}
 .md h1{font-size:1.5rem}.md h2{font-size:1.2rem;border-bottom:1px solid var(--line);
