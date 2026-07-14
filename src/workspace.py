@@ -1161,8 +1161,20 @@ def build_workspace(kw, opts=None):
 
     # design
     risk_html = "".join(f'<li>{_esc(r)}</li>' for r in design_risks)
+    # Producibility: can this design actually be STITCHED (not just "is it
+    # embroidery")? Scores color/detail/thin-line risk from the idea text.
+    from src import product_fit as _pf
+    _dtext = kw + " " + " ".join(str(opts.get(k, "")) for k in
+                                 ("niche", "style", "personalization"))
+    _prod = _pf.producibility(_dtext, "embroidery" if mode in
+                              ("embroidery", "both", "chenille") else mode)
+    prod_html = (
+        f'<div class="gate {"g-ok" if _prod["score"] >= 75 else "g-no"}">'
+        f'Producibility ({mode}): {_prod["score"]}/100 — {_prod["label"]}</div>'
+        + "".join(f'<p class="note">⚠️ {_esc(r)}</p>' for r in _prod["risks"]))
     design_html = (
-        f'<div class="warn"><b>Design risk ({mode}):</b><ul>{risk_html}</ul></div>'
+        prod_html
+        + f'<div class="warn"><b>Design risk ({mode}):</b><ul>{risk_html}</ul></div>'
         '<div class="lbrow"><b>POD prompt</b>' + _copy_btn("ws-pod") + '</div>'
         f'<pre class="lbval" id="ws-pod">{_esc(pod_prompt)}</pre>'
         '<div class="lbrow"><b>Embroidery prompt (stitch-safe)</b>'

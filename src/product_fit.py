@@ -167,3 +167,36 @@ def annotate(rows, key="tag", mode=None):
     for r in rows:
         r["fit"] = classify(r.get(key) or r.get("keyword") or "", mode)
     return rows
+
+
+# Design traits that do NOT embroider/stitch cleanly. Embroidery = bold, few
+# colors, clean shapes; gradients / photo-real / fine detail / tiny text fail.
+NOT_STITCH_SAFE = (
+    "gradient", "ombre", "photorealistic", "photo realistic", "realistic",
+    "watercolor", "watercolour", "3d render", "rendered", "hyper detailed",
+    "highly detailed", "intricate", "fine line", "thin line", "tiny text",
+    "small text", "shading", "shaded", "portrait", "photo", "sketch")
+STITCH_FRIENDLY = ("monogram", "name", "initial", "letter", "bold", "simple",
+                   "outline", "silhouette", "logo", "block", "text")
+
+
+def producibility(text, mode="embroidery"):
+    """0-100: can this design actually be PRODUCED well in `mode`? For
+    embroidery/chenille it's a real stitch-safety read (bold shapes, few colors,
+    no gradients / photo-real / fine detail / tiny text). POD prints almost
+    anything, so it scores high by default. Returns {score, label, risks}."""
+    t = (text or "").lower()
+    if mode not in ("embroidery", "chenille"):
+        return {"score": 88, "label": "PRINTS_FINE", "risks": []}
+    hits = [flag for flag in NOT_STITCH_SAFE if flag in t]
+    # de-dupe overlapping matches (e.g. "photo" inside "photorealistic")
+    hits = sorted({h for h in hits
+                   if not any(h != o and h in o for o in hits)})
+    score = 82 - 18 * len(hits)
+    if any(w in t for w in STITCH_FRIENDLY):
+        score += 8
+    score = max(0, min(100, score))
+    label = ("STITCH_SAFE" if score >= 75 else
+             "NEEDS_SIMPLIFYING" if score >= 45 else "NOT_STITCH_SAFE")
+    risks = [f"'{h}' does not stitch cleanly — simplify or go POD" for h in hits[:4]]
+    return {"score": score, "label": label, "risks": risks}

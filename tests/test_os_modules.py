@@ -16,6 +16,24 @@ def test_profit_refund_is_a_loss():
     assert f["net_profit"] == -10.0
 
 
+def test_profit_currency_fee_on_item_plus_shipping():
+    # VN payout: 2.5% currency conversion on the WHOLE order (item + shipping)
+    f = profit.compute(20, 5, 4)
+    assert f["currency_fee"] == 0.60          # 2.5% of (20 + 4)
+    assert f["transaction_fee"] == 1.56       # 6.5% of (20 + 4)
+
+
+def test_profit_offsite_on_item_plus_shipping():
+    f = profit.compute(30, 8, 5, offsite_ad=True)
+    assert f["offsite_ad_fee"] == 5.25        # 15% of (30 + 5), not item-only
+    assert profit.compute(30, 8, 5)["offsite_ad_fee"] == 0.0   # off by default
+
+
+def test_profit_zero_price_no_crash():
+    f = profit.compute(0, 5, 0)
+    assert f["net_profit"] <= 0 and f["margin"] == 0.0
+
+
 def test_profit_add_and_summary():
     profit.add({"supplier": "TestSup", "product_mode": "pod",
                 "sale_price": "25", "product_cost": "6", "shipping_cost": "0"})
