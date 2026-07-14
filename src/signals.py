@@ -102,3 +102,26 @@ def cross_check(keywords):
                   "evidence": "; ".join(evidence) or
                               "no independent source checked yet"}
     return out
+
+
+def trend_velocity(momentum_score=None, rank_change_7d=None):
+    """Classify a keyword's trend PHASE, separating RISING (still accelerating)
+    from PEAKED (high interest but momentum flattening/declining) -- the "get in
+    now" vs "window has closed" distinction the plain rising/cooling read misses.
+
+    momentum_score: 0-100 (higher = faster growth). rank_change_7d: 7-day change
+    in Etsy rank (NEGATIVE = moving toward #1 = improving). Returns (phase, note).
+    """
+    ms = momentum_score if isinstance(momentum_score, (int, float)) else None
+    rc = rank_change_7d if isinstance(rank_change_7d, (int, float)) else None
+    if rc is not None and rc <= -3:
+        return "RISING", "climbing the rankings fast — get in early"
+    if ms is not None and ms >= 60:
+        return "RISING", "strong momentum — still accelerating"
+    if rc is not None and rc >= 3:
+        return "PEAKED", "slipping in the rankings — likely past peak"
+    if ms is not None and ms < 30:
+        return "PEAKED", "low momentum — likely past its peak"
+    if ms is not None and 30 <= ms < 50:
+        return "PEAKING", "high but flattening — window is closing"
+    return "STEADY", "holding steady — no strong trend either way"

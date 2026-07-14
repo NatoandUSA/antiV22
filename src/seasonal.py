@@ -70,9 +70,25 @@ def _parse(d):
 
 
 def _next_date(dates, today):
-    """First date in the list that is still ahead of today."""
-    fut = sorted(d for d in (_parse(x) for x in dates) if d >= today)
-    return fut[0] if fut else None
+    """First listed date still ahead of today; if the hardcoded year lists are
+    exhausted, AUTO-ROLL the pattern (month/day of the last known date) to the
+    next future year so events never silently disappear. Exact for fixed-date
+    holidays; within a few days for floating ones (fine for a 6-week lead)."""
+    parsed = sorted(_parse(x) for x in dates)
+    fut = [d for d in parsed if d >= today]
+    if fut:
+        return fut[0]
+    if not parsed:
+        return None
+    last = parsed[-1]
+    for yy in (today.year, today.year + 1):
+        try:
+            cand = date(yy, last.month, last.day)
+        except ValueError:          # e.g. Feb 29 in a non-leap year
+            continue
+        if cand >= today:
+            return cand
+    return None
 
 
 def _launch_status(days_until, launch_by, today):

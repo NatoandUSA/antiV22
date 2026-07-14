@@ -947,6 +947,14 @@ def _gather(kw, opts=None):
                 break
     except Exception:  # noqa: BLE001
         pass
+    # trend PHASE (rising vs already-peaked), from momentum + 7-day rank move
+    _rc = stats.get("rank_change_7d")
+    try:
+        _rc = float(_rc)
+    except (TypeError, ValueError):
+        _rc = None
+    from src import signals as _sig
+    trend_phase = _sig.trend_velocity(mo.get("momentum_score"), _rc)
     risk, tm_reason = tm_check(kw.lower())
     data_flags = data_check(stats, kw)
 
@@ -999,7 +1007,7 @@ def _gather(kw, opts=None):
         emb_prompt=emb_prompt, design_risks=design_risks, fc=fc,
         audit_html=audit_html, audit_status=audit_status, timeline=timeline,
         cww_score=cww_score, cww_scores=cww_scores, cww_gaps=cww_gaps,
-        lr_score=lr_score,
+        trend_phase=trend_phase, lr_score=lr_score,
         lr_status=lr_status, lr_reasons=lr_reasons, fib_score=fib_score,
         fib_pattern=fib_pattern, fib_plan=fib_plan, offer_html=offer_html,
         offer_score=offer_score, offer_factors=offer_factors, supplier_ok=supplier_ok,
@@ -1075,7 +1083,10 @@ def build_workspace(kw, opts=None):
         f'<li>Conversion <b>{_pct(conv)}</b> · demand:supply '
         f'<b>{stats.get("demand_supply_ratio","-")}</b> · buyer intent '
         f'<b>personalized / gift</b></li>'
-        f'{spark_html}</ul>'
+        f'{spark_html}'
+        + (f'<li>Trend phase: <b>{_esc(G["trend_phase"][0])}</b> — '
+           f'{_esc(G["trend_phase"][1])}</li>' if G.get("trend_phase") else '')
+        + '</ul>'
         '<h3>Related & long-tail keywords</h3>' + md_table(_rel_rows(related, 15)))
 
     # niches
