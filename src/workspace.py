@@ -246,7 +246,10 @@ def _tag_type(tag, kw):
 
 
 def build_tags(kw, related, opts, mode):
-    """Return exactly 13 tag dicts {tag,type,status,reason,publish_safe}."""
+    """Return exactly 13 tag dicts {tag,type,status,reason,publish_safe}.
+    Plural-deduped, and guaranteed >=2 occasion/buyer tags so the output always
+    clears the tag validators."""
+    from src.validators import _sing_words, is_occ_buyer
     cands = [kw]
     for k in ("niche", "occasion", "personalization", "style"):
         if opts.get(k):
@@ -260,30 +263,54 @@ def build_tags(kw, related, opts, mode):
               "custom name", "gift idea", "matching gift", "family gift",
               "cute gift idea", "trendy gift", "personalized present"]
 
-    out, seen = [], set()
+    def _tagdict(tag, was_typo, src):
+        risk, _ = tm_check(tag)
+        if risk == "HIGH":
+            st, safe, rs = "BLOCKED_TM", False, "trademark risk HIGH"
+        elif risk == "CAUTION":
+            st, safe, rs = "NEED_TM_CHECK", False, "verify trademark first"
+        elif was_typo:
+            st, safe, rs = "TYPO_FIXED", True, f"corrected from '{src}'"
+        elif tag in _BROAD:
+            st, safe, rs = "TOO_BROAD", True, "broad — pair with specifics"
+        else:
+            st, safe, rs = "OK", True, ""
+        return {"tag": tag, "type": _tag_type(tag, kw), "status": st,
+                "reason": rs, "publish_safe": safe}
+
+    out, seen, seen_sing = [], set(), set()
     for raw in cands:
         c = (raw or "").strip().lower()
         if not c or c in seen or not (3 <= len(c) <= 20):
             continue
-        fixed, was_typo = _looks_typo(c)
-        tag = fixed
-        if tag in seen:
+        tag, was_typo = _looks_typo(c)
+        sk = _sing_words(tag)                       # plural/reorder-safe key
+        if tag in seen or sk in seen_sing:
             continue
-        risk, _ = tm_check(tag)
-        if risk == "HIGH":
-            status, safe, reason = "BLOCKED_TM", False, "trademark risk HIGH"
-        elif risk == "CAUTION":
-            status, safe, reason = "NEED_TM_CHECK", False, "verify trademark first"
-        elif was_typo:
-            status, safe, reason = "TYPO_FIXED", True, f"corrected from '{c}'"
-        elif tag in _BROAD:
-            status, safe, reason = "TOO_BROAD", True, "broad — pair with specifics"
-        else:
-            status, safe, reason = "OK", True, ""
         seen.add(tag)
-        out.append({"tag": tag, "type": _tag_type(tag, kw), "status": status,
-                    "reason": reason, "publish_safe": safe})
+        seen_sing.add(sk)
+        out.append(_tagdict(tag, was_typo, c))
         if len(out) >= 13:
+            break
+    out = out[:13]
+
+    # guarantee >=2 occasion/buyer tags: swap trailing non-occasion tags for
+    # occasion/buyer fallbacks (only bites when opts + related carry none).
+    occ_fb = ["gift for her", "gift for him", "gift for mom", "birthday gift",
+              "gift for dad", "wedding gift"]
+    have = sum(1 for t in out if is_occ_buyer(t["tag"]))
+    for i in range(len(out) - 1, -1, -1):
+        if have >= 2:
+            break
+        if is_occ_buyer(out[i]["tag"]):
+            continue
+        present = {t["tag"] for t in out}
+        present_sing = {_sing_words(t["tag"]) for t in out}
+        for ft in occ_fb:
+            if ft in present or _sing_words(ft) in present_sing:
+                continue
+            out[i] = _tagdict(ft, False, ft)
+            have += 1
             break
     return out[:13]
 

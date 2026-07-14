@@ -24,6 +24,40 @@ GENERIC_TAGS = {"gift", "gifts", "cute", "trendy", "new", "best seller",
 
 STOP = {"a", "an", "the", "for", "with", "and", "of", "to", "in", "on"}
 
+# Occasion / buyer-intent tokens: >=2 tags should target one (Etsy buyers search
+# by occasion, event, use-case, or recipient). Broad but high-signal.
+OCC_BUYER = (
+    # gifting occasions / holidays
+    "birthday", "wedding", "christmas", "anniversary", "graduation",
+    "valentine", "halloween", "thanksgiving", "baby shower", "bridal",
+    "bridesmaid", "engagement", "retirement", "housewarming", "mother",
+    "father", "holiday",
+    # events / use-cases (also buyer intent)
+    "concert", "festival", "game day", "stadium", "travel", "vacation",
+    "party", "gym", "beach", "work", "school", "everyday", "event",
+    # recipient / audience
+    "for her", "for him", "for mom", "for dad", "for wife", "for husband",
+    "for daughter", "for son", "for grandma", "for grandpa", "for teacher",
+    "for nurse", "for friend", "for couples", "for women", "for men",
+    "for kids", "teacher", "nurse")
+
+
+def _singular(w):
+    """Crude singularizer so 'bag'/'bags' and 'gift'/'gifts' collapse together."""
+    if len(w) > 4 and w.endswith("es"):
+        return w[:-2]
+    if len(w) > 3 and w.endswith("s") and not w.endswith("ss"):
+        return w[:-1]
+    return w
+
+
+def _sing_words(t):
+    return frozenset(_singular(w) for w in t.split())
+
+
+def is_occ_buyer(tag):
+    return any(k in tag.lower() for k in OCC_BUYER)
+
 
 def validate_title(title, confirmed_material="", primary_keyword=""):
     """Return (passed, issues). Buyer-friendly title rules."""
@@ -62,8 +96,10 @@ def validate_title(title, confirmed_material="", primary_keyword=""):
     return (not issues), issues
 
 
-def validate_tags(tags, confirmed_material=""):
-    """Return (passed, issues). Exactly 13 quality, safe, distinct tags."""
+def validate_tags(tags, confirmed_material="", title=""):
+    """Return (passed, issues). Exactly 13 quality, safe, distinct tags.
+
+    When `title` is given, also require >=3 tags to echo the title's keywords."""
     issues = []
     if len(tags) != 13:
         issues.append(f"must be exactly 13 tags (got {len(tags)})")
@@ -74,12 +110,14 @@ def validate_tags(tags, confirmed_material=""):
     dupes = [t for t, n in Counter(norm).items() if n > 1]
     if dupes:
         issues.append(f"duplicate tags: {', '.join(dupes)}")
-    wordsets = Counter(frozenset(t.split()) for t in norm)
-    near = [next(t for t in norm if frozenset(t.split()) == ws)
-            for ws, n in wordsets.items() if n > 1]
+    # near-duplicate = same words after singular/plural + reorder collapse (Etsy
+    # treats 'name bag' and 'name bags' as the same tag -> a wasted slot).
+    wordsets = Counter(_sing_words(t) for t in norm)
+    near = [next(t for t in norm if _sing_words(t) == wsk)
+            for wsk, n in wordsets.items() if n > 1]
     if near:
-        issues.append(f"near-duplicate tags (same words reordered): "
-                      f"{', '.join(near)}")
+        issues.append("near-duplicate tags (same words / singular-plural): "
+                      + ", ".join(near))
     generic = [t for t in norm if t in GENERIC_TAGS]
     if generic:
         issues.append(f"low-quality generic single tags: "
@@ -93,9 +131,24 @@ def validate_tags(tags, confirmed_material=""):
     if claims:
         issues.append(f"tags claim unverified materials: "
                       f"{', '.join(sorted(set(claims)))}")
-    # coverage guidance (warns, doesn't fail): buyer-intent variety
+    # coverage: buyer-intent variety
     multiword = sum(1 for t in norm if " " in t)
     if multiword < 8:
         issues.append(f"only {multiword}/13 multi-word tags - add long-tail "
                       "buyer-intent phrases (occasion, audience, use case)")
+    # >=2 tags should target an occasion or a buyer (how gift shoppers search)
+    occ = sum(1 for t in norm if is_occ_buyer(t))
+    if occ < 2:
+        issues.append(f"only {occ} occasion/buyer tag(s) - add >=2 "
+                      "(e.g. birthday, for her, wedding, for mom)")
+    # >=3 tags should echo the title so its keywords are reinforced (relevancy)
+    tl = (title or "").lower()
+    if tl:
+        tw = {_singular(w) for w in re.findall(r"[a-z]+", tl)
+              if w not in STOP and len(w) > 2}
+        echo = sum(1 for t in norm
+                   if tw & {_singular(w) for w in t.split() if w not in STOP})
+        if echo < 3:
+            issues.append(f"only {echo} tag(s) echo the title - >=3 should "
+                          "reinforce the title keywords")
     return (not issues), issues

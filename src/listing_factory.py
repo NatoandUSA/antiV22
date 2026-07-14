@@ -89,12 +89,27 @@ def build_listing(keyword):
             if len(tags) == 13:
                 break
 
-    # title: keyword + best related phrases, <=140 chars
+    # title: keyword first + up to 2 complementary phrases (NOT a comma chain) so
+    # it stays buyer-readable and clears the validators: <=140 chars, <=15 words,
+    # <=3 commas, no word repeated 3+ times (no keyword stuffing).
+    from collections import Counter as _Counter
     parts = [keyword.title()]
+    used = set(keyword.split())
+    wc = _Counter(keyword.split())
     for t in tags[1:]:
+        if len(parts) >= 3:
+            break
+        tw = t.split()
+        if all(w in used for w in tw):           # adds no new words -> skip
+            continue
+        if any(wc[w] + 1 >= 3 for w in tw):       # would stuff a word 3+x -> skip
+            continue
         cand = ", ".join(parts + [t.title()])
-        if len(cand) <= 130:
+        if len(cand) <= 140 and len(cand.split()) <= 15 and cand.count(",") <= 3:
             parts.append(t.title())
+            used |= set(tw)
+            for w in tw:
+                wc[w] += 1
     title = ", ".join(parts)
 
     # price: niche average of winners (or suggestions) with margin check
@@ -143,6 +158,19 @@ def write_pack(p):
     L += ["**TITLE (dan vao o Title):**", "```", p["title"], "```", ""]
     L += ["**TAGS (dan tung tag, du 13):**", "```",
           ", ".join(p["tags"]), "```", ""]
+
+    # Quality gate: same validators as the main pipeline -- this pack path is no
+    # longer ungated. Surfaces any title/tag issue to fix before publishing.
+    from src.validators import validate_title, validate_tags
+    _tok, _tiss = validate_title(p["title"], "", p["keyword"])
+    _gok, _giss = validate_tags(p["tags"], "", p["title"])
+    if _tok and _gok:
+        L += ["> PASS - title + 13 tags meet the Etsy quality validators.", ""]
+    else:
+        L += ["> **QUALITY CHECK - FIX THESE BEFORE PUBLISHING:**"]
+        L += [f"> - TITLE: {i}" for i in _tiss]
+        L += [f"> - TAGS: {i}" for i in _giss]
+        L += [""]
 
     desc = [
         f"~ {kw_t} ~",
