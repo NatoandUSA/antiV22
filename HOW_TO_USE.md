@@ -129,7 +129,11 @@ Bạn thấy trên YTuong listing **"monogram tote bag"** bán chạy, muốn l�
 | 📥 **Import Center** | Import phát hiện YTuong/HeyEtsy/Etsy | Dán URL hoặc gõ keyword (+ mode) | Candidate vào Research Queue (**giữ mode**); bảng *Recently imported* có **cột Assigned** (ai đang phụ trách) |
 | 🧭 **Research Queue** | Đường ống ý tưởng → duyệt đăng | Bấm **Build workspace** / giao task | NEW_IDEA → NCC → audit → design → nháp → duyệt → đăng; **mode giữ nguyên** |
 | 📈 **Trending** | Từ khóa **đang lên** | Bấm (theo mode) | ~50 từ khóa rising + **cụm sản phẩm** |
-| 💎 **Opportunities** | Ngách **ít cạnh tranh, cầu thật** | Bấm | ~50 ý tưởng "vùng ngọt" + cụm |
+| 💎 **Opportunities** | Ngách **ít cạnh tranh, cầu thật** | Bấm | ~50 ý tưởng "vùng ngọt" + cụm + cột **Opp score** |
+| 📊 **Daily brief** (MỚI) | **Đọc đầu ngày** — danh sách nên làm hôm nay, đã chấm điểm + xếp hạng | Bấm (theo mode) | GO / CONDITIONAL trước, WATCH sau (kèm lý do + cái gì còn thiếu) + lịch mùa vụ 90 ngày |
+| 💠 **Hidden gems** (MỚI) | Ngách **conversion cao + ít cạnh tranh** (bảng đầy đủ) | Bấm | Gem score, listings/sellers, L/S, conv, sold 24h, **Trend phase**, Opp score |
+| 🆕 **Newest winners** (MỚI) | Listing **mới toanh mà đã bán chạy** — học GÓC ĐỘ, không copy | Bấm | Tuổi listing, perf, sold 24h, **vì sao nó hot**, tag mẫu |
+| 🗂️ **Category intel** (MỚI) | Chọn **cả CATEGORY** đang thiếu người bán trước khi săn keyword | Bấm (sort) | Demand/Supply, revenue, conv, verdict ENTER / NICHE DOWN / AVOID. *Cần `YTUONG_COOKIE` — không có thì báo thẳng, không bịa* |
 | 🕵️ **Spy + Reverse Engine** | Giải mã đối thủ | Từ khóa **hoặc link listing Etsy** | Ai thắng, playbook của họ, khe hở để thắng |
 | 📅 **Seasonal calendar** | Lịch mùa vụ | Bấm | Ngày lễ sắp tới + **hạn chót launch** |
 | 📝 **Listing Analyzer** | Chấm điểm listing | Dán title+tag+mô tả | Điểm SEO/Trust/Image + cổng duyệt |
@@ -250,6 +254,7 @@ làm thắng được không* — hai câu hỏi khác nhau, cần tách bạch 
 | **Producibility** (MỚI) | Điểm 0–100: mẫu **có thêu sạch được không** (chỉ chế độ thêu) | **NOT_STITCH_SAFE** → đơn giản hóa mẫu hoặc chuyển POD trước khi thiết kế |
 | **Trend phase** (MỚI) | **RISING** (còn lên) / **PEAKING** (chững) / **PEAKED** (đã đỉnh) | RISING = vào sớm; PEAKED = coi chừng đã muộn, chỉ test nhỏ |
 | **DATA DEGRADED** (MỚI) | Banner đỏ trang chủ khi dữ liệu YTrends **cũ >48h / mất** | Kiểm tra lại số trước khi quyết; chờ lần refresh sau (tự chạy ~6h/lần) |
+| **Opp score** (MỚI) | Điểm tổng hợp 0–100 + verdict **GO / CONDITIONAL / WATCH / SKIP** trên trang Opportunities · Hidden gems · Daily brief. Gộp: Thị trường + Cạnh tranh + Cơ hội + **Dữ liệu bán của MÌNH** + Khả thi (thêu được + trademark) | GO = làm ngay · CONDITIONAL = test trước · **WATCH = thiếu dữ liệu lõi, KHÔNG phải "kém"** · SKIP (trademark HIGH = luôn SKIP). Thấy chữ mà **không có số** = dữ liệu lõi thiếu → công cụ **không bịa điểm** |
 
 ---
 

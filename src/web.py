@@ -403,6 +403,8 @@ def build_app(password, secret):
             'research, library &amp; analytics (open when you need them)</summary>'
             '<h2 class="grouph">🔍 Research &amp; discovery</h2>'
             '<div class="toolgrid">'
+            f'<a class="toolcard" href="/daily-brief?mode={active}"><b>🌅 Daily brief</b>'
+            '<span>Today\'s scored build-list (Opportunity Score) — read first</span></a>'
             f'<a class="toolcard" href="/trending?mode={active}"><b>📈 Trending now'
             f'</b><span>Rising keywords in {active_label} (YTuong data)</span></a>'
             f'<a class="toolcard" href="/opportunities?mode={active}"><b>💎 '
@@ -411,6 +413,12 @@ def build_app(password, secret):
             '<span>Decode each competitor\'s playbook + how to beat them</span></a>'
             f'<a class="toolcard" href="/calendar?mode={active}"><b>📅 Seasonal calendar</b>'
             '<span>Upcoming holidays + launch-by dates + keywords</span></a>'
+            f'<a class="toolcard" href="/gems?mode={active}"><b>💠 Hidden gems</b>'
+            '<span>High-conversion, low-competition niches (full table)</span></a>'
+            f'<a class="toolcard" href="/newest?mode={active}"><b>🆕 Newest winners</b>'
+            '<span>Brand-new listings already outselling their niche</span></a>'
+            '<a class="toolcard" href="/categories"><b>🗂️ Category intel</b>'
+            '<span>Underserved whole categories (demand vs supply)</span></a>'
             '<a class="toolcard" href="/research"><b>🔬 Saved research</b>'
             '<span>Past keyword lookups</span></a>'
             '<a class="toolcard" href="/shops"><b>🏪 Saved shops</b>'
@@ -1306,6 +1314,40 @@ def build_app(password, secret):
     @login_required
     def opportunities():
         return _mode_tool(lambda iv, m, s: iv.opportunities(m, s), "Opportunities", filterable=True)
+
+    @app.route("/gems")
+    @login_required
+    def gems():
+        return _mode_tool(lambda iv, m, s: iv.gems(m, s), "Hidden gems", filterable=True)
+
+    @app.route("/newest")
+    @login_required
+    def newest():
+        return _mode_tool(lambda iv, m, s: iv.newest(m, s), "Newest fresh winners", filterable=True)
+
+    @app.route("/categories")
+    @login_required
+    def categories():
+        from src import interactive
+        sort = request.args.get("sort") or "opportunity"
+        labels = [("opportunity", "Opportunity"), ("revenue", "Revenue"),
+                  ("conversion", "Conversion"), ("sellers", "Fewest sellers")]
+        srow = "".join(
+            f'<a class="pullbtn{" primary" if sort == sk else ""}" '
+            f'href="/categories?sort={sk}">{sl}</a>' for sk, sl in labels)
+        sortbar = ('<div class="pullbar"><div class="pulltxt"><b>Sort</b>'
+                   '<span>Rank whole categories by</span></div>'
+                   f'<div class="pullbtns">{srow}</div></div>')
+        try:
+            return _render_tool("Category intelligence",
+                                interactive.category_intel(sort), switch=sortbar)
+        except (SystemExit, Exception) as exc:  # noqa: BLE001
+            return _tool_error("Category intelligence", exc)
+
+    @app.route("/daily-brief")
+    @login_required
+    def daily_brief():
+        return _mode_tool(lambda iv, m: iv.daily_brief(m), "Daily brief")
 
     @app.route("/calendar")
     @login_required

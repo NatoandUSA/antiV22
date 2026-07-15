@@ -1,0 +1,28 @@
+{
+  "default": {
+    "market": 0.32,
+    "competition": 0.28,
+    "opportunity": 0.15,
+    "private": 0.15,
+    "feasibility": 0.10
+  },
+  "presets": {
+    "home_living": {
+      "market": 0.30, "competition": 0.30, "opportunity": 0.18,
+      "private": 0.14, "feasibility": 0.08
+    },
+    "clothing_apparel": {
+      "market": 0.35, "competition": 0.25, "opportunity": 0.12,
+      "private": 0.18, "feasibility": 0.10
+    },
+    "spiritual_gifts": {
+      "market": 0.28, "competition": 0.32, "opportunity": 0.20,
+      "private": 0.12, "feasibility": 0.08
+    }
+  },
+  "advanced": {
+    "time_decay_half_life_days": 90,
+    "ip_risk_penalties": { "low": 0, "medium": -12, "high": -30 },
+    "min_score_for_spy_enrichment": 65
+  }
+}

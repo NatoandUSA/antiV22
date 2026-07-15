@@ -381,15 +381,17 @@ def _cluster_block(picks, key="tag"):
 
 
 def opportunities(mode=None, show_all=False):
+    from src import opportunity_score as oscore
     raw = mcp.scout_opportunities(limit=PULL)
     picks, hidden = _split_fit(raw, "tag", mode)
     L = [f"# Opportunities — {MODE_LABEL.get(mode)}", "",
          "_Launch-ready, **product-fit** ideas only (shop names, spells, brands, "
-         "digital + broad seeds filtered out). Verify trademark._", ""]
+         "digital + broad seeds filtered out). Opp score = composite 0-100 "
+         "(WATCH when core data is incomplete). Verify trademark._", ""]
     L += _cluster_block(picks)
     L += ["## Individual keyword ideas", "",
-          "| Keyword | Fit | Opportunity | Momentum | Sellers | Conv | Avg price | TM |",
-          "|---|---|---|---|---|---|---|---|"]
+          "| Keyword | Fit | Opportunity | Momentum | Sellers | Conv | Avg price | TM | Opp score |",
+          "|---|---|---|---|---|---|---|---|---|"]
     for r in picks:
         tag = _clean(r.get("tag"))
         risk, _ = tm_check(tag.lower())
@@ -397,10 +399,216 @@ def opportunities(mode=None, show_all=False):
                  f"| {r.get('opportunity_score', '-')} "
                  f"| {r.get('momentum_score', '-')} | {_int(r.get('sellers'))} "
                  f"| {_pct(r.get('avg_conversion_rate'))} "
-                 f"| {_money(r.get('avg_price_usd'))} | {risk} |")
+                 f"| {_money(r.get('avg_price_usd'))} | {risk} "
+                 f"| {oscore.cell(r, keyword=tag, mode=mode)} |")
     if not picks:
         L.append("_No launch-ready opportunities for this line right now._")
     return "\n".join(L + _hidden_block(hidden, "tag", show_all))
+
+
+# ---- Hidden gems: full sortable review table (#3) ----------------------------
+def gems(mode=None, show_all=False):
+    """Hidden Gems as a full review table (previously only folded into Market
+    Pulse). High-conversion, low-competition niches a NEW shop can rank for."""
+    from src import signals, opportunity_score as oscore
+    raw = mcp.hidden_gems(limit=PULL)
+    picks, hidden = _split_fit(raw, "tag", mode)
+    L = [f"# Hidden gems - {MODE_LABEL.get(mode)}", "",
+         "_Underexploited niches: high conversion + low competition. gem_score is "
+         "YTuong's opportunity rank; Opp score is the composite 0-100 verdict "
+         "(WATCH when core data is incomplete). Verify trademark before building._", ""]
+    L += _cluster_block(picks)
+    L += ["## Individual gems", "",
+          "| Keyword | Fit | Gem score | Listings | Sellers | L/S | Conv | "
+          "Sold 24h | Trend | Avg price | TM | Opp score |",
+          "|---|---|---|---|---|---|---|---|---|---|---|---|"]
+    for t in picks:
+        tag = _clean(t.get("tag"))
+        risk, _ = tm_check(tag.lower())
+        listings = _g(t, "listing_count", "listings")
+        sellers = _g(t, "seller_count", "sellers")
+        ls = (round(listings / sellers, 1)
+              if isinstance(listings, (int, float))
+              and isinstance(sellers, (int, float)) and sellers else "-")
+        phase, _note = signals.trend_velocity(
+            momentum_score=_g(t, "momentum_score", "gem_score"))
+        gem = t.get("gem_score", "-")
+        action = oscore.cell(t, keyword=tag, mode=mode)
+        L.append(f"| {tag} | {t['_fit']['product_type'] or 'ok'} | {gem} "
+                 f"| {_int(listings)} | {_int(sellers)} | {ls} "
+                 f"| {_pct(_g(t, 'avg_conversion_rate', 'conversion_rate'))} "
+                 f"| {_int(_g(t, 'sold_24h'))} | {phase} "
+                 f"| {_money(_g(t, 'avg_price', 'avg_price_usd'))} | {risk} | {action} |")
+    if not picks:
+        L.append("_No launch-ready hidden gems for this line right now._")
+    return "\n".join(L + _hidden_block(hidden, "tag", show_all))
+
+
+# ---- Newest fresh winners: browsable review list (#2) ------------------------
+def _why_hot(r):
+    """One-line 'why is this new listing outperforming' from the peer signals."""
+    reasons = []
+    op = r.get("outperforms_peers_on")
+    if op:
+        reasons.append(_clean(op) if isinstance(op, str)
+                       else ", ".join(_clean(x) for x in op))
+    cr = _g(r, "peer_conversion_ratio")
+    if isinstance(cr, (int, float)) and cr > 1:
+        reasons.append(f"{cr:.1f}x peer conv")
+    vr = _g(r, "peer_views_ratio")
+    if isinstance(vr, (int, float)) and vr > 1:
+        reasons.append(f"{vr:.1f}x peer views")
+    if not reasons:
+        ps = _g(r, "performance_score")
+        if ps is not None:
+            reasons.append(f"performance {ps}")
+    return "; ".join(reasons) or "new + already selling"
+
+
+def newest(mode=None, show_all=False):
+    """Brand-new listings already outperforming their niche. Study the ANGLE
+    (what/why it's working) and the gap - never copy the design, title, or tags."""
+    from src import product_fit as pf
+    raw = mcp.browse_new_listings(limit=60)
+    picks, junk = [], 0
+    for r in raw:
+        hay = " ".join([_clean(r.get("primary_tag")), _clean(r.get("title")),
+                        " ".join(str(t) for t in (r.get("tags") or []))]).lower()
+        c = pf.classify(hay, mode)
+        if c["launchable"]:
+            picks.append(r)
+        elif c["status"] not in pf.LAUNCHABLE:
+            junk += 1
+    picks = picks[:SHOW]
+    L = [f"# Newest fresh winners - {MODE_LABEL.get(mode)}", "",
+         "_Brand-new listings (young + already outperforming peers). Study the angle "
+         "and the gap to beat them - never copy the design, title, or tags._", "",
+         "| Listing | Price | Perf | Sold 24h | Conv | Age | Why it's hot | Sample tags |",
+         "|---|---|---|---|---|---|---|---|"]
+    for r in picks:
+        title = _clean(r.get("title"))[:60]
+        tags = ", ".join(_clean(t) for t in (r.get("tags") or [])[:4])
+        L.append(f"| {title} | {_money(_g(r, 'price_usd', 'price'))} "
+                 f"| {_g(r, 'performance_score') if _g(r, 'performance_score') is not None else '-'} "
+                 f"| {_int(_g(r, 'sold_24h'))} "
+                 f"| {_pct(_g(r, 'conversion_rate', 'avg_conversion_rate'))} "
+                 f"| {_int(_g(r, 'listing_age_days'))}d | {_why_hot(r)} | {tags} |")
+    if not picks:
+        L.append("_No mode-matching fresh winners in the index this run._")
+    if junk:
+        L += ["", f"_{junk} off-fit new listings hidden (other mode / not a product)._"]
+    return "\n".join(L)
+
+
+# ---- Category intelligence: whole-category demand vs supply (#1) -------------
+def _cat_verdict(opp, ds):
+    if isinstance(opp, (int, float)):
+        return "ENTER" if opp >= 70 else "NICHE DOWN" if opp >= 45 else "AVOID"
+    if isinstance(ds, (int, float)):
+        return "ENTER" if ds >= 1.5 else "NICHE DOWN" if ds >= 0.8 else "AVOID"
+    return "REVIEW"
+
+
+def category_intel(sort="opportunity"):
+    """Category-level market intelligence: whole-category demand vs supply, so you
+    pick an underserved CATEGORY before hunting keywords inside it. Category stats
+    come from the YTuong REST endpoint (needs the cookie); degrades honestly if
+    that path isn't configured, rather than inventing numbers."""
+    from src import deeplinks as dl
+    sort = sort if sort in ("opportunity", "revenue", "conversion",
+                            "sellers") else "opportunity"
+    err = ""
+    try:
+        from src.ytrends_client import categories as _cats
+        rows = _cats(sort=sort, limit=40) or []
+    except Exception as exc:  # noqa: BLE001
+        rows, err = [], str(exc)[:120]
+    L = ["# Category intelligence", "",
+         "_Whole-category demand vs supply - find an underserved CATEGORY first, "
+         f"then pick keywords inside it. Sorted by {sort}._", ""]
+    if not rows:
+        L += ["> **Category data unavailable this run.**", ">",
+              "> Category stats come from the YTuong REST endpoint, which needs the "
+              "browser cookie set (`YTUONG_COOKIE` in `.env`). The MCP index the other "
+              "pages use does not expose categories.",
+              (f"> _(reason: {err})_" if err else ""), ">",
+              f"> View them directly on YTuong: {dl.YTUONG}/categories"]
+        return "\n".join(L)
+    L += ["| Category | Listings | Sellers | Demand/Supply | Revenue | Avg price | "
+          "Conv | Competition | Opportunity | Verdict |",
+          "|---|---|---|---|---|---|---|---|---|---|"]
+    for c in rows:
+        name = _clean(_g(c, "category", "name", "path"))
+        ds = _g(c, "demand_supply_ratio", "demand_supply")
+        opp = _g(c, "opportunity_score", "opportunity")
+        L.append(f"| {name} | {_int(_g(c, 'listing_count', 'listings'))} "
+                 f"| {_int(_g(c, 'seller_count', 'sellers'))} "
+                 f"| {ds if ds is not None else '-'} "
+                 f"| {_money(_g(c, 'revenue', 'total_revenue'))} "
+                 f"| {_money(_g(c, 'avg_price', 'avg_price_usd'))} "
+                 f"| {_pct(_g(c, 'avg_conversion_rate', 'conversion'))} "
+                 f"| {_clean(_g(c, 'competition_level', 'competition'))} "
+                 f"| {opp if opp is not None else '-'} | {_cat_verdict(opp, ds)} |")
+    return "\n".join(L)
+
+
+# ---- Daily brief: scored, ranked build-list for the morning (Doc 2) ----------
+def daily_brief(mode=None):
+    """The morning operating brief: today's opportunities + hidden gems, scored by
+    the composite Opportunity Score and ranked GO -> CONDITIONAL -> WATCH, plus the
+    seasonal launch windows. One screen the manager reads first each day."""
+    from src import opportunity_score as oscore, seasonal
+    pool = []
+    for fn in (lambda: mcp.scout_opportunities(limit=PULL),
+               lambda: mcp.hidden_gems(limit=PULL)):
+        try:
+            pool += fn()
+        except Exception:  # noqa: BLE001 - a dead source shouldn't blank the brief
+            pass
+    picks, _ = _split_fit(pool, "tag", mode)
+    seen, scored = set(), []
+    for r in picks:
+        tag = _clean(r.get("tag"))
+        key = tag.lower()
+        if not tag or key in seen:
+            continue
+        seen.add(key)
+        scored.append((oscore.score(r, keyword=tag, mode=mode), tag))
+    rank = {"GO": 0, "CONDITIONAL": 1, "WATCH": 2, "SKIP": 3}
+    scored.sort(key=lambda x: (rank.get(x[0]["verdict"], 9),
+                               -(x[0]["overall_score"] or 0)))
+    L = [f"# Daily brief - {MODE_LABEL.get(mode)}", "",
+         "_Today's best niches, ranked by the composite Opportunity Score. "
+         "Human review + trademark check still required before building._", "",
+         "## Build-worthy today (GO / CONDITIONAL)", "",
+         "| Keyword | Score | Verdict | Why |", "|---|---|---|---|"]
+    go = [x for x in scored if x[0]["verdict"] in ("GO", "CONDITIONAL")][:12]
+    if go:
+        for s, tag in go:
+            L.append(f"| {tag} | {s['overall_score']} | {s['verdict']} "
+                     f"| {'; '.join(s['rationale'][:2])} |")
+    else:
+        L.append("| _nothing scored GO/CONDITIONAL this run_ |  |  |  |")
+    watch = [x for x in scored if x[0]["verdict"] == "WATCH"][:8]
+    if watch:
+        L += ["", "## Watch - need more data or a sharper angle", "",
+              "| Keyword | Score | Missing / why |", "|---|---|---|"]
+        for s, tag in watch:
+            note = ", ".join(s["missing"]) or (s["rationale"][0] if s["rationale"] else "-")
+            disp = (s["overall_score"] if s.get("core_complete")
+                    and s["overall_score"] is not None else "-")
+            L.append(f"| {tag} | {disp} | {note} |")
+    try:
+        events = seasonal.upcoming_holidays(horizon_days=90, mode=mode)
+    except Exception:  # noqa: BLE001
+        events = []
+    if events:
+        L += ["", "## Seasonal launch windows (next 90 days)", "",
+              "| Event | Peak | Launch by | Days left |", "|---|---|---|---|"]
+        for e in events[:8]:
+            L.append(f"| {_clean(e.get('event'))} | {_clean(e.get('peak'))} "
+                     f"| {_clean(e.get('launch_by'))} | {_int(e.get('days_until'))} |")
+    return "\n".join(L)
 
 
 _SHORTLIST_NEXT = {

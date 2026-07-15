@@ -126,6 +126,29 @@ def winner_tags():
     return set(_load("winner").get("tags", {}))
 
 
+def has_history():
+    """True once our own sales data has ANY proven winner. False = a brand-new
+    shop, where a missing private signal is normal (neutral, not a negative)."""
+    w = _load("winner")
+    return bool(w.get("keywords") or w.get("tags"))
+
+
+def winner_orders(keyword):
+    """Total orders OUR data attributes to this keyword + any winner tag sharing a
+    word with it. 0 = no proven history. Magnitude, not mere presence -- so a
+    keyword that sold 20 outranks one that sold 1."""
+    kw = (keyword or "").strip().lower()
+    if not kw:
+        return 0
+    w = _load("winner")
+    total = _i((w.get("keywords", {}).get(kw) or {}).get("orders"))
+    toks = set(kw.split())
+    for t, row in (w.get("tags", {}) or {}).items():
+        if toks & set(str(t).split()):
+            total += _i(row.get("orders"))
+    return total
+
+
 def problem_suppliers():
     out = {}
     for s, row in _load("supplier").get("suppliers", {}).items():

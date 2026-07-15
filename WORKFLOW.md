@@ -45,7 +45,7 @@
 
 | Bước | Vai trò | Hành động | Mục trên dashboard | Kết quả |
 |---|---|---|---|---|
-| 1 | Researcher | Tìm cụm sản phẩm / từ khóa đang lên | 📈 Trending · 💎 Opportunities · 📅 Seasonal | Ý tưởng |
+| 1 | Researcher | **Mở 📊 Daily brief trước** (danh sách đã chấm điểm + xếp hạng cho hôm nay), rồi đào thêm ở Trending / Opportunities / Hidden gems / Newest winners | 📊 Daily brief · 📈 Trending · 💎 Opportunities · 💠 Hidden gems · 📅 Seasonal | Ý tưởng (kèm **Opp score** + verdict) |
 | **1b** | Researcher | **🔍 Page-1 scan + quy tắc 70% — LÀM TAY** (xem mục riêng bên dưới). **Chỉ import khi ≥70%** | Etsy page 1 + YTuong overlay | STRONG_ENTRY / POSSIBLE_ANGLE / ENTRENCHED |
 | 2 | Researcher | **Import** phát hiện YTuong (dán URL hoặc gõ keyword) — chỉ sau khi 1b đạt | 📥 Import Center | Candidate (giữ **product mode**) |
 | 3 | Researcher/Manager | Phân loại product-fit + **giao việc** (hạn mặc định 24h) | 🧭 Research Queue | Task nghiên cứu (có người phụ trách) |
