@@ -162,41 +162,66 @@ def classify(keyword, mode=None):
     return {"status": st, "launchable": True, "product_type": pt, "reason": reason}
 
 
+# --- embroidery stitch producibility (used by opportunity_score._feasibility) ---
+# We only have the keyword TEXT here (no image), so this reads the design CONCEPT:
+# which ideas are known to stitch cleanly vs which fight the medium.
+HARD_TO_STITCH = {"watercolor", "gradient", "ombre", "galaxy", "nebula", "cosmos",
+                  "cosmic", "photorealistic", "photo", "photograph", "realistic",
+                  "portrait", "3d", "shading", "sketch", "pencil", "charcoal",
+                  "detailed", "intricate", "filigree", "lace", "mandala", "tiny",
+                  "miniature", "landscape", "scenery", "sunset", "fur", "feathers",
+                  "smoke", "splash", "splatter", "distressed", "grunge", "airbrush",
+                  "hologram", "holographic", "iridescent"}
+FINE_TEXT = {"handwriting", "handwritten", "cursive", "script", "calligraphy",
+             "signature", "paragraph", "quote", "poem", "verse", "lyrics"}
+STITCH_SAFE = {"monogram", "monogrammed", "initial", "initials", "name", "names",
+               "letter", "letters", "number", "bold", "block", "simple", "clean",
+               "outline", "silhouette", "logo", "badge", "crest", "emblem",
+               "minimalist", "text", "typography", "applique", "patch"}
+
+
+def producibility(keyword, mode=""):
+    """Embroidery stitch-producibility read from the design CONCEPT (keyword text).
+
+    Returns {"score": 0-100, "label", "reasons"}. For print/POD (or any non-
+    embroidery context) returns label 'PRINTS_FINE' + score 100 - print reproduces
+    almost any art, so callers skip the penalty. For embroidery/chenille it scores
+    how cleanly the idea is likely to stitch: gradients, photo-realism, fine detail
+    and tiny/handwritten text drag it down; bold shapes, monograms and short text
+    lift it. This is a concept heuristic, NOT a substitute for a real sew-out."""
+    kw = (keyword or "").lower()
+    m = (mode or "").strip().lower()
+    words = set(re.findall(r"[a-z0-9]+", kw))
+    emb_ctx = (m in ("embroidery", "chenille")
+               or (m not in ("pod", "print", "jewelry", "acrylic", "digital")
+                   and bool(words & EMB_SIGNS)))
+    if not emb_ctx:
+        return {"score": 100, "label": "PRINTS_FINE",
+                "reasons": ["print reproduces fine art / gradients / photos"]}
+    score, reasons = 72, []
+    hard = words & HARD_TO_STITCH
+    if hard:
+        score -= 12 * len(hard)
+        reasons.append("hard to stitch cleanly: " + ", ".join(sorted(hard)))
+    fine = words & FINE_TEXT
+    if fine:
+        score -= 10 * len(fine)
+        reasons.append("fine/handwritten text won't stitch small: "
+                       + ", ".join(sorted(fine)))
+    safe = words & STITCH_SAFE
+    if safe:
+        score += 8 * len(safe)
+        reasons.append("stitch-friendly: " + ", ".join(sorted(safe)))
+    score = max(0, min(100, score))
+    label = ("STITCH_SAFE" if score >= 75 else
+             "STITCH_OK" if score >= 50 else "STITCH_RISK")
+    if not reasons:
+        reasons.append("no obvious stitch red flags in the concept")
+    return {"score": score, "label": label, "reasons": reasons}
+
+
 def annotate(rows, key="tag", mode=None):
     """Attach a 'fit' dict to each row (rows are dicts with a keyword under `key`)."""
     for r in rows:
         r["fit"] = classify(r.get(key) or r.get("keyword") or "", mode)
     return rows
-
-
-# Design traits that do NOT embroider/stitch cleanly. Embroidery = bold, few
-# colors, clean shapes; gradients / photo-real / fine detail / tiny text fail.
-NOT_STITCH_SAFE = (
-    "gradient", "ombre", "photorealistic", "photo realistic", "realistic",
-    "watercolor", "watercolour", "3d render", "rendered", "hyper detailed",
-    "highly detailed", "intricate", "fine line", "thin line", "tiny text",
-    "small text", "shading", "shaded", "portrait", "photo", "sketch")
-STITCH_FRIENDLY = ("monogram", "name", "initial", "letter", "bold", "simple",
-                   "outline", "silhouette", "logo", "block", "text")
-
-
-def producibility(text, mode="embroidery"):
-    """0-100: can this design actually be PRODUCED well in `mode`? For
-    embroidery/chenille it's a real stitch-safety read (bold shapes, few colors,
-    no gradients / photo-real / fine detail / tiny text). POD prints almost
-    anything, so it scores high by default. Returns {score, label, risks}."""
-    t = (text or "").lower()
-    if mode not in ("embroidery", "chenille"):
-        return {"score": 88, "label": "PRINTS_FINE", "risks": []}
-    hits = [flag for flag in NOT_STITCH_SAFE if flag in t]
-    # de-dupe overlapping matches (e.g. "photo" inside "photorealistic")
-    hits = sorted({h for h in hits
-                   if not any(h != o and h in o for o in hits)})
-    score = 82 - 18 * len(hits)
-    if any(w in t for w in STITCH_FRIENDLY):
-        score += 8
-    score = max(0, min(100, score))
-    label = ("STITCH_SAFE" if score >= 75 else
-             "NEEDS_SIMPLIFYING" if score >= 45 else "NOT_STITCH_SAFE")
-    risks = [f"'{h}' does not stitch cleanly — simplify or go POD" for h in hits[:4]]
-    return {"score": score, "label": label, "risks": risks}

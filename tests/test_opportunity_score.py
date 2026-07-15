@@ -63,3 +63,31 @@ def test_weights_load_falls_back_without_config():
 def test_cell_format():
     c = osc.cell(_strong())
     assert c.split()[-1] in ("GO", "CONDITIONAL", "WATCH", "SKIP")
+
+
+# --- product_fit.producibility (the gap that was half-wired) ------------------
+from src import product_fit as pf
+
+
+def test_producibility_print_is_neutral():
+    r = pf.producibility("watercolor galaxy portrait", "pod")
+    assert r["label"] == "PRINTS_FINE" and r["score"] == 100
+
+
+def test_producibility_flags_unstitchable_embroidery():
+    r = pf.producibility("watercolor galaxy portrait", "embroidery")
+    assert r["label"] == "STITCH_RISK"
+    assert r["score"] < 50
+
+
+def test_producibility_rewards_stitch_safe_embroidery():
+    r = pf.producibility("bold monogram initial", "embroidery")
+    assert r["label"] == "STITCH_SAFE"
+    assert r["score"] >= 75
+
+
+def test_feasibility_blend_now_active_for_embroidery():
+    # a photo-real embroidery concept must score LOWER feasibility than a clean one
+    hard = osc._feasibility("watercolor galaxy portrait embroidery", "embroidery")[0]
+    easy = osc._feasibility("bold monogram embroidery", "embroidery")[0]
+    assert hard < easy
