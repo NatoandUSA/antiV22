@@ -521,18 +521,27 @@ def category_intel(sort="opportunity"):
     try:
         from src.ytrends_client import categories as _cats
         rows = _cats(sort=sort, limit=40) or []
-    except Exception as exc:  # noqa: BLE001
-        rows, err = [], str(exc)[:120]
+    except (SystemExit, Exception) as exc:  # noqa: BLE001
+        # ytrends_client raises SystemExit (a BaseException) on 401 -- catching only
+        # Exception let it escape to the generic route handler, so this graceful
+        # block never rendered for the most common failure.
+        rows, err = [], " ".join(str(exc).split())[:160]
     L = ["# Category intelligence", "",
          "_Whole-category demand vs supply - find an underserved CATEGORY first, "
          f"then pick keywords inside it. Sorted by {sort}._", ""]
     if not rows:
         L += ["> **Category data unavailable this run.**", ">",
-              "> Category stats come from the YTuong REST endpoint, which needs the "
-              "browser cookie set (`YTUONG_COOKIE` in `.env`). The MCP index the other "
-              "pages use does not expose categories.",
+              "> Category stats come from the YTuong REST endpoint, which needs your "
+              "logged-in browser cookie in `.env` as **`YTRENDS_COOKIE`**. (The MCP "
+              "index every other page uses does not expose categories.)", ">",
+              "> **Fix (~1 minute):** open **trends.ytuong.ai** logged in -> `F12` -> "
+              "**Network** tab -> refresh -> click the request named **`keywords`** -> "
+              "**Request Headers** -> copy the FULL value of the `cookie:` line -> add "
+              "`YTRENDS_COOKIE=<paste it>` to `.env` -> restart the app. Cookies expire, "
+              "so re-copy it if 401 comes back. **Never share the cookie or `.env`** - "
+              "it is your login session.",
               (f"> _(reason: {err})_" if err else ""), ">",
-              f"> View them directly on YTuong: {dl.YTUONG}/categories"]
+              f"> Or view them directly on YTuong: {dl.YTUONG}/categories"]
         return "\n".join(L)
     L += ["| Category | Listings | Sellers | Demand/Supply | Revenue | Avg price | "
           "Conv | Competition | Opportunity | Verdict |",

@@ -133,7 +133,7 @@ Bạn thấy trên YTuong listing **"monogram tote bag"** bán chạy, muốn l�
 | 📊 **Daily brief** (MỚI) | **Đọc đầu ngày** — danh sách nên làm hôm nay, đã chấm điểm + xếp hạng | Bấm (theo mode) | GO / CONDITIONAL trước, WATCH sau (kèm lý do + cái gì còn thiếu) + lịch mùa vụ 90 ngày |
 | 💠 **Hidden gems** (MỚI) | Ngách **conversion cao + ít cạnh tranh** (bảng đầy đủ) | Bấm | Gem score, listings/sellers, L/S, conv, sold 24h, **Trend phase**, Opp score |
 | 🆕 **Newest winners** (MỚI) | Listing **mới toanh mà đã bán chạy** — học GÓC ĐỘ, không copy | Bấm | Tuổi listing, perf, sold 24h, **vì sao nó hot**, tag mẫu |
-| 🗂️ **Category intel** (MỚI) | Chọn **cả CATEGORY** đang thiếu người bán trước khi săn keyword | Bấm (sort) | Demand/Supply, revenue, conv, verdict ENTER / NICHE DOWN / AVOID. *Cần `YTUONG_COOKIE` — không có thì báo thẳng, không bịa* |
+| 🗂️ **Category intel** (MỚI) | Chọn **cả CATEGORY** đang thiếu người bán trước khi săn keyword | Bấm (sort) | Demand/Supply, revenue, conv, verdict ENTER / NICHE DOWN / AVOID. *Cần `YTRENDS_COOKIE` trong `.env` — hết hạn/thiếu thì trang báo thẳng kèm hướng dẫn lấy lại (1 phút), không bịa số* |
 | 🕵️ **Spy + Reverse Engine** | Giải mã đối thủ | Từ khóa **hoặc link listing Etsy** | Ai thắng, playbook của họ, khe hở để thắng |
 | 📅 **Seasonal calendar** | Lịch mùa vụ | Bấm | Ngày lễ sắp tới + **hạn chót launch** |
 | 📝 **Listing Analyzer** | Chấm điểm listing | Dán title+tag+mô tả | Điểm SEO/Trust/Image + cổng duyệt |
