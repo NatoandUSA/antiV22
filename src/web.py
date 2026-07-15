@@ -13,6 +13,7 @@ share with the team, run it behind a Cloudflare Tunnel — the login is the gate
 Reuses the burnt-amber "Command Card" palette so the app and the printed cheat
 sheet feel like one tool.
 """
+import hmac
 import os
 import sys
 from functools import wraps
@@ -125,6 +126,10 @@ def build_app(password, secret):
         # WEB_SECURE_COOKIES=1 in .env; left off for local http://localhost dev.
         SESSION_COOKIE_SECURE=(os.getenv("WEB_SECURE_COOKIES", "").strip() == "1"),
         PERMANENT_SESSION_LIFETIME=timedelta(hours=12),   # session timeout
+        # Cap request bodies. /api/import is public and its body is buffered
+        # before the token check, so without this an anonymous POST can chew
+        # through VPS memory. 8MB is far above any real YTrends table export.
+        MAX_CONTENT_LENGTH=8 * 1024 * 1024,
     )
 
     @app.after_request
@@ -149,7 +154,7 @@ def build_app(password, secret):
         # Login is exempt (its token is seeded by the GET that renders the form,
         # but we never want the very first POST to /login to hard-fail on it).
         # Per-route _check_csrf() calls remain as a harmless double-check.
-        if request.method == "POST" and request.endpoint not in ("login",):
+        if request.method == "POST" and request.endpoint not in ("login", "api_import"):
             if request.form.get("_csrf") != session.get("_csrf"):
                 abort(403)
 
@@ -405,6 +410,8 @@ def build_app(password, secret):
             '<div class="toolgrid">'
             f'<a class="toolcard" href="/daily-brief?mode={active}"><b>🌅 Daily brief</b>'
             '<span>Today\'s scored build-list (Opportunity Score) — read first</span></a>'
+            f'<a class="toolcard" href="/score-import?mode={active}"><b>🎯 Score latest import</b>'
+            '<span>Rank your last YTrends extension import by Opportunity Score</span></a>'
             f'<a class="toolcard" href="/trending?mode={active}"><b>📈 Trending now'
             f'</b><span>Rising keywords in {active_label} (YTuong data)</span></a>'
             f'<a class="toolcard" href="/opportunities?mode={active}"><b>💎 '
@@ -1348,6 +1355,69 @@ def build_app(password, secret):
     @login_required
     def daily_brief():
         return _mode_tool(lambda iv, m: iv.daily_brief(m), "Daily brief")
+
+    @app.route("/score-import")
+    @login_required
+    def score_import():
+        from src import interactive
+        m = request.args.get("mode")
+        mode = m if m in ("pod", "embroidery") else None
+        source = (request.args.get("source") or "").strip() or None
+        try:
+            return _render_tool("Score latest import",
+                                interactive.score_import(source, mode))
+        except (SystemExit, Exception) as exc:  # noqa: BLE001
+            return _tool_error("Score latest import", exc)
+
+    # ---- YTrends Exporter extension ingest (token-gated, CORS, no session) ----
+    ALLOWED_IMPORT_ORIGINS = {"https://trends.ytuong.ai", "https://ytuong.me",
+                              "https://heyetsy.com"}
+
+    def _json_resp(obj, code=200):
+        import json as _j
+        return Response(_j.dumps(obj), status=code, mimetype="application/json")
+
+    def _cors(resp, origin):
+        allow = origin if origin in ALLOWED_IMPORT_ORIGINS else "https://trends.ytuong.ai"
+        resp.headers["Access-Control-Allow-Origin"] = allow
+        resp.headers["Vary"] = "Origin"
+        resp.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Import-Token"
+        resp.headers["Access-Control-Max-Age"] = "86400"
+        return resp
+
+    @app.route("/api/import", methods=["POST", "OPTIONS"])
+    def api_import():
+        origin = request.headers.get("Origin", "")
+        if request.method == "OPTIONS":               # CORS preflight
+            return _cors(Response(status=204), origin)
+        token = os.getenv("YTX_IMPORT_TOKEN", "").strip()
+        if not token:
+            return _cors(_json_resp(
+                {"ok": False, "error": "import disabled: set YTX_IMPORT_TOKEN in .env"},
+                503), origin)
+        # compare_digest, not != : this is the only auth on a session-less public
+        # endpoint, and str != leaks the token byte-by-byte via timing.
+        if not hmac.compare_digest(request.headers.get("X-Import-Token", ""), token):
+            return _cors(_json_resp(
+                {"ok": False, "error": "bad or missing X-Import-Token"}, 401), origin)
+        payload = request.get_json(force=True, silent=True)
+        if payload is None:
+            return _cors(_json_resp({"ok": False, "error": "invalid JSON body"}, 400), origin)
+        try:
+            from src import ytx_import
+            summary = ytx_import.ingest(payload)
+        except ValueError as exc:
+            return _cors(_json_resp({"ok": False, "error": str(exc)}, 400), origin)
+        except Exception as exc:  # noqa: BLE001
+            return _cors(_json_resp({"ok": False, "error": "ingest failed: " + str(exc)}, 500), origin)
+        try:
+            activity.log("ytrends_import", module="ytx_import",
+                         action=f'{summary["type"]}:{summary["view"]} '
+                                f'{summary["rows_received"]} rows')
+        except Exception:  # noqa: BLE001
+            pass
+        return _cors(_json_resp({"ok": True, **summary}), origin)
 
     @app.route("/calendar")
     @login_required

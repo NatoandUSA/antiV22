@@ -530,6 +530,30 @@ def category_intel(sort="opportunity"):
          "_Whole-category demand vs supply - find an underserved CATEGORY first, "
          f"then pick keywords inside it. Sorted by {sort}._", ""]
     if not rows:
+        # Extension path first: category data POSTed by the YTrends Exporter to
+        # /api/import lands in data/imports/category_intel.csv, so the Categories
+        # page works even without the REST cookie described below.
+        try:
+            from src import ytx_import
+            imported = ytx_import.latest_categories()
+        except Exception:  # noqa: BLE001
+            imported = []
+        if imported:
+            def _cg(c, *keys):
+                return next((c[k] for k in keys if c.get(k)), "-")
+            L += [f"_Source: your latest YTrends extension import "
+                  f"({len(imported)} categories)._", "",
+                  "| Category | Listings | Sellers | Demand/Supply | Revenue | "
+                  "Avg price | Conv | Competition | Opportunity | Verdict |",
+                  "|---|---|---|---|---|---|---|---|---|---|"]
+            for c in imported:
+                L.append(f"| {_clean(_cg(c, 'Category', 'category'))} "
+                         f"| {_cg(c, 'Listings')} | {_cg(c, 'Sellers')} "
+                         f"| {_cg(c, 'Demand/Supply')} | {_cg(c, 'Revenue')} "
+                         f"| {_cg(c, 'Avg Price')} | {_cg(c, 'Conversion')} "
+                         f"| {_cg(c, 'Competition')} | {_cg(c, 'Opportunity')} "
+                         f"| {_cg(c, 'Verdict')} |")
+            return "\n".join(L)
         L += ["> **Category data unavailable this run.**", ">",
               "> Category stats come from the YTuong REST endpoint, which needs your "
               "logged-in browser cookie in `.env` as **`YTRENDS_COOKIE`**. (The MCP "
@@ -617,6 +641,37 @@ def daily_brief(mode=None):
         for e in events[:8]:
             L.append(f"| {_clean(e.get('event'))} | {_clean(e.get('peak'))} "
                      f"| {_clean(e.get('launch_by'))} | {_int(e.get('days_until'))} |")
+    return "\n".join(L)
+
+
+# ---- Score the latest browser-extension import (loop-closer) ------------------
+def score_import(source=None, mode=None):
+    """Composite-score the most recent YTrends Exporter import and rank it."""
+    from src import shortlister_integration as si
+    res = si.score_latest(source=source, mode=mode)
+    if not res.get("ok"):
+        return ("# Score latest import\n\n> **No YTrends extension import found yet.**"
+                "\n>\n> On a YTrends page, use the **YTrends Exporter** toolbar and "
+                "click **Send to agent**, then reload this page.")
+    L = [f"# Score latest import - {res['view']}", "",
+         f"_Composite Opportunity Score over your last import ({res['count']} rows"
+         f"{', captured ' + res['captured_at'] if res.get('captured_at') else ''}). "
+         "Verdicts are advisory - human review + trademark check still required._", "",
+         "| Keyword | Score | Verdict | M | C | O | Why |",
+         "|---|---|---|---|---|---|---|"]
+    for s in res["results"]:
+        sub = s.get("sub_scores", {})
+
+        def _s(k):
+            v = sub.get(k)
+            return round(v) if isinstance(v, (int, float)) else "-"
+        disp = (s["overall_score"] if s.get("core_complete")
+                and s["overall_score"] is not None else "-")
+        L.append(f"| {_clean(s['keyword'])} | {disp} | {s['verdict']} "
+                 f"| {_s('market_potential')} | {_s('competition_health')} "
+                 f"| {_s('opportunity_signal')} | {'; '.join(s.get('rationale', [])[:2])} |")
+    if not res["results"]:
+        L.append("_Nothing to score in the latest import._")
     return "\n".join(L)
 
 
