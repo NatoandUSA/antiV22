@@ -645,10 +645,14 @@ def daily_brief(mode=None):
 
 
 # ---- Score the latest browser-extension import (loop-closer) ------------------
-def score_import(source=None, mode=None):
-    """Composite-score the most recent YTrends Exporter import and rank it."""
+def score_import(source=None, mode=None, enrich=False):
+    """Composite-score the most recent YTrends Exporter import and rank it.
+
+    enrich=True fills each row's blanks from the YTrends MCP first, so the score
+    rests on real market data instead of the handful of columns the captured
+    table happened to show."""
     from src import shortlister_integration as si
-    res = si.score_latest(source=source, mode=mode)
+    res = si.score_latest(source=source, mode=mode, enrich=enrich)
     if not res.get("ok"):
         return ("# Score latest import\n\n> **No YTrends extension import found yet.**"
                 "\n>\n> On a YTrends page, use the **YTrends Exporter** toolbar and "
@@ -664,9 +668,18 @@ def score_import(source=None, mode=None):
         scope += ", captured " + res["captured_at"]
     L = [f"# Score latest import - {res['view']}", "",
          f"_Composite Opportunity Score over your last import ({scope}). "
-         "Verdicts are advisory - human review + trademark check still required._", "",
-         "| Keyword | Score | Verdict | M | C | O | Why |",
-         "|---|---|---|---|---|---|---|"]
+         "Verdicts are advisory - human review + trademark check still required._", ""]
+    if enrich:
+        L += [f"_Hybrid enrich: ON - {res.get('enriched_count', 0)} row(s) topped up "
+              "from the YTrends MCP (+ marks them). Rows the server has no data on "
+              "are left as-is rather than guessed._", ""]
+    else:
+        _qs = "&mode=" + mode if mode else ""
+        L += ["_Scored on the captured columns only. "
+              f"[Enrich from YTrends MCP](/score-import?enrich=1{_qs}) "
+              "to fill the blanks with real market data (slower, uses quota)._", ""]
+    L += ["| Keyword | Score | Verdict | M | C | O | Why |",
+          "|---|---|---|---|---|---|---|"]
     for s in res["results"]:
         sub = s.get("sub_scores", {})
 
@@ -675,7 +688,8 @@ def score_import(source=None, mode=None):
             return round(v) if isinstance(v, (int, float)) else "-"
         disp = (s["overall_score"] if s.get("core_complete")
                 and s["overall_score"] is not None else "-")
-        L.append(f"| {_clean(s['keyword'])} | {disp} | {s['verdict']} "
+        kw = _clean(s["keyword"]) + (" +" if s.get("enriched") else "")
+        L.append(f"| {kw} | {disp} | {s['verdict']} "
                  f"| {_s('market_potential')} | {_s('competition_health')} "
                  f"| {_s('opportunity_signal')} | {'; '.join(s.get('rationale', [])[:2])} |")
     if not res["results"]:

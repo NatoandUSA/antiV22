@@ -1363,9 +1363,10 @@ def build_app(password, secret):
         m = request.args.get("mode")
         mode = m if m in ("pod", "embroidery") else None
         source = (request.args.get("source") or "").strip() or None
+        enrich = request.args.get("enrich") == "1"
         try:
             return _render_tool("Score latest import",
-                                interactive.score_import(source, mode))
+                                interactive.score_import(source, mode, enrich))
         except (SystemExit, Exception) as exc:  # noqa: BLE001
             return _tool_error("Score latest import", exc)
 

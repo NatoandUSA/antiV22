@@ -89,8 +89,13 @@ def map_row_to_scorer(headers, row, view=""):
     return d
 
 
-def score_latest(source=None, limit=None, threshold=None, mode=None):
-    """Load the newest import, score every row, return ranked results (best first)."""
+def score_latest(source=None, limit=None, threshold=None, mode=None,
+                 enrich=False, enrich_limit=15):
+    """Load the newest import, score every row, return ranked results (best first).
+
+    enrich=True fills gaps from the YTrends MCP first (see src/mcp_enrich.py):
+    one cached, rate-limited call per keyword, capped at enrich_limit.
+    """
     payload = load_latest_import(source)
     if not payload:
         return {"ok": False, "results": [],
@@ -99,7 +104,9 @@ def score_latest(source=None, limit=None, threshold=None, mode=None):
     rows = payload.get("rows") or []
     view = payload.get("view") or source or ""
     from src import product_fit as pf
-    out = []
+    # Map + junk-filter FIRST, so enrich never burns an MCP call on a shop handle
+    # or a broad seed that can't score anyway.
+    mapped = []
     for row in rows:
         d = map_row_to_scorer(headers, row, view)
         if not d["tag"]:
@@ -109,8 +116,22 @@ def score_latest(source=None, limit=None, threshold=None, mode=None):
         fit = pf.classify(d["tag"], mode)
         if not fit["launchable"] and fit["status"] not in pf.LAUNCHABLE:
             continue
+        mapped.append(d)
+    enrich_notes = {}
+    if enrich and mapped:
+        from src import mcp_enrich
+        # Enrich the most promising rows first: pre-score cheaply on what the
+        # extension gave us, so the quota cap spends on real candidates.
+        mapped.sort(key=lambda d: -(osc.score(d, keyword=d["tag"], mode=mode)
+                                    ["overall_score"] or 0))
+        enrich_notes = mcp_enrich.enrich(mapped, limit=enrich_limit)
+    out = []
+    for d in mapped:
         s = osc.score(d, keyword=d["tag"], mode=mode)
         s["category"] = d.get("category")
+        note = enrich_notes.get(d["tag"])
+        s["enriched"] = bool(note and note.get("enriched"))
+        s["enrich_note"] = note
         out.append(s)
     rank = {"GO": 0, "CONDITIONAL": 1, "WATCH": 2, "SKIP": 3}
     out.sort(key=lambda s: (rank.get(s["verdict"], 9), -(s["overall_score"] or 0)))
@@ -122,4 +143,6 @@ def score_latest(source=None, limit=None, threshold=None, mode=None):
     # They differ (shop handles, broad seeds are dropped), so report both rather
     # than let the page call the filtered number "your import".
     return {"ok": True, "view": view, "captured_at": payload.get("captured_at"),
-            "count": len(out), "rows_in_import": len(rows), "results": out}
+            "count": len(out), "rows_in_import": len(rows),
+            "enriched_count": sum(1 for s in out if s.get("enriched")),
+            "results": out}
