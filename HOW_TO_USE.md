@@ -90,7 +90,8 @@ kỳ đâu (kể cả trong trang Build Workspace):
 | Bước | Việc làm | Ở đâu | Ai làm |
 |---|---|---|---|
 | 1️⃣ Tìm ý tưởng | Xem từ khóa đang lên / ngách ít cạnh tranh | Trending · Opportunities · Seasonal | Researcher |
-| 2️⃣ Import | Dán URL/keyword → tạo candidate (giữ mode) | 📥 Import Center | Researcher |
+| 🔍 **Page-1 scan (LÀM TAY)** | Quét page 1 Etsy + **quy tắc 70%** (≥70% mới import) + xác nhận order chart 3–5 shop. **Máy không làm được — xem WORKFLOW để biết vì sao** | Etsy + YTuong | Researcher |
+| 2️⃣ Import | Dán URL/keyword → tạo candidate (giữ mode) — **chỉ khi page-1 scan đạt** | 📥 Import Center | Researcher |
 | 3️⃣ Giao việc | Phân loại product-fit + giao cho nhân viên | 🧭 Research Queue | Researcher/Manager |
 | 4️⃣ Quyết định | **Build workspace** → đọc Verdict + điểm | 🛠️ Workspace | Seller |
 | 5️⃣ NCC + đối thủ | Kiểm tra nhà cung cấp + soi đối thủ | Workspace → Supplier/Spy | Seller/Researcher |
