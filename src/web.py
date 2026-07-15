@@ -1409,8 +1409,11 @@ def build_app(password, secret):
             summary = ytx_import.ingest(payload)
         except ValueError as exc:
             return _cors(_json_resp({"ok": False, "error": str(exc)}, 400), origin)
-        except Exception as exc:  # noqa: BLE001
-            return _cors(_json_resp({"ok": False, "error": "ingest failed: " + str(exc)}, 500), origin)
+        except Exception:  # noqa: BLE001
+            # Traceback to the server log, not to the caller: the message can
+            # carry paths / internals and this endpoint faces the public net.
+            app.logger.exception("ytx_import.ingest failed")
+            return _cors(_json_resp({"ok": False, "error": "ingest failed"}, 500), origin)
         try:
             activity.log("ytrends_import", module="ytx_import",
                          action=f'{summary["type"]}:{summary["view"]} '

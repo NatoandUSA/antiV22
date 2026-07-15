@@ -653,9 +653,17 @@ def score_import(source=None, mode=None):
         return ("# Score latest import\n\n> **No YTrends extension import found yet.**"
                 "\n>\n> On a YTrends page, use the **YTrends Exporter** toolbar and "
                 "click **Send to agent**, then reload this page.")
+    total = res.get("rows_in_import")
+    skipped = (total - res["count"]) if isinstance(total, int) else 0
+    scope = "{} scored".format(res["count"])
+    if total:
+        scope += " of {} captured".format(total)
+    if skipped > 0:
+        scope += "; {} filtered as junk".format(skipped)
+    if res.get("captured_at"):
+        scope += ", captured " + res["captured_at"]
     L = [f"# Score latest import - {res['view']}", "",
-         f"_Composite Opportunity Score over your last import ({res['count']} rows"
-         f"{', captured ' + res['captured_at'] if res.get('captured_at') else ''}). "
+         f"_Composite Opportunity Score over your last import ({scope}). "
          "Verdicts are advisory - human review + trademark check still required._", "",
          "| Keyword | Score | Verdict | M | C | O | Why |",
          "|---|---|---|---|---|---|---|"]

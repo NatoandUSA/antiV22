@@ -118,5 +118,8 @@ def score_latest(source=None, limit=None, threshold=None, mode=None):
         out = [s for s in out if (s["overall_score"] or 0) >= threshold]
     if limit:
         out = out[:limit]
+    # count = rows that survived the junk filter; rows_in_import = rows captured.
+    # They differ (shop handles, broad seeds are dropped), so report both rather
+    # than let the page call the filtered number "your import".
     return {"ok": True, "view": view, "captured_at": payload.get("captured_at"),
-            "count": len(out), "results": out}
+            "count": len(out), "rows_in_import": len(rows), "results": out}
