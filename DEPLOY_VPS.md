@@ -26,6 +26,20 @@ Any provider works. Cheapest reliable options (pick one):
 Create the smallest **Ubuntu 24.04 LTS** instance. When it asks, add your **SSH
 key** (or set a root password). Note the server's **IP address**.
 
+> **The server currently running this app is NOT 24.04.** It is **Ubuntu 22.04.1
+> LTS with Python 3.10.12** (verified on the live box). That is the version code
+> here must actually run on — 3.10 has no PEP 701 f-strings (no same-quote nesting,
+> no backslashes inside f-string expressions), so code that works on a 3.12+ dev
+> machine can still fail on deploy. Check syntax against the real interpreter
+> before shipping, without touching the server:
+>
+> ```bash
+> ssh -p 55317 etsy@51.79.200.65 "python3 -c 'import sys,ast;ast.parse(sys.stdin.read());print(\"OK\")'" < src/yourfile.py
+> ```
+>
+> The 24.04 line above stays as the recommendation for building a *new* box; if you
+> ever rebuild, re-check this note.
+
 ## 2. First login + a non-root user
 ```bash
 ssh root@YOUR_SERVER_IP
