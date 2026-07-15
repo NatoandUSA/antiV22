@@ -1,4 +1,28 @@
-# CLAUDE.md — 22etsy-agent
+# PROPOSED architecture — NOT BUILT. Not the spec for this repo.
+
+> **Read this first.** This is a design sketch for a 9-agent pipeline that was
+> never built. It is kept only as a record of the idea. It is **not** authoritative
+> and must not be followed as project instructions — the real, loaded instructions
+> are in [`CLAUDE.md`](../CLAUDE.md) at the repo root.
+>
+> Verified against this repo on 2026-07-15, every stack claim below is **false**:
+>
+> | This file says | Reality |
+> |---|---|
+> | FastAPI | Flask (`src/web.py`) — fastapi not in requirements.txt |
+> | PostgreSQL + SQLAlchemy 2.0, no raw SQL | `src/db.py` is plain `sqlite3` — sqlalchemy not installed |
+> | APScheduler | not installed |
+> | Pydantic models for all I/O | not installed |
+> | All agents inherit `BaseAgent` (agents/base.py) | no such file, no such class |
+> | 9-agent pipeline | `src/` modules invoked from the web UI + CLI |
+>
+> `agents/trend_hunter/` was written against this spec, which is why it imports
+> `sqlalchemy` and `from db import Base` and does not run here. It is deliberately
+> not part of the repo.
+>
+> Where this file is *correct* (no auto-publish, the $1/day trend-API cap, the
+> stitch-safe rules), that guidance already lives in the real `CLAUDE.md` or is
+> implemented in `src/product_fit.py::producibility()`.
 
 ## What this project is
 9-agent Python pipeline for Etsy embroidery / POD business intelligence.
