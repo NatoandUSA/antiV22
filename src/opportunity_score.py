@@ -24,6 +24,7 @@ so a missing P is neutral (it just doesn't lift the score) and never caps the
 verdict on its own.
 """
 import json
+import math
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -107,9 +108,17 @@ def _competition(row):
         lvl = str(row.get("competition_level") or "").strip().lower().replace("_", " ")
         ci = COMP_INTENSITY.get(lvl)
     if ci is None:
-        listings, sellers = _num(row.get("listing_count")), _num(row.get("seller_count"))
-        if listings is not None and sellers:
-            ci = max(10.0, min(90.0, (listings / sellers) * 8.0))
+        # No label to trust: fall back to how many listings you'd rank against.
+        # This used to be (listings/sellers)*8, but measured over 150 live YTrends
+        # keywords that DO carry a label, listings-per-seller is nearly constant
+        # across them (median 1.43 low / 1.85 medium / 1.99 high) and the ranges
+        # invert - 'low' keywords reach 4.38 while 'high' sits near 2.0 - so it
+        # scored a 45k-listing keyword as a favourable market (MAE 69-72 vs the
+        # label on high/very_high). Listing count separates them log-linearly
+        # (median 38 / 374 / 1088), which is what this reproduces: MAE 5.2.
+        listings = _num(row.get("listing_count"))
+        if listings is not None:
+            ci = max(10.0, min(95.0, -40.0 + 41.0 * math.log10(max(listings, 1.0))))
     if ci is None:
         return None
     return round(max(0.0, 100.0 - ci), 1)
