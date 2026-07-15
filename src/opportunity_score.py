@@ -100,7 +100,11 @@ def _competition(row):
     """100 - saturation intensity. None if we have no competition signal at all."""
     ci = _first(row, "competition_intensity")
     if ci is None:
-        lvl = str(row.get("competition_level") or "").strip().lower()
+        # Sources disagree on form: the REST API says 'low', MCP research_keyword
+        # says 'very_high'. Without normalising, the underscore form misses the map
+        # and drops through to the listings/sellers ratio below, which scores a
+        # 45k-listing keyword as a healthy open market.
+        lvl = str(row.get("competition_level") or "").strip().lower().replace("_", " ")
         ci = COMP_INTENSITY.get(lvl)
     if ci is None:
         listings, sellers = _num(row.get("listing_count")), _num(row.get("seller_count"))

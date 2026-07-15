@@ -83,7 +83,7 @@ def test_views_are_never_enriched():
 def test_very_high_competition_maps_and_is_not_read_as_favourable():
     d = {"tag": "personalized gift"}
     me.enrich_row(d, RICH)
-    assert d["competition_level"] == "very high"          # underscore normalised
-    assert osc.COMP_INTENSITY[d["competition_level"]] == 95
-    # a 45k-listing keyword must not score as a healthy, open market
+    assert d["competition_level"] == "very_high"   # stored raw, as MCP sent it
+    # _competition normalises the form on read; a 45k-listing keyword must not
+    # score as a healthy, open market
     assert osc._competition(d) < 20

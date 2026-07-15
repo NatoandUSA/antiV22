@@ -22,6 +22,9 @@ Safety rules (do NOT remove):
   into the other is ~1000x wrong and would wreck the demand proxy, so views are
   deliberately NOT enriched. Missing beats fabricated.
 
+competition_level is stored raw ('very_high'); opportunity_score._competition
+normalises the form on read, so every source gets the same treatment.
+
 Nothing here publishes anything.
 """
 from src import ytrends_mcp as mcp
@@ -50,14 +53,6 @@ def is_trustworthy(stats):
     return bool(stats.get("total_listings"))          # 0 / None = nothing to say
 
 
-def _comp_level(stats):
-    """MCP says 'very_high'; opportunity_score.COMP_INTENSITY keys on 'very high'.
-    Unnormalised it maps to None and _competition silently falls back to the
-    listings/sellers ratio, which reads a 45k-listing keyword as low competition."""
-    lvl = str(stats.get("competition_level") or "").strip().lower()
-    return lvl.replace("_", " ") or None
-
-
 def enrich_row(d, stats):
     """Fill blanks in scorer-row `d` from MCP `stats`. Returns (d, note).
     Never overwrites a value the extension already captured."""
@@ -70,7 +65,8 @@ def enrich_row(d, stats):
         if d.get(dest) is None and stats.get(src) is not None:
             d[dest] = stats[src]
             filled.append(dest)
-    lvl = _comp_level(stats)
+    # Stored raw ('very_high'); opportunity_score._competition normalises on read.
+    lvl = stats.get("competition_level")
     if lvl and not d.get("competition_level"):
         d["competition_level"] = lvl
         filled.append("competition_level")

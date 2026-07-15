@@ -117,7 +117,9 @@ def sellable_as_product(x, niche_terms):
 
 def is_focus(x, niche_terms):
     """FOCUS = sellable + low competition + real daily demand + converts + safe."""
-    low_comp = (x["competition_level"] == "LOW") or (
+    # YTrends emits lowercase ('low'); == "LOW" never matched, so this clause was
+    # dead and low_comp silently collapsed to the listing_count fallback alone.
+    low_comp = (str(x["competition_level"] or "").strip().lower() == "low") or (
         (x["listing_count"] or 99999) <= 300
     )
     demand = (x["demand_24h"] or 0) >= 500
