@@ -355,43 +355,43 @@ def build_app(password, secret):
         # the portal's own theme vars so it matches light + dark automatically. ===
         _plcss = (
             '<style>'
-            '.plpipe{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}'
-            '.plstep{border:1px solid var(--line);border-radius:14px;padding:14px 13px;'
-            'position:relative;display:flex;flex-direction:column;background:var(--surface)}'
-            '.plstep::after{content:"\\2192";position:absolute;right:-10px;top:24px;'
-            'color:var(--line-strong);font-size:16px}'
+            '.plpipe{display:grid;grid-template-columns:repeat(9,1fr);gap:7px}'
+            '.plstep{border:1px solid var(--line);border-radius:12px;padding:11px 8px;'
+            'position:relative;display:flex;flex-direction:column;align-items:center;'
+            'text-align:center;background:var(--surface);text-decoration:none;transition:.15s}'
+            'a.plstep:hover{border-color:var(--accent);transform:translateY(-1px)}'
+            '.plstep::after{content:"\\2192";position:absolute;right:-7px;top:22px;'
+            'color:var(--line-strong);font-size:13px;z-index:1}'
             '.plstep:last-child::after{display:none}'
-            '.plstep .n{width:25px;height:25px;border-radius:50%;display:grid;place-items:center;'
-            'font-size:13px;font-weight:800;color:#fff;margin-bottom:8px;background:var(--accent)}'
+            '.plstep.hot{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset;background:var(--accent-bg)}'
+            '.plstep .n{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;'
+            'font-size:11px;font-weight:800;color:#fff;margin-bottom:5px;background:var(--accent)}'
             '.plstep.plfin .n{background:var(--ok)}'
-            '.plstep h3{margin:0 0 3px;font-size:14px;color:var(--ink)}'
-            '.plstep .w{font-size:11.5px;color:var(--ink-soft);flex:1;margin-bottom:10px;line-height:1.45}'
-            '.plstep .p{font-size:12.5px;font-weight:600;color:#fff;background:var(--accent);'
-            'border-radius:8px;padding:7px 9px;text-align:center;text-decoration:none;'
-            'display:block;margin-bottom:6px}'
-            '.plstep.plfin .p{background:var(--ok)}'
-            '.plstep .s{display:flex;flex-direction:column}'
-            '.plstep .s a{font-size:11px;color:var(--ink-soft);text-decoration:none;padding:3px 0;'
-            'border-top:1px solid var(--line)}'
-            '.plstep .s a:first-child{border-top:0}.plstep .s a:hover{color:var(--accent)}'
-            '.plnudge{display:flex;align-items:center;gap:12px;margin:14px 0 4px;'
+            '.plstep .ic{font-size:17px;line-height:1;margin-bottom:3px}'
+            '.plstep h3{margin:0;font-size:11.5px;color:var(--ink);font-weight:700;line-height:1.2}'
+            '.plstep .sc{font-size:10px;color:var(--ink-soft);margin-top:2px}'
+            '.plnudge{display:flex;align-items:center;gap:12px;margin:14px 0 8px;'
             'background:var(--accent-bg);border:1px solid var(--line);border-radius:12px;padding:11px 14px}'
             '.plnudge .t{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;'
             'color:var(--accent);white-space:nowrap}'
             '.plnudge .x{font-size:13px;color:var(--ink-soft);flex:1}.plnudge .x b{color:var(--ink)}'
-            '.pldrop{display:flex;flex-direction:column;gap:6px;margin-bottom:6px}'
-            '.pldz{border:1.5px dashed var(--line-strong);border-radius:9px;padding:12px 8px;'
-            'text-align:center;cursor:pointer;background:var(--accent-bg);transition:border-color .15s}'
+            '.plcapbar{display:flex;gap:10px;align-items:center;margin:0 0 4px;flex-wrap:wrap}'
+            '.plcapbar .plkind{width:auto;min-width:180px;margin:0}'
+            '.plcapbar .pldz{flex:1;min-width:220px;margin:0}'
+            '.plcapbar .capbtn{font-size:12.5px;font-weight:700;color:#fff;background:var(--accent);'
+            'border:0;border-radius:8px;padding:10px 16px;cursor:pointer;white-space:nowrap}'
+            '.pldz{border:1.5px dashed var(--line-strong);border-radius:9px;padding:11px 8px;'
+            'text-align:center;cursor:pointer;background:var(--surface);transition:border-color .15s}'
             '.pldz:hover,.pldz.drag{border-color:var(--accent)}'
             '.pldz .plch{font-size:11px;color:var(--ink-soft);line-height:1.35}'
             '.pldz .plfn{display:block;font-size:11px;color:var(--accent);font-weight:600;'
             'margin-top:4px;word-break:break-all}'
-            '.plmeta{font-size:10.5px;color:var(--ink-faint);margin:0 0 6px;line-height:1.3}'
+            '.plmeta{font-size:10.5px;color:var(--ink-faint);margin:0 0 8px;line-height:1.3}'
             '.plmeta b{color:var(--ink-soft)}'
-            '.plkind{width:100%;font-size:11px;padding:5px 6px;border:1px solid var(--line);'
+            '.plkind{width:100%;font-size:11px;padding:8px 6px;border:1px solid var(--line);'
             'border-radius:7px;background:var(--surface);color:var(--ink);margin-bottom:6px}'
-            '@media(max-width:860px){.plpipe{grid-template-columns:1fr 1fr}.plstep::after{display:none}}'
-            '@media(max-width:520px){.plpipe{grid-template-columns:1fr}}'
+            '@media(max-width:960px){.plpipe{grid-template-columns:repeat(3,1fr)}.plstep::after{display:none}}'
+            '@media(max-width:520px){.plpipe{grid-template-columns:repeat(2,1fr)}}'
             '</style>')
         _csrf_tok = _csrf()
         try:   # newest import: powers both the next-step nudge and the "last
@@ -433,14 +433,11 @@ def build_app(password, secret):
                     f'<span class="x">{_nx}</span>'
                     f'<a class="pullbtn primary" href="{_nh}">{_nl}</a></div>')
         _plrail = (
-            '<h2 class="grouph">🧭 Your workflow — YTrends → analyze → winner → '
-            'launch → learn</h2>'
-            + _plnudge + '<div class="plpipe">'
-            '<div class="plstep"><div class="n">1</div><h3>Capture</h3>'
-            '<div class="w">Drop CSV / JSON — Etsy/YTrends keywords go to the Winner '
-            'Finder; supplier exports (Alibaba/AliExpress/1688) go to the Supplier '
-            'Trend Finder.</div>'
-            '<form class="pldrop" method="post" action="/import-file" '
+            '<h2 class="grouph">🧭 Your workflow — feed → rank → pattern miner → '
+            'keyword lab → build → images → ads → learn</h2>'
+            + _plnudge +
+            # ① Capture drop — a compact full-width bar (the quick entry point)
+            '<form class="pldrop plcapbar" method="post" action="/import-file" '
             'enctype="multipart/form-data">'
             f'<input type="hidden" name="_csrf" value="{_csrf_tok}">'
             f'<input type="hidden" name="mode" value="{active}">'
@@ -449,44 +446,35 @@ def build_app(password, secret):
             '<option value="keywords">Etsy / YTrends keywords</option>'
             '<option value="supplier">Supplier — Alibaba/AliExpress/1688</option>'
             '<option value="pinterest">Pinterest — pins &amp; saves</option>'
-            '<option value="etsy">Etsy listings / spy — keyword leads</option>'
+            '<option value="etsy">Etsy listings / spy — competitor intel</option>'
             '<option value="amazon">Amazon Xray — reference</option>'
             '</select>'
             '<label class="pldz" id="pldz">'
             '<input type="file" name="file" accept=".csv,.json,.txt" id="plfile" multiple hidden>'
-            '<span class="plch">⬆ Drop CSV / JSON<br>(one or many) or click</span>'
+            '<span class="plch">⬆ Drop keyword CSV / JSON (one or many) or click to choose</span>'
             '<span class="plfn" id="plfn"></span></label>'
-            '<button class="p" type="submit">Import → analyze</button></form>'
+            '<button class="capbtn" type="submit">Import → rank</button></form>'
             + _implabel_html +
-            f'<div class="s"><a href="/supplier-trends?mode={active}">Supplier trends →</a>'
-            '<a href="/imports">Import Center →</a></div></div>'
-            f'<div class="plstep"><div class="n">2</div><h3>Find winners</h3>'
-            '<div class="w">Every file you dropped — Etsy, YTrends, Pinterest, '
-            'supplier, Amazon — deduped into ONE list, ranked by <b>real Etsy '
-            'sales</b> (units sold, revenue, shop-spread). Proven winners on top.</div>'
-            f'<a class="p" href="/inbox?mode={active}">📥 Opportunity Inbox</a>'
-            f'<div class="s"><a href="/winners?mode={active}">🏆 Winner Finder →</a>'
-            f'<a href="/score-import?gt=1&mode={active}">+ Google Trends →</a>'
-            f'<a href="/daily-brief?mode={active}">Daily brief →</a></div></div>'
-            f'<div class="plstep"><div class="n">3</div><h3>Build</h3>'
-            '<div class="w">One winner → verdict, competitor edge, SEO listing, all '
-            'photo prompts and the ads plan on one page.</div>'
-            f'<a class="p" href="/launch-kit?mode={active}">🚀 Launch Kit</a>'
-            '<div class="s"><a href="/draft-listing">Listing draft →</a>'
-            f'<a href="/photo-brief?mode={active}">Photo prompts →</a>'
-            f'<a href="/edge?mode={active}">Beat competitors →</a></div></div>'
-            f'<div class="plstep"><div class="n">4</div><h3>Launch</h3>'
-            '<div class="w">Manual review inside Etsy, publish 3–5 variations, start '
-            'Etsy Ads at $1–3/day per the plan.</div>'
-            f'<a class="p" href="/ads-plan?mode={active}">📣 Ads plan</a>'
-            '<div class="s"><a href="/grade">Listing Analyzer / gate →</a>'
-            '<a href="/profit">Profit gate →</a><a href="/launchpad">Launchpad →</a></div></div>'
-            '<div class="plstep plfin"><div class="n">5</div><h3>Learn</h3>'
-            '<div class="w">Log the sale — every order teaches the tool, so proven '
-            'niches rise in your Winner Finder automatically.</div>'
-            '<a class="p" href="/feedback">📉 Log a sale</a>'
-            '<div class="s"><a href="/feedback">Feedback loop →</a>'
-            '<a href="/trackers">Trackers →</a><a href="/profit">Profit Center →</a></div></div>'
+            # The 9-stage board — each step links straight to its tool
+            '<div class="plpipe">'
+            f'<a class="plstep" href="/imports"><div class="n">1</div>'
+            '<span class="ic">📥</span><h3>Feed</h3><span class="sc">MCP + CSV</span></a>'
+            f'<a class="plstep hot" href="/inbox?mode={active}"><div class="n">2</div>'
+            '<span class="ic">🏆</span><h3>Rank</h3><span class="sc">Opportunity Inbox</span></a>'
+            f'<a class="plstep" href="/pattern-miner?mode={active}"><div class="n">3</div>'
+            '<span class="ic">🔬</span><h3>Pattern Miner</h3><span class="sc">learn winners</span></a>'
+            f'<a class="plstep" href="/keyword-lab?mode={active}"><div class="n">4</div>'
+            '<span class="ic">💡</span><h3>Keyword Lab</h3><span class="sc">new keywords</span></a>'
+            f'<a class="plstep" href="/inbox?mode={active}"><div class="n">5</div>'
+            '<span class="ic">🎯</span><h3>Re-rank</h3><span class="sc">back to inbox</span></a>'
+            f'<a class="plstep" href="/launch-kit?mode={active}"><div class="n">6</div>'
+            '<span class="ic">📝</span><h3>Build</h3><span class="sc">Launch Kit</span></a>'
+            f'<a class="plstep" href="/photo-brief?mode={active}"><div class="n">7</div>'
+            '<span class="ic">🖼️</span><h3>Images</h3><span class="sc">all prompts</span></a>'
+            f'<a class="plstep" href="/ads-plan?mode={active}"><div class="n">8</div>'
+            '<span class="ic">📣</span><h3>Ads</h3><span class="sc">launch plan</span></a>'
+            '<a class="plstep plfin" href="/feedback"><div class="n">9</div>'
+            '<span class="ic">📉</span><h3>Learn</h3><span class="sc">log a sale</span></a>'
             '</div>'
             # drag-drop + auto-submit: drop or choose a file and it goes straight in
             '<script>(function(){'
@@ -1625,6 +1613,30 @@ def build_app(password, secret):
             return _render_tool("Opportunity Inbox", interactive.inbox(mode))
         except (SystemExit, Exception) as exc:  # noqa: BLE001
             return _tool_error("Opportunity Inbox", exc)
+
+    @app.route("/pattern-miner")
+    @login_required
+    def pattern_miner():
+        from src import interactive
+        m = request.args.get("mode")
+        mode = m if m in ("pod", "embroidery") else None
+        q = (request.args.get("q") or "").strip()[:80]
+        try:
+            return _render_tool("Pattern Miner", interactive.pattern_miner(q, mode))
+        except (SystemExit, Exception) as exc:  # noqa: BLE001
+            return _tool_error("Pattern Miner", exc)
+
+    @app.route("/keyword-lab")
+    @login_required
+    def keyword_lab():
+        from src import interactive
+        m = request.args.get("mode")
+        mode = m if m in ("pod", "embroidery") else None
+        q = (request.args.get("q") or "").strip()[:80]
+        try:
+            return _render_tool("Keyword Lab", interactive.keyword_lab(q, mode))
+        except (SystemExit, Exception) as exc:  # noqa: BLE001
+            return _tool_error("Keyword Lab", exc)
 
     @app.route("/winners")
     @login_required

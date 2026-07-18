@@ -71,6 +71,18 @@ def build(keyword, product="Embroidered Sweatshirt", mode="embroidery", pers=Tru
          f"with the {made} '{kw}' design on each, evenly lit, color name under each "
          "swatch, clean neutral background. Mockups are fine here; keep colors true."),
 
+        ("How to order", "Removes friction - the 3 steps to a personalized order.", False,
+         "A simple numbered step graphic on a soft solid background: '1. Click "
+         "Personalize  2. Type the name + pick color/size  3. Add to cart - we "
+         f"{made} it made-to-order'. Three clean line icons, short labels, modern "
+         "legible sans-serif. " + rules + "."),
+
+        ("Bundle / gift set", "Lifts average order value - offer the set.", False,
+         f"A styled flat-lay showing the {prod.lower()} paired as a gift set (e.g. "
+         "with a matching mug, tote, or gift card) on a clean warm background, small "
+         "'Bundle & save' badge, cohesive props. Composite REAL product photos into "
+         "the set; keep the design true to your item."),
+
         ("Gift / occasion", "Triggers the gift-buyer - staged as a present.", False,
          f"Warm lifestyle scene: the folded {prod.lower()} styled as a gift with "
          "kraft wrap, ribbon and a sprig of eucalyptus on a wooden table, soft cozy "

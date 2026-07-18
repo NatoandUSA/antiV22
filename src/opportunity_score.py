@@ -96,16 +96,38 @@ def _trend_signals(gt):
     return demand, vel
 
 
+def _demand_from(row):
+    """0-100 demand from the real market fields, or None. Prefers an explicit
+    0-100 demand_score; otherwise builds it from REVENUE (the strongest, most
+    cross-source-comparable demand signal - $ actually changing hands) blended
+    with a views term. Revenue is log-scaled ($100 -> ~0, ~$300k -> 100) because
+    niche revenue spans four orders of magnitude; views are a lighter secondary
+    signal on a daily-count scale. Uses only the fields present (honest-nulls):
+    with neither revenue nor views, demand is None and can't fabricate a score."""
+    d = _first(row, "demand", "demand_score")
+    if d is not None:
+        return min(100.0, max(0.0, d))
+    rev = _first(row, "avg_revenue", "revenue")
+    v = _first(row, "views_24h", "views")
+    parts = []
+    if rev is not None and rev > 0:
+        # log10: $100->~0, $1k->29, $10k->57, $100k->86, ~$316k->100
+        parts.append((min(100.0, max(0.0, (math.log10(rev) - 2.0) / 3.5 * 100.0)), 0.7))
+    if v is not None and v > 0:
+        parts.append((min(100.0, v / 3.0), 0.3))   # ~300 views/24h -> 100
+    if not parts:
+        return None
+    return round(sum(x * w for x, w in parts) / sum(w for _, w in parts), 1)
+
+
 def _market(row, gt=None):
     """Demand (40%) + Velocity (35%) + Conversion (25%), over what's present.
 
     When a Google Trends read for this keyword is supplied it's blended in as an
-    EXTERNAL corroboration (its own demand + velocity parts). With no Trends data
-    passed this is byte-for-byte the original three-part market score."""
-    demand = _first(row, "demand", "demand_score")
-    if demand is None:
-        v = _first(row, "views_24h", "views")
-        demand = min(100.0, v / 50.0) if v is not None else None   # rough proxy
+    EXTERNAL corroboration (its own demand + velocity parts). Demand now uses real
+    revenue (see _demand_from) instead of a views-only proxy, so niches with real
+    money moving rise above thin ones."""
+    demand = _demand_from(row)
     velocity = _first(row, "momentum_score", "velocity")
     cr = _first(row, "avg_conversion_rate", "conversion_rate", "conversion")
     conversion = min(100.0, cr * 100.0 * 20.0) if cr is not None else None  # 5%->100

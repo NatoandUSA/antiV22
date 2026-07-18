@@ -1747,79 +1747,196 @@ def winners(mode=None):
     return "\n".join(L)
 
 
-_INBOX_ICON = {"PROVEN WINNER": "\U0001F3C6", "SELLING": "\U0001F7E2",
-               "CROSS-VALIDATED LEAD": "\U0001F50E", "LEAD": "\U0001F535",
-               "SKIP": "⛔"}
-_INBOX_ACTION = {
-    "PROVEN WINNER": "Build now",
-    "SELLING": "Build now",
-    "CROSS-VALIDATED LEAD": "Confirm on Etsy",
-    "LEAD": "Confirm on Etsy",
-    "SKIP": "Skip",
-}
+_MKT_ICON = {"GO": "\U0001F7E2", "CONDITIONAL": "\U0001F535",
+             "WATCH": "\U0001F7E1", "SKIP": "⛔"}
+_ACTION_ICON = {"BUILD_NOW": "\U0001F680", "CONFIRM_FIRST": "\U0001F50D",
+                "REVIEW": "\U0001F6A9", "WATCH": "\U0001F7E1", "SKIP": "⛔",
+                "BLOCKED": "\U0001F6AB"}
+
+
+def _inbox_do(r):
+    """The 1-click link for a row, routed by its FINAL ACTION (not the score)."""
+    q = _uq(r["keyword"])
+    route = r.get("route")
+    if route == "build":
+        return f"[\U0001F680 Build](/launch-kit?q={q})"
+    if route == "pattern":
+        return f"[\U0001F52C Pattern Miner](/pattern-miner?q={q})"
+    if route == "review":
+        return f"[\U0001F6A9 Review](/should-sell?q={q})"
+    if route == "analyze":
+        return f"[\U0001F50D Confirm](/should-sell?q={q})"
+    if route == "watch":
+        return f"[\U0001F441 Check](/should-sell?q={q})"
+    return "~~skip~~"
 
 
 def inbox(mode=None):
-    """Opportunity Inbox — ONE deduped, market-proof worklist across EVERY fed file
-    (Etsy + YTrends + Pinterest + Supplier + Amazon). Ranked by REAL Etsy sales
-    evidence (units sold, revenue, shop-spread) — no invented formula. Other
-    sources only add a confirmation badge; Etsy sales decide the order. Same niche
-    coming from several files is merged into one row with the evidence summed.
+    """Opportunity Inbox — your real keyword data through the LAYERED ranking engine.
 
-    This is the team's daily start point: read top to bottom, build the proven
-    rows, confirm the leads. One click each to analyse or build."""
+    Each keyword passes a risk / product-fit GATE, then the composite Market-Signal
+    score, and ends on a FINAL ACTION (Build now / Confirm first / Review / Watch /
+    Skip / Blocked). The market score is real market data + our chosen weights (an
+    explainable model, not the whole decision) — the gate keeps broad seeds, themes
+    without a product, shop names, and policy/trademark terms out of 'Build'."""
     from src import opportunity_inbox as oi
     data = oi.build_inbox(mode)
     rows = data["rows"]
     c = data["counts"]
     label = MODE_LABEL.get(mode, mode) if mode else "all modes"
-    L = [f"# \U0001F4E5 Opportunity Inbox — the deduped worklist ({label})", ""]
+    L = [f"# \U0001F4E5 Opportunity Inbox — ranked worklist ({label})", ""]
     if not rows:
-        L += ["> **Nothing captured yet.** Drop your files on the home page "
-              "(Etsy listings/spy, YTrends keywords, Pinterest, Supplier, Amazon) "
-              "or use the **Send to agent** extension — then reload. Every "
-              "source lands here, deduped into one ranked list."]
+        L += ["> **No keyword data yet.** Feed keywords from the YTrends MCP "
+              "(auto) or drop a YTrends keyword CSV on the home page, then reload."]
         return "\n".join(L)
-    L += [f"_**{c['total']}** unique niches after dedup — "
-          f"\U0001F3C6 **{c['proven']}** proven winners · "
-          f"\U0001F7E2 **{c['selling']}** already selling · "
-          f"\U0001F50E **{c['leads']}** leads to confirm. "
-          "Ranked by **real Etsy units sold + revenue + shop-spread** — the "
-          "market's verdict, not a made-up score. Other sources add a "
-          "confidence badge only._", "",
-          "_Badges: \U0001F7E2E Etsy · \U0001F50EY YTrends · "
-          "\U0001F3EDS Supplier · \U0001F4CCP Pinterest · "
-          "\U0001F170️A Amazon. Build the proven rows first._", "",
-          "| # | Niche keyword | Verdict | Etsy proof | Competition | Sources | 1-click |",
-          "|---|---|---|---|---|---|---|"]
+    L += [f"_**{c['total']}** keywords ranked — "
+          f"\U0001F680 **{c['build']}** build now · "
+          f"\U0001F50D **{c['confirm']}** confirm first · "
+          f"\U0001F6A9 **{c['review']}** review · "
+          f"\U0001F7E1 **{c['watch']}** watch · "
+          f"⛔ **{c['skip']}** skip · \U0001F6AB **{c['blocked']}** blocked. "
+          "Sorted by **final action**, then market signal. The gate runs first, so a "
+          "high market score on a broad or risky term never reads as 'Build'._", "",
+          "| # | Keyword | Product-fit | Final action | Market signal | Comp. | Conv. | Mom. | Do |",
+          "|---|---|---|---|---|---|---|---|---|"]
     for i, r in enumerate(rows, 1):
-        kw = _clean(r["display"])
-        icon = _INBOX_ICON.get(r["verdict"], "")
-        verdict = f"{icon} {r['verdict']}"
-        comp = r.get("competition")
-        comp_cell = str(comp) if comp not in (None, "") else "—"
-        badges = r.get("badges") or "—"
-        act = _INBOX_ACTION.get(r["verdict"], "Review")
-        if r["verdict"] == "SKIP":
-            link = f"~~{act}~~"
-        elif r["_tier"] <= 1:
-            link = f"[\U0001F680 {act}](/launch-kit?q={_uq(r['display'])})"
-        else:
-            link = f"[\U0001F50D {act}](/should-sell?q={_uq(r['display'])})"
-        L.append(f"| {i} | {kw} | {verdict} | {r['evidence']} | {comp_cell} "
-                 f"| {badges} | {link} |")
-    # sharpest actionable pick = first non-SKIP row
-    top = next((r for r in rows if r["verdict"] != "SKIP"), None)
+        kw = _clean(r["keyword"])
+        a_icon = _ACTION_ICON.get(r["action"], "")
+        action = f"{a_icon} {r['action'].replace('_', ' ').title()}"
+        mkt = (f"{_MKT_ICON.get(r['verdict'], '')} {r['verdict']} "
+               f"({r['score']})" if r["score"] is not None else
+               f"{_MKT_ICON.get(r['verdict'], '')} {r['verdict']}")
+        fit = r.get("fit_label") or "—"
+        comp = int(r["comp"]) if r["comp"] is not None else "—"
+        conv = f"{r['conv']*100:.1f}%" if r["conv"] is not None else "—"
+        mom = int(r["momentum"]) if r["momentum"] is not None else "—"
+        L.append(f"| {i} | {kw} | {fit} | {action} | {mkt} | {comp} "
+                 f"| {conv} | {mom} | {_inbox_do(r)} |")
+    top = next((r for r in rows if r["action"] in ("BUILD_NOW", "CONFIRM_FIRST")),
+               None)
     if top:
-        L += ["", f"## ◎ Start here: **{_clean(top['display'])}** — "
-              f"{_INBOX_ICON.get(top['verdict'], '')} {top['verdict']}",
-              f"_{top['why']}. Evidence: {top['evidence']}._", "",
-              f"**▶ [Build the full Launch Kit](/launch-kit?q={_uq(top['display'])})** "
-              "— verdict, edge, listing, all image prompts & ads on one page. "
-              f"Or [analyse first](/should-sell?q={_uq(top['display'])})."]
-    L += ["", "_Every non-Etsy row is a **demand lead, not proof** — always "
-          "confirm on Etsy before building. Trademark + human review still "
-          "required on all rows._"]
+        why = "; ".join(top["rationale"][:2]) if top.get("rationale") else ""
+        act_word = top["action"].replace("_", " ").title()
+        L += ["", f"## ◎ Start here: **{_clean(top['keyword'])}** — "
+              f"{_ACTION_ICON.get(top['action'], '')} {act_word}",
+              f"_{top['action_reason']}. Market signal {top['verdict']} "
+              f"({top['score']}) · {top['evidence']}._", ""]
+        if top["route"] == "build":
+            L.append(f"**▶ [Build the full Launch Kit](/launch-kit?q="
+                     f"{_uq(top['keyword'])})** — verdict, competitor edge, listing, "
+                     "all image prompts & ads on one page.")
+        elif top["route"] == "pattern":
+            L.append(f"**▶ [Run the Pattern Miner](/pattern-miner?q={_uq(top['keyword'])})** "
+                     "first — it's a broad/theme term, so learn what the winners share "
+                     "and pick the angle before building.")
+        else:
+            L.append(f"**▶ [Confirm it first](/should-sell?q={_uq(top['keyword'])})** "
+                     "before committing to a build.")
+    L += ["", "_**Layered ranking:** risk / product-fit gate → market signal "
+          "(demand · competition · conversion · momentum, an explainable model of "
+          "real market data + our chosen weights) → final action. Conversion is one "
+          "of the strongest buyer-quality signals after query match, not the only "
+          "one. Trademark / policy / broad-seed terms are gated before scoring; "
+          "human review still required before building._"]
+    return "\n".join(L)
+
+
+def _bar_pct(p):
+    """0-100 -> a 10-char unicode bar for at-a-glance rates."""
+    if not isinstance(p, (int, float)):
+        return "—"
+    f = max(0, min(10, int(round(p / 10.0))))
+    return "█" * f + "░" * (10 - f)
+
+
+def pattern_miner(kw="", mode=None):
+    """Pattern Miner — analyse the top Etsy listings for a keyword and show WHY the
+    winners win: shared title words, leading (first-40) words, structure, price band,
+    marketplace signals, exploitable gaps, and a keyword seed for the Keyword Lab."""
+    from src import pattern_miner as pm
+    r = pm.mine(kw or None)
+    L = ["# \U0001F52C Pattern Miner — how the winners win", ""]
+    if not r["have"]:
+        L += ["> **No Etsy listings to mine yet.** Drop an **Etsy Spy / listings** "
+              "CSV on the home page (title, price, shop, star-seller, ad, free-ship) "
+              "or paste a keyword you've already scraped. The miner reads 5–10+ "
+              "winning listings and extracts the pattern.",
+              "",
+              "_Honest note: Etsy Spy exports carry title / price / shop / star-seller "
+              "/ ad / free-ship — not per-listing sold, reviews, or tags, so the miner "
+              "mines what's present and says what's missing._"]
+        return "\n".join(L)
+    st = r["structure"]
+    sig = r["signals"]
+    L += [f"_Mined **{r['n']} listings** across **{r['n_shops']} shops** for "
+          f"**{_clean(r['keyword'] or kw)}**. This is the shared pattern of the "
+          "listings currently ranking — copy what they all do, then beat them on the "
+          "gaps below._", ""]
+    # winning vocabulary
+    L += ["## \U0001F3F7 Winning title words (share of listings using each)"]
+    for w, pct in r["top_words"][:10]:
+        L.append(f"- **{w}** · `{_bar_pct(pct)}` {pct}%")
+    if r["leading"]:
+        lead = ", ".join(f"{w} ({pct}%)" for w, pct in r["leading"][:6])
+        L += ["", f"**Front-load these (first 40 chars):** {lead}"]
+    if r["phrases"]:
+        L += ["", "**Repeated phrases:** "
+              + ", ".join(f"“{p}” ×{c}" for p, c in r["phrases"][:6])]
+    # structure + price + signals
+    L += ["", "## \U0001F9F1 Winning structure",
+          f"- Personalization in title: **{st['personalization']}%**  ·  "
+          f"names a product: **{st['has_product']}%**  ·  gift framing: **{st['gift']}%**",
+          f"- Title length: **~{st['avg_words']} words / {st['avg_chars']} chars**"]
+    if r["price"]:
+        p = r["price"]
+        L.append(f"- Price band: **${p['low']}–${p['high']}** (median **${p['median']}**, "
+                 f"{p['note']})")
+    L += ["", "## \U0001F4CA Marketplace signals",
+          f"- Running ads: **{sig['ad']}%**  ·  star-sellers: **{sig['star']}%**  ·  "
+          f"free shipping: **{sig['freeship']}%**  ·  top-shop hold: "
+          f"**{r.get('shop_concentration', 0)}%**"]
+    # the openings
+    L += ["", "## \U0001F94A Exploitable gaps — your opening"]
+    for g in r["gaps"]:
+        L.append(f"- {g}")
+    # next step -> keyword lab
+    seed = ", ".join(r["seed_words"][:8])
+    L += ["", "## \U0001F3AF Your better angle & next step",
+          f"Match the winning pattern (personalized + {r['seed_words'][0] if r['seed_words'] else 'subject'} "
+          f"+ product + gift), then win on the gap above. **Seed words:** {seed}.",
+          "",
+          f"**▶ [Generate new keywords in the Keyword Lab](/keyword-lab?q={_uq(r['keyword'] or kw)})** "
+          "— turns this pattern into fresh buyer-specific keywords, re-ranked in the Inbox.",
+          "",
+          "_Real photo still required for embroidery (hero + macro stitch + measurement). "
+          "Trademark-check every phrase before building._"]
+    return "\n".join(L)
+
+
+def keyword_lab(kw="", mode=None):
+    """Keyword Lab — generate a NEW keyword batch FROM the Pattern Miner output, each
+    linked back to the Inbox for re-ranking through the layered engine."""
+    from src import keyword_lab as kl
+    r = kl.generate(kw or None)
+    pat = r["pattern"]
+    L = ["# \U0001F4A1 Keyword Lab — new keywords from the winning pattern", ""]
+    if not r["candidates"]:
+        L += ["> **Run the Pattern Miner first.** Drop an Etsy Spy CSV for a keyword, "
+              "then come back — the Lab expands the *proven* pattern into fresh "
+              "buyer-specific keywords instead of guessing."]
+        return "\n".join(L)
+    L += [f"_Expanded from the **{_clean(pat.get('keyword') or kw)}** pattern "
+          f"(subject **{r['subject']}**, product **{r['product']}**). These follow "
+          "what already wins, aimed at nearby buyers — build the strongest after they "
+          "re-rank._", "",
+          "| # | New keyword | Angle | Re-rank |",
+          "|---|---|---|---|"]
+    for i, c in enumerate(r["candidates"], 1):
+        L.append(f"| {i} | **{c['keyword']}** | {c['angle']} | "
+                 f"[\U0001F501 Score it](/should-sell?q={_uq(c['keyword'])}) |")
+    L += ["", "_Each keyword loops back through the layered engine (risk gate → market "
+          "signal → final action). Score them, then build the winners. Trademark-check "
+          "every phrase first._"]
     return "\n".join(L)
 
 
