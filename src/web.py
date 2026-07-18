@@ -422,9 +422,9 @@ def build_app(password, secret):
             _implabel_html = '<div class="plmeta">No imports yet — drop your first file.</div>'
         if _has_imp:
             _nt, _nx, _nh, _nl = ("Import ready",
-                "You have a fresh keyword import — rank it by the high-demand × "
-                "low-competition sweet spot now.", f"/winners?mode={active}",
-                "Find winners →")
+                "You have fresh imports — open the Opportunity Inbox: every file "
+                "deduped into ONE list ranked by real Etsy sales.",
+                f"/inbox?mode={active}", "Open Opportunity Inbox →")
         else:
             _nt, _nx, _nh, _nl = ("Start here",
                 "No import yet — capture keywords from YTrends/Etsy with the browser "
@@ -461,10 +461,11 @@ def build_app(password, secret):
             f'<div class="s"><a href="/supplier-trends?mode={active}">Supplier trends →</a>'
             '<a href="/imports">Import Center →</a></div></div>'
             f'<div class="plstep"><div class="n">2</div><h3>Find winners</h3>'
-            '<div class="w">The tool analyzes the keywords locally and ranks the '
-            'high-demand × low-competition sweet spot. Instant.</div>'
-            f'<a class="p" href="/winners?mode={active}">🏆 Winner Finder</a>'
-            f'<div class="s"><a href="/score-import?mode={active}">Score latest import →</a>'
+            '<div class="w">Every file you dropped — Etsy, YTrends, Pinterest, '
+            'supplier, Amazon — deduped into ONE list, ranked by <b>real Etsy '
+            'sales</b> (units sold, revenue, shop-spread). Proven winners on top.</div>'
+            f'<a class="p" href="/inbox?mode={active}">📥 Opportunity Inbox</a>'
+            f'<div class="s"><a href="/winners?mode={active}">🏆 Winner Finder →</a>'
             f'<a href="/score-import?gt=1&mode={active}">+ Google Trends →</a>'
             f'<a href="/daily-brief?mode={active}">Daily brief →</a></div></div>'
             f'<div class="plstep"><div class="n">3</div><h3>Build</h3>'
@@ -1613,6 +1614,17 @@ def build_app(password, secret):
                                                          gtrends))
         except (SystemExit, Exception) as exc:  # noqa: BLE001
             return _tool_error("Score latest import", exc)
+
+    @app.route("/inbox")
+    @login_required
+    def inbox():
+        from src import interactive
+        m = request.args.get("mode")
+        mode = m if m in ("pod", "embroidery") else None
+        try:
+            return _render_tool("Opportunity Inbox", interactive.inbox(mode))
+        except (SystemExit, Exception) as exc:  # noqa: BLE001
+            return _tool_error("Opportunity Inbox", exc)
 
     @app.route("/winners")
     @login_required

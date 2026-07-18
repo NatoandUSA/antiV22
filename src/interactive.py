@@ -1747,6 +1747,82 @@ def winners(mode=None):
     return "\n".join(L)
 
 
+_INBOX_ICON = {"PROVEN WINNER": "\U0001F3C6", "SELLING": "\U0001F7E2",
+               "CROSS-VALIDATED LEAD": "\U0001F50E", "LEAD": "\U0001F535",
+               "SKIP": "⛔"}
+_INBOX_ACTION = {
+    "PROVEN WINNER": "Build now",
+    "SELLING": "Build now",
+    "CROSS-VALIDATED LEAD": "Confirm on Etsy",
+    "LEAD": "Confirm on Etsy",
+    "SKIP": "Skip",
+}
+
+
+def inbox(mode=None):
+    """Opportunity Inbox — ONE deduped, market-proof worklist across EVERY fed file
+    (Etsy + YTrends + Pinterest + Supplier + Amazon). Ranked by REAL Etsy sales
+    evidence (units sold, revenue, shop-spread) — no invented formula. Other
+    sources only add a confirmation badge; Etsy sales decide the order. Same niche
+    coming from several files is merged into one row with the evidence summed.
+
+    This is the team's daily start point: read top to bottom, build the proven
+    rows, confirm the leads. One click each to analyse or build."""
+    from src import opportunity_inbox as oi
+    data = oi.build_inbox(mode)
+    rows = data["rows"]
+    c = data["counts"]
+    label = MODE_LABEL.get(mode, mode) if mode else "all modes"
+    L = [f"# \U0001F4E5 Opportunity Inbox — the deduped worklist ({label})", ""]
+    if not rows:
+        L += ["> **Nothing captured yet.** Drop your files on the home page "
+              "(Etsy listings/spy, YTrends keywords, Pinterest, Supplier, Amazon) "
+              "or use the **Send to agent** extension — then reload. Every "
+              "source lands here, deduped into one ranked list."]
+        return "\n".join(L)
+    L += [f"_**{c['total']}** unique niches after dedup — "
+          f"\U0001F3C6 **{c['proven']}** proven winners · "
+          f"\U0001F7E2 **{c['selling']}** already selling · "
+          f"\U0001F50E **{c['leads']}** leads to confirm. "
+          "Ranked by **real Etsy units sold + revenue + shop-spread** — the "
+          "market's verdict, not a made-up score. Other sources add a "
+          "confidence badge only._", "",
+          "_Badges: \U0001F7E2E Etsy · \U0001F50EY YTrends · "
+          "\U0001F3EDS Supplier · \U0001F4CCP Pinterest · "
+          "\U0001F170️A Amazon. Build the proven rows first._", "",
+          "| # | Niche keyword | Verdict | Etsy proof | Competition | Sources | 1-click |",
+          "|---|---|---|---|---|---|---|"]
+    for i, r in enumerate(rows, 1):
+        kw = _clean(r["display"])
+        icon = _INBOX_ICON.get(r["verdict"], "")
+        verdict = f"{icon} {r['verdict']}"
+        comp = r.get("competition")
+        comp_cell = str(comp) if comp not in (None, "") else "—"
+        badges = r.get("badges") or "—"
+        act = _INBOX_ACTION.get(r["verdict"], "Review")
+        if r["verdict"] == "SKIP":
+            link = f"~~{act}~~"
+        elif r["_tier"] <= 1:
+            link = f"[\U0001F680 {act}](/launch-kit?q={_uq(r['display'])})"
+        else:
+            link = f"[\U0001F50D {act}](/should-sell?q={_uq(r['display'])})"
+        L.append(f"| {i} | {kw} | {verdict} | {r['evidence']} | {comp_cell} "
+                 f"| {badges} | {link} |")
+    # sharpest actionable pick = first non-SKIP row
+    top = next((r for r in rows if r["verdict"] != "SKIP"), None)
+    if top:
+        L += ["", f"## ◎ Start here: **{_clean(top['display'])}** — "
+              f"{_INBOX_ICON.get(top['verdict'], '')} {top['verdict']}",
+              f"_{top['why']}. Evidence: {top['evidence']}._", "",
+              f"**▶ [Build the full Launch Kit](/launch-kit?q={_uq(top['display'])})** "
+              "— verdict, edge, listing, all image prompts & ads on one page. "
+              f"Or [analyse first](/should-sell?q={_uq(top['display'])})."]
+    L += ["", "_Every non-Etsy row is a **demand lead, not proof** — always "
+          "confirm on Etsy before building. Trademark + human review still "
+          "required on all rows._"]
+    return "\n".join(L)
+
+
 def _competitor_listings(kw, limit=15):
     """Best-effort competitor listing rows for a keyword. Prefers the latest
     extension import when it looks like a listings export (fast, rich HeyEtsy
