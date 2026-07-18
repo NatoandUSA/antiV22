@@ -2042,6 +2042,17 @@ _TREND_SRC = {
         "lead": ("Leading signal: Pinterest is where gift/decor buyers plan weeks "
                  "ahead — high saves = rising demand"),
         "heat": "Pinterest heat"},
+    "etsy": {
+        "title": "Etsy Spy — keyword leads", "noun": "listings",
+        "demand_col": "Demand", "count_col": "Listings", "traction_col": "Sold",
+        "reorder": False,
+        "empty": ("**No Etsy listings import yet.** On the homepage drop box, drop an "
+                  "Etsy listings / spy export (title + sold/views + tags). A YTrends "
+                  "**keyword** export goes to the Winner Finder instead."),
+        "lead": ("What's already selling on Etsy: keywords that recur across ranking "
+                 "listings = proven demand (mind the saturation — many listings also "
+                 "means more competition)"),
+        "heat": "Listing recurrence"},
 }
 
 
@@ -2118,3 +2129,7 @@ def supplier_trends(mode=None):
 
 def pinterest_trends(mode=None):
     return trend_leads(mode, "pinterest")
+
+
+def etsy_spy(mode=None):
+    return trend_leads(mode, "etsy")

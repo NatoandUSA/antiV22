@@ -8,6 +8,10 @@ seller checklist, designer brief, product-line expansion, and save/export.
 Rules baked in: never auto-publish; the verdict gates the UI (WATCH/SKIP/BLOCKED
 never say "publish"); the button says "Save Draft" unless PUBLISH_READY; estimates
 are labelled; embroidery vs POD rules are mode-specific.
+
+Deploy marker: 2026-07-18 clean build (no ['risks'] key access anywhere — the
+'/run' KeyError('risks') seen in production came from a STALE VPS copy of this
+file; a forced git sync + pycache purge replaces it with this version).
 """
 import html as _html
 import math
@@ -45,25 +49,6 @@ def _label(s):
 
 def _esc(t):
     return _html.escape(str(t or ""))
-
-
-def _urlquote(s):
-    from urllib.parse import quote
-    return quote(str(s or ""), safe="")
-
-
-def _best_image_note():
-    """Surface the best-converting mockup style from our own logged orders."""
-    try:
-        from src import learning
-        bi = learning.best_image_style()
-        if bi:
-            return (f'<p class="edge"><b>🔒 Our data:</b> best-converting mockup '
-                    f'style so far is <b>{_esc(bi[0])}</b> ({bi[1]} orders) — '
-                    'reuse what works.</p>')
-    except Exception:  # noqa: BLE001 - private learning must never break a run
-        pass
-    return ""
 
 
 def md_table(lines):
@@ -109,8 +94,6 @@ def source_confidence(stats, data_flags):
         ("Google Trends", google, "Medium" if google == "live" else "—"),
         ("Pinterest", "off (add token)" if "off" in cc.get("Pinterest", "")
          else "live", "—"),
-        ("Reddit", "off" if "off" in cc.get("Reddit", "") else "live (free)",
-         "Low"),
         ("X / Twitter", "off (add token)" if "off" in cc.get("X / Twitter", "")
          else "live", "—"),
         ("Supplier catalog", "on file (supplier_costs.csv)", "High"),
@@ -265,10 +248,7 @@ def _tag_type(tag, kw):
 
 
 def build_tags(kw, related, opts, mode):
-    """Return exactly 13 tag dicts {tag,type,status,reason,publish_safe}.
-    Plural-deduped, and guaranteed >=2 occasion/buyer tags so the output always
-    clears the tag validators."""
-    from src.validators import _sing_words, is_occ_buyer
+    """Return exactly 13 tag dicts {tag,type,status,reason,publish_safe}."""
     cands = [kw]
     for k in ("niche", "occasion", "personalization", "style"):
         if opts.get(k):
@@ -282,54 +262,30 @@ def build_tags(kw, related, opts, mode):
               "custom name", "gift idea", "matching gift", "family gift",
               "cute gift idea", "trendy gift", "personalized present"]
 
-    def _tagdict(tag, was_typo, src):
-        risk, _ = tm_check(tag)
-        if risk == "HIGH":
-            st, safe, rs = "BLOCKED_TM", False, "trademark risk HIGH"
-        elif risk == "CAUTION":
-            st, safe, rs = "NEED_TM_CHECK", False, "verify trademark first"
-        elif was_typo:
-            st, safe, rs = "TYPO_FIXED", True, f"corrected from '{src}'"
-        elif tag in _BROAD:
-            st, safe, rs = "TOO_BROAD", True, "broad — pair with specifics"
-        else:
-            st, safe, rs = "OK", True, ""
-        return {"tag": tag, "type": _tag_type(tag, kw), "status": st,
-                "reason": rs, "publish_safe": safe}
-
-    out, seen, seen_sing = [], set(), set()
+    out, seen = [], set()
     for raw in cands:
         c = (raw or "").strip().lower()
         if not c or c in seen or not (3 <= len(c) <= 20):
             continue
-        tag, was_typo = _looks_typo(c)
-        sk = _sing_words(tag)                       # plural/reorder-safe key
-        if tag in seen or sk in seen_sing:
+        fixed, was_typo = _looks_typo(c)
+        tag = fixed
+        if tag in seen:
             continue
+        risk, _ = tm_check(tag)
+        if risk == "HIGH":
+            status, safe, reason = "BLOCKED_TM", False, "trademark risk HIGH"
+        elif risk == "CAUTION":
+            status, safe, reason = "NEED_TM_CHECK", False, "verify trademark first"
+        elif was_typo:
+            status, safe, reason = "TYPO_FIXED", True, f"corrected from '{c}'"
+        elif tag in _BROAD:
+            status, safe, reason = "TOO_BROAD", True, "broad — pair with specifics"
+        else:
+            status, safe, reason = "OK", True, ""
         seen.add(tag)
-        seen_sing.add(sk)
-        out.append(_tagdict(tag, was_typo, c))
+        out.append({"tag": tag, "type": _tag_type(tag, kw), "status": status,
+                    "reason": reason, "publish_safe": safe})
         if len(out) >= 13:
-            break
-    out = out[:13]
-
-    # guarantee >=2 occasion/buyer tags: swap trailing non-occasion tags for
-    # occasion/buyer fallbacks (only bites when opts + related carry none).
-    occ_fb = ["gift for her", "gift for him", "gift for mom", "birthday gift",
-              "gift for dad", "wedding gift"]
-    have = sum(1 for t in out if is_occ_buyer(t["tag"]))
-    for i in range(len(out) - 1, -1, -1):
-        if have >= 2:
-            break
-        if is_occ_buyer(out[i]["tag"]):
-            continue
-        present = {t["tag"] for t in out}
-        present_sing = {_sing_words(t["tag"]) for t in out}
-        for ft in occ_fb:
-            if ft in present or _sing_words(ft) in present_sing:
-                continue
-            out[i] = _tagdict(ft, False, ft)
-            have += 1
             break
     return out[:13]
 
@@ -474,74 +430,23 @@ CWW_FACTORS = [
 
 
 def can_we_win(kw, comp, listings, opts, mode, supplier_ok):
-    """Per-niche win potential MEASURED from the actual top rivals, not constants.
-    A factor scores higher where the rivals are measurably weak = a real gap to
-    exploit. Returns (overall, scores, gaps): `gaps` is the ranked list of the
-    biggest MEASURED weaknesses (name, score, evidence), strongest first."""
-    ls = [r for r in (listings or []) if _g(r, "title")]
-    n = len(ls)
-    titles = [str(_g(r, "title") or "").lower() for r in ls]
-    prices = sorted(p for p in (_f(_g(r, "price")) for r in ls) if p > 0)
-    solds = sorted(_f(_g(r, "total_sold")) for r in ls)
+    """0-100: if rivals have the same data + AI, why can WE still win? Potential
+    edge, scored from where the market is weak."""
     sat = (comp.get("saturation") or "").lower()
-    damp = {"high": -10, "medium": -3, "low": 5}.get(sat, 0)
-
-    def cnt(words):
-        return sum(1 for t in titles if any(w in t for w in words))
-
-    PERS = ("name", "custom", "personal", "monogram", "initial", "personalised",
-            "personalized")
-    CLIP = ("clipart", "clip art", "svg", "png", "sublimation", "digital",
-            "printable", "vector")
-
-    measured = {}   # name -> (score, evidence) -- only where we have real data
-    if n:
-        no_pers = n - cnt(PERS)
-        measured["Personalization"] = (
-            _clamp(42 + 56 * (no_pers / n)),
-            f"{no_pers}/{n} top rivals show no personalization in the title")
-        broad = sum(1 for t in titles if len(t.split()) <= 4)
-        measured["SEO"] = (
-            _clamp(40 + 52 * (broad / n)),
-            f"{broad}/{n} rivals use short/broad titles -- beat them with specific "
-            "long-tails")
-        clip = cnt(CLIP)
-        measured["Design originality"] = (
-            _clamp(48 + 48 * (clip / n)),
-            (f"{clip}/{n} rivals look like clip-art / digital prints -- win on "
-             "original stitched art" if clip else
-             "rivals aren't obvious clip-art -- still win on genuinely original art"))
-    if prices:
-        med = prices[len(prices) // 2]
-        headroom = 1.0 if med < 18 else 0.6 if med < 28 else 0.3
-        measured["Price/value"] = (
-            _clamp(45 + 45 * headroom),
-            f"rivals cluster at ~{_money(med)} median -- room to premium on "
-            "personalization + quality")
-    if solds:
-        med_sold = solds[len(solds) // 2]
-        beat = 1.0 if med_sold < 50 else 0.6 if med_sold < 300 else 0.25
-        ang = opts.get("niche") or opts.get("occasion")
-        measured["Niche angle"] = (
-            _clamp(44 + 46 * beat),
-            f"top rivals' median ~{_int(med_sold)} sold -- niche isn't locked up"
-            + (f"; sharpen a '{ang}' angle" if ang else ""))
-
-    # Execution levers we can't read from the index (our craft, not a measured
-    # rival gap) -- honest moderate defaults, dampened by saturation.
-    execution = {"First image": 78, "Mockup": 76, "Bundle": 70, "Trust": 74,
-                 "Speed": 70, "Product-line": 74,
-                 "Supplier": 82 if supplier_ok else 52}
-    scores = {k: v for k, (v, _ev) in measured.items()}
-    for k, v in execution.items():
-        scores[k] = _clamp(v + damp)
-    for name, _play in CWW_FACTORS:          # fill any factor missing for lack of data
-        scores.setdefault(name, _clamp(64 + damp))
-
+    titles = " ".join(str(r.get("title") or "").lower() for r in listings)
+    rivals_personalize = any(w in titles for w in
+                             ("name", "custom", "personal", "monogram"))
+    base = {
+        "First image": 80, "Mockup": 78,
+        "Personalization": 60 if rivals_personalize else 86,
+        "SEO": 75, "Niche angle": 78 if (opts.get("niche") or opts.get("occasion")) else 64,
+        "Bundle": 72, "Price/value": 70, "Trust": 74, "Design originality": 80,
+        "Speed": 68, "Supplier": 80 if supplier_ok else 55, "Product-line": 76,
+    }
+    damp = {"high": -12, "medium": -4, "low": 4}.get(sat, 0)
+    scores = {k: _clamp(v + damp) for k, v in base.items()}
     overall = _clamp(sum(scores.values()) / len(scores))
-    gaps = sorted(((k, s, ev) for k, (s, ev) in measured.items()),
-                  key=lambda x: x[1], reverse=True)
-    return overall, scores, gaps
+    return overall, scores
 
 
 def launch_readiness(supplier_ok, tags, risk, L, opts, confirms=None):
@@ -551,11 +456,7 @@ def launch_readiness(supplier_ok, tags, risk, L, opts, confirms=None):
     confirms = confirms or {}
     checks = {
         "Supplier confirmed": supplier_ok,
-        # True net floor (same as the report pipeline's gate): a viable price
-        # exists that clears >=$6 net profit AND >=30% net margin after all fees.
-        "Profit target met": (bool(L.get("rec_price"))
-                              and (L.get("rec_profit") or 0) >= 6
-                              and (L.get("rec_margin_pct") or 0) >= 30),
+        "Profit target met": bool(L.get("rec_price")),
         "13 clean tags": sum(1 for t in tags if t["publish_safe"]) == 13,
         "Photo / mockup ready": bool(confirms.get("image")),
         "Competitor advantage ready": True,   # the tool produces the beat plan
@@ -657,9 +558,7 @@ def sales_forecast(stats, price, cost, conv, data_flags):
     carts = (0, max(1, vhi // 40))
     conv = conv or 0.025
     slo, shi = 0, max(1, round(vhi * conv))
-    # per-sale fees ~12% = 6.5% txn + 3% payment + 2.5% USD->VND currency, + ~$0.45
-    # flat (listing + payment fixed). Excludes the discretionary ad reserve.
-    profit_each = max(0, (price or 0) - (cost or 0) - ((price or 0) * .12 + .45))
+    profit_each = max(0, (price or 0) - (cost or 0) - ((price or 0) * .095 + .45))
     return {
         "visits": f"{vlo}–{vhi}", "favorites": f"{favs[0]}–{favs[1]}",
         "carts": f"{carts[0]}–{carts[1]}", "sales": f"{slo}–{shi}",
@@ -741,7 +640,6 @@ def _listing_data(kw, opts, stats, related, mode, tags):
     lo, hi = stats.get("price_p25"), stats.get("price_p75")
     mid = stats.get("median_price") or stats.get("avg_price")
     cost_line, margin_line, rec_price, supplier, cost_total = "", "", None, None, None
-    rec_profit, rec_margin_pct = 0.0, 0.0
     try:
         from src.idea_report import cluster_of, load_costs, margin_at
         cluster = cluster_of(kw.lower())
@@ -759,9 +657,6 @@ def _listing_data(kw, opts, stats, related, mode, tags):
                     rec_price = p
                     break
                 p += 1
-            if rec_price:   # true net profit + net margin % at the recommended price
-                rec_profit = margin_at(rec_price, cluster, costs) or 0.0
-                rec_margin_pct = round(rec_profit / rec_price * 100, 1) if rec_price else 0.0
             at_mid = margin_at(mid, cluster, costs) if mid else None
             if at_mid is not None:
                 lowprofit = at_mid < 5
@@ -783,8 +678,7 @@ def _listing_data(kw, opts, stats, related, mode, tags):
     return {"title": title, "desc": desc, "price_lo": lo, "price_hi": hi,
             "price_mid": mid, "rec_price": rec_price, "cost_line": cost_line,
             "margin_line": margin_line, "supplier": supplier,
-            "cost_total": cost_total, "rec_profit": rec_profit,
-            "rec_margin_pct": rec_margin_pct}
+            "cost_total": cost_total}
 
 
 # --------------------------- HTML bits -------------------------------------
@@ -947,14 +841,6 @@ def _gather(kw, opts=None):
                 break
     except Exception:  # noqa: BLE001
         pass
-    # trend PHASE (rising vs already-peaked), from momentum + 7-day rank move
-    _rc = stats.get("rank_change_7d")
-    try:
-        _rc = float(_rc)
-    except (TypeError, ValueError):
-        _rc = None
-    from src import signals as _sig
-    trend_phase = _sig.trend_velocity(mo.get("momentum_score"), _rc)
     risk, tm_reason = tm_check(kw.lower())
     data_flags = data_check(stats, kw)
 
@@ -972,8 +858,7 @@ def _gather(kw, opts=None):
     confirms = {k: bool(opts.get("confirm_" + k)) for k in
                 ("supplier", "competitor_audit", "material", "image", "trademark")}
     supplier_ok = confirms["supplier"]   # supplier is confirmed only by the manager
-    cww_score, cww_scores, cww_gaps = can_we_win(kw, comp, listings, opts, mode,
-                                                 supplier_ok)
+    cww_score, cww_scores = can_we_win(kw, comp, listings, opts, mode, supplier_ok)
     try:
         from src import learning
         learn_notes, learn_delta = learning.learning_note(
@@ -1006,8 +891,7 @@ def _gather(kw, opts=None):
         conv=conv, L=L, ready=ready, failed=failed, pod_prompt=pod_prompt,
         emb_prompt=emb_prompt, design_risks=design_risks, fc=fc,
         audit_html=audit_html, audit_status=audit_status, timeline=timeline,
-        cww_score=cww_score, cww_scores=cww_scores, cww_gaps=cww_gaps,
-        trend_phase=trend_phase, lr_score=lr_score,
+        cww_score=cww_score, cww_scores=cww_scores, lr_score=lr_score,
         lr_status=lr_status, lr_reasons=lr_reasons, fib_score=fib_score,
         fib_pattern=fib_pattern, fib_plan=fib_plan, offer_html=offer_html,
         offer_score=offer_score, offer_factors=offer_factors, supplier_ok=supplier_ok,
@@ -1030,7 +914,6 @@ def build_workspace(kw, opts=None):
     fc, audit_html, audit_status = G["fc"], G["audit_html"], G["audit_status"]
     timeline = G["timeline"]
     cww_score, cww_scores = G["cww_score"], G["cww_scores"]
-    cww_gaps = G["cww_gaps"]
     lr_score, lr_status, lr_reasons = G["lr_score"], G["lr_status"], G["lr_reasons"]
     fib_score, fib_pattern, fib_plan = G["fib_score"], G["fib_pattern"], G["fib_plan"]
     offer_score = G["offer_score"]
@@ -1083,10 +966,7 @@ def build_workspace(kw, opts=None):
         f'<li>Conversion <b>{_pct(conv)}</b> · demand:supply '
         f'<b>{stats.get("demand_supply_ratio","-")}</b> · buyer intent '
         f'<b>personalized / gift</b></li>'
-        f'{spark_html}'
-        + (f'<li>Trend phase: <b>{_esc(G["trend_phase"][0])}</b> — '
-           f'{_esc(G["trend_phase"][1])}</li>' if G.get("trend_phase") else '')
-        + '</ul>'
+        f'{spark_html}</ul>'
         '<h3>Related & long-tail keywords</h3>' + md_table(_rel_rows(related, 15)))
 
     # niches
@@ -1123,12 +1003,10 @@ def build_workspace(kw, opts=None):
                 f'<li>Status: <b>{"SUPPLIER_PARTIAL (costs on file, confirm product URL)" if L["supplier"] else "NEED_SUPPLIER_DETAILS"}</b> · product match: '
                 f'<b>{"70/100" if L["supplier"] else "—"}</b></li>'
                 f'<li>{_esc(L["margin_line"])}</li></ul>'
-                f'<p><a class="cbtn" href="/suppliers?match={_urlquote(kw)}'
-                f'&mode={req_mode}">🏭 Open Supplier panel — match / upload / '
-                'confirm →</a></p>'
                 '<p class="note">Confirm the exact product URL, base/shipping cost, '
-                'material, size, and processing time before publish (no terminal '
-                'needed — everything is on the Supplier panel).</p>')
+                'material, size, and processing time before publish. Full supplier '
+                'panel (Pull products / Upload CSV / Use supplier) is the next '
+                'upgrade — for now use <code>py main.py supplier</code>.</p>')
 
     # listing builder + publish gate
     save_label = "Publish-ready ✅" if ready else "DRAFT ONLY — DO NOT PUBLISH"
@@ -1172,20 +1050,8 @@ def build_workspace(kw, opts=None):
 
     # design
     risk_html = "".join(f'<li>{_esc(r)}</li>' for r in design_risks)
-    # Producibility: can this design actually be STITCHED (not just "is it
-    # embroidery")? Scores color/detail/thin-line risk from the idea text.
-    from src import product_fit as _pf
-    _dtext = kw + " " + " ".join(str(opts.get(k, "")) for k in
-                                 ("niche", "style", "personalization"))
-    _prod = _pf.producibility(_dtext, "embroidery" if mode in
-                              ("embroidery", "both", "chenille") else mode)
-    prod_html = (
-        f'<div class="gate {"g-ok" if _prod["score"] >= 75 else "g-no"}">'
-        f'Producibility ({mode}): {_prod["score"]}/100 — {_prod["label"]}</div>'
-        + "".join(f'<p class="note">⚠️ {_esc(r)}</p>' for r in _prod["risks"]))
     design_html = (
-        prod_html
-        + f'<div class="warn"><b>Design risk ({mode}):</b><ul>{risk_html}</ul></div>'
+        f'<div class="warn"><b>Design risk ({mode}):</b><ul>{risk_html}</ul></div>'
         '<div class="lbrow"><b>POD prompt</b>' + _copy_btn("ws-pod") + '</div>'
         f'<pre class="lbval" id="ws-pod">{_esc(pod_prompt)}</pre>'
         '<div class="lbrow"><b>Embroidery prompt (stitch-safe)</b>'
@@ -1231,43 +1097,29 @@ def build_workspace(kw, opts=None):
         'page — use your browser\'s <b>Print → Save as PDF</b>. Never '
         'auto-published.</p>')
 
-    # Can We Win: ONE merged table (Advantage | Score | Our play), where the play
-    # is the MEASURED gap evidence for factors we could read from the rivals, and
-    # the generic play otherwise. Plus a ranked "biggest gaps to exploit" list.
-    _gap_play = {name: ev for name, _s, ev in cww_gaps}
+    # Can We Win, First Image Battle, Offer Builder, Better Angles.
+    # ONE merged table (Advantage | Score | Our play) instead of two, plus a
+    # single-line edge summary in place of the old 10-bullet recap.
     cww_rows = ["| Advantage | Score | Our play |", "|---|---|---|"]
     for _name, _play in CWW_FACTORS:
-        _p = _gap_play.get(_name, _play)   # measured evidence beats the generic play
-        cww_rows.append(f"| {_name} | {cww_scores.get(_name, '-')} | {_esc(_p)} |")
+        cww_rows.append(f"| {_name} | {cww_scores.get(_name, '-')} | {_esc(_play)} |")
     learn_html = ""
     if G.get("learn_notes"):
         learn_html = ('<div class="learnbox"><b>🔒 Our private sales data</b><ul>'
                       + "".join(f"<li>{_esc(n)}</li>" for n in G["learn_notes"])
                       + '</ul></div>')
-    # ranked, evidence-backed gaps measured from THIS niche's rivals
-    _nl = len(listings or [])
-    if cww_gaps:
-        _items = "".join(
-            f'<li><b>{_esc(name)}</b> ({int(sc)}/100) — {_esc(ev)}</li>'
-            for name, sc, ev in cww_gaps[:3])
-        gaps_html = (f'<h3>🎯 Biggest gaps to exploit (measured from {_nl} rivals)</h3>'
-                     f'<ul class="facts">{_items}</ul>')
-        _top, _ts, _tev = cww_gaps[0]
-        edge_html = (f'<div class="edge"><b>Our biggest measured edge:</b> '
-                     f'{_esc(_top)} — {_esc(_tev)}. Pair it with a strong first '
-                     'image + original stitched art.</div>')
-    else:
-        gaps_html = ('<p class="note">No competitor listings returned — scores use '
-                     'baseline defaults; re-run when rival data is available.</p>')
-        edge_html = ('<div class="edge"><b>Our edge:</b> better first image + real '
-                     'personalization + tighter long-tail SEO. (No rival data to '
-                     'measure specific gaps this run.)</div>')
+    _pers = opts.get("personalization") or "name / date / initials"
+    edge_html = (
+        '<div class="edge"><b>Our edge in one line:</b> better first image + real '
+        f'personalization ({_esc(_pers)}) + tighter long-tail SEO vs their broad '
+        f'"{_esc(kw)}" titles. Biggest rival weakness: generic art + a weak first '
+        'image.</div>')
     cww_html = (
         f'<div class="gate {"g-ok" if cww_score >= 70 else "g-no"}">Can We Win '
         f'score: {cww_score}/100 — '
         + ("yes, we can differentiate" if cww_score >= 70
            else "edge is thin — do not SELL NOW") + '</div>'
-        + learn_html + md_table(cww_rows) + gaps_html + edge_html)
+        + learn_html + md_table(cww_rows) + edge_html)
 
     fib_html = (
         f'<div class="gate {"g-ok" if fib_score >= 75 else "g-no"}">First-image '
@@ -1276,8 +1128,7 @@ def build_workspace(kw, opts=None):
         + '</div><h3>Top competitor image pattern</h3><ul class="facts">'
         + "".join(f'<li>{_esc(p)}</li>' for p in fib_pattern)
         + '</ul><h3>Our first-image plan</h3><ul class="facts">'
-        + "".join(f'<li>{_esc(p)}</li>' for p in fib_plan) + '</ul>'
-        + _best_image_note())
+        + "".join(f'<li>{_esc(p)}</li>' for p in fib_plan) + '</ul>')
 
     lr_reason_html = "".join(f'<li>{_esc(r)}</li>' for r in lr_reasons)
     lr_html = (

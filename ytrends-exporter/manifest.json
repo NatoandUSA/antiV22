@@ -1,15 +1,17 @@
 {
   "manifest_version": 3,
-  "name": "YTrends + Etsy Exporter (for 22etsy-agent)",
-  "version": "1.1.0",
-  "description": "One-click CSV export of any YTrends data table (Hidden Gems, Trending, Categories...) AND Etsy search-results listings - plus optional push to your local 22etsy-agent. Reads only what's on your screen; no marketplace automation.",
+  "name": "YTrends + Etsy + Pinterest Exporter (for 22etsy-agent)",
+  "version": "1.3.0",
+  "description": "One-click CSV export of YTrends tables, Etsy search listings (with HeyEtsy overlay analytics), AND Pinterest pins (title, description, saves, image, outbound link, pinner, board) - plus optional push to your local 22etsy-agent. Reads only what's on your screen; no automation.",
   "icons": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" },
   "permissions": ["storage", "downloads"],
   "host_permissions": [
     "https://trends.ytuong.ai/*",
     "https://ytuong.me/*",
     "https://heyetsy.com/*",
-    "https://www.etsy.com/*"
+    "https://www.etsy.com/*",
+    "https://www.pinterest.com/*",
+    "https://*.pinterest.com/*"
   ],
   "action": {
     "default_title": "YTrends Exporter settings",
@@ -22,7 +24,9 @@
         "https://trends.ytuong.ai/*",
         "https://ytuong.me/*",
         "https://heyetsy.com/*",
-        "https://www.etsy.com/*"
+        "https://www.etsy.com/*",
+        "https://www.pinterest.com/*",
+        "https://*.pinterest.com/*"
       ],
       "js": ["content.js"],
       "css": ["content.css"],

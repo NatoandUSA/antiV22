@@ -75,7 +75,9 @@ def map_row_to_scorer(headers, row, view=""):
         "views": _find(headers, "views", "view", "search volume", "volume"),
         "conv": _find(headers, "conversion", "conv"),
         # "competing products" = Amazon Xray competition count -> the listings slot.
-        "listings": _find(headers, "listing", "competing", exclude=("/", "seller")),
+        # exclude "id"/"url" so "listing_id"/"listing_url" don't mis-map as a count.
+        "listings": _find(headers, "listing", "competing",
+                          exclude=("/", "seller", "id", "url")),
         "sellers": _find(headers, "seller", exclude=("/",)),
         "price": _find(headers, "avg price", "price"),
         "revenue": _find(headers, "revenue"),

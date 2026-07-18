@@ -26,7 +26,8 @@ from src import product_fit as pf
 from src.ytx_import import parse_number
 
 DIRS = {"supplier": Path("data/imports/supplier"),
-        "pinterest": Path("data/imports/pinterest")}
+        "pinterest": Path("data/imports/pinterest"),
+        "etsy": Path("data/imports/etsy_spy")}
 SUPPLIER_DIR = DIRS["supplier"]   # back-compat alias
 
 ALL_NOUNS = pf.POD_NOUNS | pf.JEWELRY_NOUNS | pf.ACRYLIC_NOUNS
@@ -256,12 +257,36 @@ def looks_like_supplier(headers):
     return sum(1 for h in hits if h in blob) >= 1
 
 
+def _hdr_blob(headers):
+    return " ".join(str(h).lower() for h in (headers or []))
+
+
 def looks_like_pinterest(headers):
-    """True if the columns look like a Pinterest pin export (title/description +
-    saves/repins/board/pinner) rather than a supplier or Etsy table."""
-    blob = " ".join(str(h).lower() for h in (headers or []))
-    hits = ("save", "repin", "board", "pinner", "pin url", "pin_url", "pinterest")
+    """True if the columns look like a Pinterest pin export — saves/board/pinner,
+    OR the minimal spy shape (pin_id + title_or_desc)."""
+    blob = _hdr_blob(headers)
+    hits = ("save", "repin", "board", "pinner", "pin url", "pin_url", "pinterest",
+            "pin_id", "pin id", "title_or_desc")
     return sum(1 for h in hits if h in blob) >= 1
+
+
+def has_keyword_col(headers):
+    """True if there's a real keyword column (a YTrends/Amazon keyword table)."""
+    return any(k in str(h).lower() for h in (headers or [])
+               for k in ("keyword", "phrase"))
+
+
+def looks_like_etsy_listings(headers):
+    """True for an Etsy LISTINGS / spy export (title-based, no keyword column) —
+    it carries a title plus listing-level signals (sold / views / tags / shop /
+    listing id), so it becomes keyword LEADS rather than a keyword table."""
+    blob = _hdr_blob(headers)
+    if has_keyword_col(headers):
+        return False
+    has_title = "title" in blob
+    signals = ("he_sold", "he_views", "he_tags", "sold", "listing_id", "listing id",
+               "shop", "favorite", "revenue")
+    return has_title and any(s in blob for s in signals)
 
 
 def _dir(source):

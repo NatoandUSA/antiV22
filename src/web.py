@@ -449,6 +449,7 @@ def build_app(password, secret):
             '<option value="keywords">Etsy / YTrends keywords</option>'
             '<option value="supplier">Supplier — Alibaba/AliExpress/1688</option>'
             '<option value="pinterest">Pinterest — pins &amp; saves</option>'
+            '<option value="etsy">Etsy listings / spy — keyword leads</option>'
             '<option value="amazon">Amazon Xray — reference</option>'
             '</select>'
             '<label class="pldz" id="pldz">'
@@ -1648,6 +1649,17 @@ def build_app(password, secret):
         except (SystemExit, Exception) as exc:  # noqa: BLE001
             return _tool_error("Pinterest Trend Finder", exc)
 
+    @app.route("/etsy-spy")
+    @login_required
+    def etsy_spy():
+        from src import interactive
+        m = request.args.get("mode")
+        mode = m if m in ("pod", "embroidery") else None
+        try:
+            return _render_tool("Etsy Spy", interactive.etsy_spy(mode))
+        except (SystemExit, Exception) as exc:  # noqa: BLE001
+            return _tool_error("Etsy Spy", exc)
+
     # ---- YTrends Exporter extension ingest (token-gated, CORS, no session) ----
     ALLOWED_IMPORT_ORIGINS = {"https://trends.ytuong.ai", "https://ytuong.me",
                               "https://heyetsy.com", "https://www.etsy.com"}
@@ -1738,12 +1750,17 @@ def build_app(password, secret):
                     kind = "pinterest"
                 elif _looks_amazon(hdrs):
                     kind = "amazon"
+                elif st.has_keyword_col(hdrs):
+                    kind = "keywords"                 # YTrends/Amazon keyword table
+                elif st.looks_like_etsy_listings(hdrs):
+                    kind = "etsy"                      # Etsy listings/spy -> keyword leads
                 else:
                     kind = "keywords"
-            if kind in ("supplier", "pinterest"):
+            _trend_dest = {"supplier": "/supplier-trends",
+                           "pinterest": "/pinterest-trends", "etsy": "/etsy-spy"}
+            if kind in _trend_dest:
                 st.save_payload(payload, source=kind)
-                dest = (f"/supplier-trends{modeq}" if kind == "supplier"
-                        else f"/pinterest-trends{modeq}")
+                dest = f"{_trend_dest[kind]}{modeq}"
                 act = f"{kind} upload({n_files}): {len(payload.get('rows') or [])} rows"
             else:
                 if kind == "amazon":
