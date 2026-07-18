@@ -1709,6 +1709,11 @@ def winners(mode=None):
     if proven_any:
         L += ["_✔ = you've sold this before — the learning loop lifts its winner "
               "score so proven niches rise automatically._", ""]
+    if "amazon" in str(res.get("view", "")).lower():
+        L += ["> 🅰️ **Amazon reference import.** These keywords + demand come from "
+              "Amazon (Xray/Cerebro), not Etsy — treat them as a corroborating "
+              "reference and re-check the winners with a real Etsy/YTrends export "
+              "before building. Amazon demand ≠ Etsy demand.", ""]
     _gt = "&mode=" + mode if mode else ""
     L += [f"_Cross-check the top picks on [Google Trends](/score-import?gt=1{_gt}). "
           "Verdicts advisory — trademark + human review still required._", ""]
@@ -2017,47 +2022,68 @@ def _etsy_status(keyword, comp_map):
     return "🔴 CROWDED", comp
 
 
-def supplier_trends(mode=None):
-    """Supplier Trend Finder — turn a manually exported Alibaba / AliExpress / 1688
-    product table into ranked KEYWORD LEADS (supply-side demand sensing), then
-    cross-check each against the latest Etsy import so the supplier-hot + Etsy-open
-    leads float to the top. A lead is a demand LEAD, not proof — validate on Etsy."""
+# Per-source copy so the same lead engine reads right for supplier vs Pinterest.
+_TREND_SRC = {
+    "supplier": {
+        "title": "Supplier Trend Finder", "noun": "products",
+        "demand_col": "Supplier demand", "count_col": "Suppliers", "traction_col": "Sold",
+        "reorder": True,
+        "empty": ("**No supplier import yet.** On the homepage drop box, choose "
+                  "**Supplier export** and drop an Alibaba / AliExpress / 1688 export."),
+        "lead": ("Reverse signal: what factories are pushing = what buyers and other "
+                 "sellers are chasing"),
+        "heat": "Supplier heat"},
+    "pinterest": {
+        "title": "Pinterest Trend Finder", "noun": "pins",
+        "demand_col": "Pinterest demand", "count_col": "Pins", "traction_col": "Saves",
+        "reorder": False,
+        "empty": ("**No Pinterest import yet.** On the homepage drop box, choose "
+                  "**Pinterest** and drop a pin export (title, saves, board)."),
+        "lead": ("Leading signal: Pinterest is where gift/decor buyers plan weeks "
+                 "ahead — high saves = rising demand"),
+        "heat": "Pinterest heat"},
+}
+
+
+def trend_leads(mode=None, source="supplier"):
+    """Turn a manually exported SUPPLIER (Alibaba/AliExpress/1688) or PINTEREST table
+    into ranked KEYWORD LEADS (demand sensing from the supply/interest side), then
+    cross-check each against the latest Etsy import so the hot + Etsy-open leads
+    float to the top. A lead is a demand LEAD, not proof — validate on Etsy."""
     from src import supplier_trend as st
-    res = st.analyze_latest(mode)
+    cfg = _TREND_SRC.get(source, _TREND_SRC["supplier"])
+    res = st.analyze_latest(mode, source=source)
     if not res.get("ok"):
-        return ("# Supplier Trend Finder\n\n> **No supplier import yet.** On the "
-                "homepage drop box, choose **Supplier export** and drop an Alibaba / "
-                "AliExpress / 1688 product export (CSV/JSON).")
+        return f"# {cfg['title']}\n\n> {cfg['empty']}"
     leads = res["leads"]
     label = MODE_LABEL.get(mode, mode)
     comp_map = _etsy_comp_map()
-    L = [f"# Supplier Trend Finder — {res.get('view', 'supplier import')}", "",
-         f"_Reverse signal: what factories are pushing = what buyers and other "
-         f"sellers are chasing. {len(leads)} keyword lead(s) from "
-         f"{res.get('rows_in_import', 0)} products ({label}). Ranked by "
-         "Supplier-Demand; the **★ gold** is supplier-hot **and** Etsy-open._", "",
-         "> Supplier heat is a demand **lead, not proof.** The Etsy column "
+    L = [f"# {cfg['title']} — {res.get('view', source + ' import')}", "",
+         f"_{cfg['lead']}. {len(leads)} keyword lead(s) from "
+         f"{res.get('rows_in_import', 0)} {cfg['noun']} ({label}). Ranked by demand; "
+         "the **★ gold** is hot **and** Etsy-open._", "",
+         f"> {cfg['heat']} is a demand **lead, not proof.** The Etsy column "
          "cross-checks your latest Etsy import — a blank means the keyword isn't in "
          "it yet, so validate before building. Confidence (●) reflects how clean the "
-         "keyword extraction was; low = a brand-stuffed title.", ""]
+         "keyword extraction was.", ""]
     if not comp_map:
         L += ["_Tip: import an Etsy/YTrends export too and the **Etsy** column lights "
-              "up — that's how a lead becomes a confirmed supplier-hot × Etsy-open "
-              "pick._", ""]
+              "up — that's how a lead becomes a confirmed hot × Etsy-open pick._", ""]
     if not leads:
         L += ["_No launchable keyword leads could be extracted (titles too "
               "brand-stuffed, or these aren't product rows)._"]
         return "\n".join(L)
-    L += ["| # | Keyword lead | Supplier demand | Suppliers | Sold | Reorder | Conf | Etsy | Build |",
-          "|---|---|---|---|---|---|---|---|---|"]
+    reo_h = " Reorder |" if cfg["reorder"] else ""
+    reo_sep = "---|" if cfg["reorder"] else ""
+    L += [f"| # | Keyword lead | {cfg['demand_col']} | {cfg['count_col']} "
+          f"| {cfg['traction_col']} |{reo_h} Conf | Etsy | Build |",
+          f"|---|---|---|---|---|{reo_sep}---|---|---|"]
     gold = []
     for i, ld in enumerate(leads, 1):
         sd = ld["supplier_demand"]
         bar = _barcell(sd) if sd is not None else "—"
         sold = (int(ld["sold_median"]) if isinstance(ld["sold_median"], (int, float))
                 else "—")
-        reo = (f'{round(ld["reorder_pct"])}%'
-               if isinstance(ld["reorder_pct"], (int, float)) else "—")
         est, _ec = _etsy_status(ld["keyword"], comp_map)
         is_gold = est.endswith("OPEN") and (sd or 0) >= 55
         mark = "★ " if is_gold else ""
@@ -2066,16 +2092,29 @@ def supplier_trends(mode=None):
         conf = {"high": "●●●", "med": "●●○", "low": "●○○"}.get(ld["confidence"], "")
         kwq = _uq(ld["keyword"])
         build = f"[Kit](/launch-kit?q={kwq}) · [Etsy](/edge?q={kwq})"
+        reo_c = ""
+        if cfg["reorder"]:
+            reo = (f'{round(ld["reorder_pct"])}%'
+                   if isinstance(ld["reorder_pct"], (int, float)) else "—")
+            reo_c = f" {reo} |"
         L.append(f"| {i} | {mark}{_clean(ld['keyword'])} "
                  f"| `{bar}` {sd if sd is not None else ''} | {ld['supplier_count']} "
-                 f"| {sold} | {reo} | {conf} | {est or '—'} | {build} |")
+                 f"| {sold} |{reo_c} {conf} | {est or '—'} | {build} |")
     if gold:
         top = gold[0]
-        L += ["", f"## ★ Top find: **{_clean(top)}** — supplier-hot **and** Etsy-open",
+        L += ["", f"## ★ Top find: **{_clean(top)}** — hot **and** Etsy-open",
               f"Move first: [Build the Launch Kit](/launch-kit?q={_uq(top)}) · "
               f"[Beat competitors](/edge?q={_uq(top)})"]
     else:
-        L += ["", "_No supplier-hot × Etsy-open pick yet. Either import an Etsy "
-              "export to cross-check, or the hot leads are already crowded on Etsy — "
-              "niche them down before building._"]
+        L += ["", "_No hot × Etsy-open pick yet. Either import an Etsy export to "
+              "cross-check, or the hot leads are already crowded on Etsy — niche them "
+              "down before building._"]
     return "\n".join(L)
+
+
+def supplier_trends(mode=None):
+    return trend_leads(mode, "supplier")
+
+
+def pinterest_trends(mode=None):
+    return trend_leads(mode, "pinterest")

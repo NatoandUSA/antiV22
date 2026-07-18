@@ -69,10 +69,13 @@ def _find(headers, *needles, exclude=()):
 def map_row_to_scorer(headers, row, view=""):
     """One extension row -> the field names opportunity_score.score reads."""
     idx = {
-        "keyword": _find(headers, "keyword"),
-        "views": _find(headers, "views", "view"),
+        "keyword": _find(headers, "keyword", "phrase"),
+        # "search volume"/"volume" = Amazon Xray/Cerebro demand; maps to the same
+        # demand slot as Etsy views so an Amazon reference export scores normally.
+        "views": _find(headers, "views", "view", "search volume", "volume"),
         "conv": _find(headers, "conversion", "conv"),
-        "listings": _find(headers, "listing", exclude=("/", "seller")),
+        # "competing products" = Amazon Xray competition count -> the listings slot.
+        "listings": _find(headers, "listing", "competing", exclude=("/", "seller")),
         "sellers": _find(headers, "seller", exclude=("/",)),
         "price": _find(headers, "avg price", "price"),
         "revenue": _find(headers, "revenue"),

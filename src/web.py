@@ -448,6 +448,8 @@ def build_app(password, secret):
             '<option value="auto">Auto-detect source</option>'
             '<option value="keywords">Etsy / YTrends keywords</option>'
             '<option value="supplier">Supplier — Alibaba/AliExpress/1688</option>'
+            '<option value="pinterest">Pinterest — pins &amp; saves</option>'
+            '<option value="amazon">Amazon Xray — reference</option>'
             '</select>'
             '<label class="pldz" id="pldz">'
             '<input type="file" name="file" accept=".csv,.json,.txt" id="plfile" multiple hidden>'
@@ -569,6 +571,8 @@ def build_app(password, secret):
             '<span>One winner → verdict, edge, listing, photos & ads on one page</span></a>'
             f'<a class="toolcard" href="/supplier-trends?mode={active}"><b>🏭 Supplier Trend Finder</b>'
             '<span>Reverse signal: Alibaba/AliExpress/1688 heat → keyword demand leads</span></a>'
+            f'<a class="toolcard" href="/pinterest-trends?mode={active}"><b>📌 Pinterest Trend Finder</b>'
+            '<span>Leading signal: pin saves → rising keyword demand leads</span></a>'
             f'<a class="toolcard" href="/daily-brief?mode={active}"><b>🌅 Daily brief</b>'
             '<span>Today\'s scored build-list (Opportunity Score) — read first</span></a>'
             f'<a class="toolcard" href="/score-import?mode={active}"><b>🎯 Score latest import</b>'
@@ -803,9 +807,22 @@ def build_app(password, secret):
                         f'Live data unavailable: {_html.escape(str(exc)[:200])}'
                         '</p></article>')
         except (SystemExit, Exception) as exc:  # noqa: BLE001
+            # Self-diagnosing: log the full traceback to journalctl AND surface the
+            # exact src file:line to the operator, so a data-shaped failure is
+            # fixable in one shot instead of a bare error message.
+            import traceback as _tb
+            app.logger.exception("workspace build failed for %r", q)
+            _loc = ""
+            for _fr in reversed(_tb.extract_tb(exc.__traceback__) or []):
+                _fp = _fr.filename.replace("\\", "/")
+                if "/src/" in _fp:
+                    _loc = f" [{_fp.split('/src/')[-1]}:{_fr.lineno} in {_fr.name}()]"
+                    break
             return page("Keyword Run", bar + '<article class="md"><p class="empty">'
                         f'Could not build the workspace for "{_html.escape(q)}": '
-                        f'{_html.escape(str(exc)[:200])}</p></article>')
+                        f'{_html.escape(type(exc).__name__)}: '
+                        f'{_html.escape(str(exc)[:120])}{_html.escape(_loc)}</p>'
+                        '</article>')
         pr = bool(getattr(workspace.build_workspace, "_last", {}).get("publish_ready"))
         _log("WORKSPACE_BUILD", module="workspace", keyword=q,
              product_mode=opts.get("supplier_type"),
@@ -1619,6 +1636,18 @@ def build_app(password, secret):
         except (SystemExit, Exception) as exc:  # noqa: BLE001
             return _tool_error("Supplier Trend Finder", exc)
 
+    @app.route("/pinterest-trends")
+    @login_required
+    def pinterest_trends():
+        from src import interactive
+        m = request.args.get("mode")
+        mode = m if m in ("pod", "embroidery") else None
+        try:
+            return _render_tool("Pinterest Trend Finder",
+                                interactive.pinterest_trends(mode))
+        except (SystemExit, Exception) as exc:  # noqa: BLE001
+            return _tool_error("Pinterest Trend Finder", exc)
+
     # ---- YTrends Exporter extension ingest (token-gated, CORS, no session) ----
     ALLOWED_IMPORT_ORIGINS = {"https://trends.ytuong.ai", "https://ytuong.me",
                               "https://heyetsy.com", "https://www.etsy.com"}
@@ -1692,16 +1721,33 @@ def build_app(password, secret):
             from src import supplier_trend as st
             payload, n_files = ytx_import.parse_uploads(uploads)
             kind = (request.form.get("kind") or "auto").lower()
-            # Supplier exports (Alibaba/AliExpress/1688) go to the reverse-signal
-            # lane and are stored SEPARATELY so the Etsy Winner Finder never scores
-            # supplier rows as Etsy keywords. Auto-detect from the columns.
-            is_supplier = kind == "supplier" or (
-                kind == "auto" and st.looks_like_supplier(payload.get("headers")))
-            if is_supplier:
-                st.save_payload(payload)
-                dest = f"/supplier-trends{modeq}"
-                act = f"supplier upload({n_files}): {len(payload.get('rows') or [])} rows"
+            hdrs = payload.get("headers")
+
+            def _looks_amazon(h):
+                blob = " ".join(str(x).lower() for x in (h or []))
+                return any(k in blob for k in ("search volume", "competing products",
+                                               "asin", "cerebro", "title density"))
+            # Supplier & Pinterest exports go to the reverse-signal lanes and are
+            # stored SEPARATELY so the Etsy Winner Finder never scores them as Etsy
+            # keywords. Amazon Xray is a keyword table -> the Etsy lane, but stamped
+            # "amazon-xray" so it's shown as a reference. Auto-detect from columns.
+            if kind == "auto":
+                if st.looks_like_supplier(hdrs):
+                    kind = "supplier"
+                elif st.looks_like_pinterest(hdrs):
+                    kind = "pinterest"
+                elif _looks_amazon(hdrs):
+                    kind = "amazon"
+                else:
+                    kind = "keywords"
+            if kind in ("supplier", "pinterest"):
+                st.save_payload(payload, source=kind)
+                dest = (f"/supplier-trends{modeq}" if kind == "supplier"
+                        else f"/pinterest-trends{modeq}")
+                act = f"{kind} upload({n_files}): {len(payload.get('rows') or [])} rows"
             else:
+                if kind == "amazon":
+                    payload["view"] = "amazon-xray"   # flag as reference in the view
                 summary = ytx_import.ingest(payload)
                 dest = f"/winners{modeq}"
                 act = (f'upload({n_files} file(s)):{summary.get("view")} '

@@ -25,7 +25,9 @@ from pathlib import Path
 from src import product_fit as pf
 from src.ytx_import import parse_number
 
-SUPPLIER_DIR = Path("data/imports/supplier")
+DIRS = {"supplier": Path("data/imports/supplier"),
+        "pinterest": Path("data/imports/pinterest")}
+SUPPLIER_DIR = DIRS["supplier"]   # back-compat alias
 
 ALL_NOUNS = pf.POD_NOUNS | pf.JEWELRY_NOUNS | pf.ACRYLIC_NOUNS
 
@@ -133,7 +135,9 @@ def _col(headers, *needles, exclude=()):
 def _map(headers):
     return {
         "title": _col(headers, "title", "product", "name", "description"),
-        "sold": _col(headers, "sold", "orders", "sale"),
+        # Pinterest "saves"/"repins" are the same kind of traction signal as
+        # supplier "sold", so they feed the same slot.
+        "sold": _col(headers, "sold", "orders", "save", "repin", "sale"),
         "reorder": _col(headers, "reorder", "repeat", "re-order"),
         "price": _col(headers, "price", "cost"),
         "suppliers": _col(headers, "supplier count", "num suppliers", "results"),
@@ -252,22 +256,35 @@ def looks_like_supplier(headers):
     return sum(1 for h in hits if h in blob) >= 1
 
 
-def save_payload(payload):
-    """Persist a supplier import under its OWN dir so the Etsy Winner Finder never
-    mistakes supplier rows for Etsy keywords. Returns the path written."""
-    SUPPLIER_DIR.mkdir(parents=True, exist_ok=True)
-    view = re.sub(r"[^a-z0-9]+", "-", str(payload.get("view") or "supplier").lower()).strip("-")
+def looks_like_pinterest(headers):
+    """True if the columns look like a Pinterest pin export (title/description +
+    saves/repins/board/pinner) rather than a supplier or Etsy table."""
+    blob = " ".join(str(h).lower() for h in (headers or []))
+    hits = ("save", "repin", "board", "pinner", "pin url", "pin_url", "pinterest")
+    return sum(1 for h in hits if h in blob) >= 1
+
+
+def _dir(source):
+    return DIRS.get(source, SUPPLIER_DIR)
+
+
+def save_payload(payload, source="supplier"):
+    """Persist a lead import under its OWN dir (supplier / pinterest) so the Etsy
+    Winner Finder never mistakes these rows for Etsy keywords. Returns the path."""
+    d = _dir(source)
+    d.mkdir(parents=True, exist_ok=True)
+    view = re.sub(r"[^a-z0-9]+", "-", str(payload.get("view") or source).lower()).strip("-")
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    p = SUPPLIER_DIR / f"{view or 'supplier'}_{stamp}.json"
+    p = d / f"{view or source}_{stamp}.json"
     p.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return str(p)
 
 
-def load_latest(source=None):
-    if not SUPPLIER_DIR.is_dir():
+def load_latest(source="supplier"):
+    d = _dir(source)
+    if not d.is_dir():
         return None
-    files = sorted(SUPPLIER_DIR.glob("*.json"),
-                   key=lambda p: p.stat().st_mtime, reverse=True)
+    files = sorted(d.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
     for f in files:
         try:
             return json.loads(f.read_text(encoding="utf-8"))
@@ -276,13 +293,13 @@ def load_latest(source=None):
     return None
 
 
-def latest_info():
-    """{rows, view, age_seconds} for the newest supplier import, or None."""
+def latest_info(source="supplier"):
+    """{rows, view, age_seconds} for the newest import of `source`, or None."""
     import time
-    if not SUPPLIER_DIR.is_dir():
+    d = _dir(source)
+    if not d.is_dir():
         return None
-    files = sorted(SUPPLIER_DIR.glob("*.json"),
-                   key=lambda p: p.stat().st_mtime, reverse=True)
+    files = sorted(d.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
     if not files:
         return None
     f = files[0]
@@ -298,10 +315,10 @@ def latest_info():
             "view": str(payload.get("view") or ""), "age_seconds": age}
 
 
-def analyze_latest(mode=None, limit=40):
-    payload = load_latest()
+def analyze_latest(mode=None, limit=40, source="supplier"):
+    payload = load_latest(source)
     if not payload:
-        return {"ok": False, "leads": [], "error": "no supplier import yet"}
+        return {"ok": False, "leads": [], "error": f"no {source} import yet"}
     return {"ok": True, "view": payload.get("view"),
             "rows_in_import": len(payload.get("rows") or []),
             "leads": analyze(payload, mode=mode, limit=limit)}
