@@ -37,6 +37,27 @@ def load_latest_import(source=None):
     return None
 
 
+def latest_import_info():
+    """Tiny status for the homepage: {rows, view, age_seconds} for the newest
+    import, or None. Reads the file's mtime for the age so it needs no clock in
+    the payload. Never raises."""
+    import time
+    files = _latest_files()
+    if not files:
+        return None
+    f = files[0]
+    try:
+        payload = json.loads(f.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return None
+    try:
+        age = max(0, int(time.time() - f.stat().st_mtime))
+    except Exception:  # noqa: BLE001
+        age = None
+    return {"rows": len(payload.get("rows") or []),
+            "view": str(payload.get("view") or ""), "age_seconds": age}
+
+
 def _find(headers, *needles, exclude=()):
     for i, h in enumerate(headers):
         hl = str(h).lower()
@@ -89,13 +110,96 @@ def map_row_to_scorer(headers, row, view=""):
     return d
 
 
+# How many top rows get the (slow, rate-limited) Google Trends read. We only
+# spend Google requests on rows that already look worth building, never on the
+# SKIP junk - so a 40-row import costs at most a couple of Trends batches.
+GT_TOP = 12
+
+
+def _coerce_num(v):
+    """A number from a research field, tolerating '2.5%', '$12.00', '1.8K'."""
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        return float(v)
+    n = yi.parse_number(v)
+    return n
+
+
+def _enrich_row(d, mode=None):
+    """Fill a scorer row's BLANKS from the live YTrends MCP, so the score rests on
+    real market data instead of the few columns the captured table happened to
+    show. Only fills fields that are missing/empty - never overwrites a real
+    captured value, never invents one. Returns True if anything real was added.
+    Any MCP failure leaves the row untouched (best-effort)."""
+    kw = d.get("tag")
+    if not kw:
+        return False
+    try:
+        from src import ytrends_mcp as mcp
+    except Exception:  # noqa: BLE001
+        return False
+    added = [False]
+
+    def put(key, val):
+        if val is not None and d.get(key) in (None, "", 0, 0.0):
+            d[key] = val
+            added[0] = True
+
+    # 1) keyword research -> conversion, price, listings, competition
+    try:
+        rk = mcp.research_keyword(kw) or {}
+    except (SystemExit, Exception):  # noqa: BLE001 - one dead call can't abort the run
+        rk = {}
+    stats = rk.get("stats", rk) if isinstance(rk, dict) else {}
+    if isinstance(stats, dict):
+        put("avg_conversion_rate", _coerce_num(stats.get("avg_conversion_rate")))
+        put("listing_count", _coerce_num(stats.get("listing_count")
+                                         or stats.get("total_listings")))
+        put("seller_count", _coerce_num(stats.get("seller_count")
+                                        or stats.get("total_sellers")))
+        put("avg_price", _coerce_num(stats.get("median_price")
+                                     or stats.get("avg_price")))
+        cl = stats.get("competition_level") or rk.get("competition_level")
+        if cl and not d.get("competition_level"):
+            d["competition_level"] = cl
+            added[0] = True
+
+    # 2) momentum / opportunity for the velocity + opportunity components
+    try:
+        hit = {}
+        for t in mcp.trending_keywords(limit=8, search=kw):
+            if (t.get("tag") or "").lower() == kw.lower():
+                hit = t
+                break
+        if not hit:
+            for r in mcp.scout_opportunities(limit=8, search=kw):
+                if (r.get("tag") or "").lower() == kw.lower():
+                    hit = r
+                    break
+    except (SystemExit, Exception):  # noqa: BLE001
+        hit = {}
+    if isinstance(hit, dict) and hit:
+        put("momentum_score", _coerce_num(hit.get("momentum_score")))
+        put("opportunity_score", _coerce_num(hit.get("opportunity_score")))
+        put("gem_score", _coerce_num(hit.get("gem_score")))
+        cl = hit.get("competition_level")
+        if cl and not d.get("competition_level"):
+            d["competition_level"] = cl
+            added[0] = True
+    return added[0]
+
+
 def score_latest(source=None, limit=None, threshold=None, mode=None,
-                 enrich=False, enrich_limit=15):
+                 enrich=False, gtrends=False):
     """Load the newest import, score every row, return ranked results (best first).
 
-    enrich=True fills gaps from the YTrends MCP first (see src/mcp_enrich.py):
-    one cached, rate-limited call per keyword, capped at enrich_limit.
-    """
+    enrich=True first tops up each launch-ready row's blank fields from the live
+    YTrends MCP, so the verdict rests on real market data instead of the handful
+    of columns the captured table showed (rows the server has no data on are left
+    as-is, not guessed).
+
+    gtrends=True cross-checks the top rows against free Google Trends demand and
+    blends that into the Market score (a rising/cooling external corroboration).
+    Both are opt-in because they hit the network."""
     payload = load_latest_import(source)
     if not payload:
         return {"ok": False, "results": [],
@@ -104,9 +208,8 @@ def score_latest(source=None, limit=None, threshold=None, mode=None,
     rows = payload.get("rows") or []
     view = payload.get("view") or source or ""
     from src import product_fit as pf
-    # Map + junk-filter FIRST, so enrich never burns an MCP call on a shop handle
-    # or a broad seed that can't score anyway.
-    mapped = []
+    out = []
+    enriched_count = 0
     for row in rows:
         d = map_row_to_scorer(headers, row, view)
         if not d["tag"]:
@@ -116,33 +219,43 @@ def score_latest(source=None, limit=None, threshold=None, mode=None,
         fit = pf.classify(d["tag"], mode)
         if not fit["launchable"] and fit["status"] not in pf.LAUNCHABLE:
             continue
-        mapped.append(d)
-    enrich_notes = {}
-    if enrich and mapped:
-        from src import mcp_enrich
-        # Enrich the most promising rows first: pre-score cheaply on what the
-        # extension gave us, so the quota cap spends on real candidates.
-        mapped.sort(key=lambda d: -(osc.score(d, keyword=d["tag"], mode=mode)
-                                    ["overall_score"] or 0))
-        enrich_notes = mcp_enrich.enrich(mapped, limit=enrich_limit)
-    out = []
-    for d in mapped:
+        did = _enrich_row(d, mode) if enrich else False
+        if did:
+            enriched_count += 1
         s = osc.score(d, keyword=d["tag"], mode=mode)
         s["category"] = d.get("category")
-        note = enrich_notes.get(d["tag"])
-        s["enriched"] = bool(note and note.get("enriched"))
-        s["enrich_note"] = note
+        s["enriched"] = did
+        s["_row"] = d               # kept for an optional Google Trends re-score
         out.append(s)
     rank = {"GO": 0, "CONDITIONAL": 1, "WATCH": 2, "SKIP": 3}
     out.sort(key=lambda s: (rank.get(s["verdict"], 9), -(s["overall_score"] or 0)))
+
+    # Google Trends: only worth spending requests on the rows already near the
+    # top; re-score just those with the Trends read blended in, then re-rank.
+    if gtrends and out:
+        top = out[:GT_TOP]
+        gt_map = osc.gtrends_dirs([s["keyword"] for s in top])
+        if gt_map:
+            for s in top:
+                gt = gt_map.get(s["keyword"])
+                if not gt:
+                    continue
+                rs = osc.score(s["_row"], keyword=s["keyword"], mode=mode,
+                               gtrends_dir=gt)
+                rs["category"] = s.get("category")
+                rs["enriched"] = s.get("enriched")
+                rs["gtrends"] = gt
+                s.update(rs)
+            out.sort(key=lambda s: (rank.get(s["verdict"], 9),
+                                    -(s["overall_score"] or 0)))
+
+    for s in out:
+        s.pop("_row", None)         # internal only - never leaks to the view
+    ranked = out
     if threshold is not None:
-        out = [s for s in out if (s["overall_score"] or 0) >= threshold]
+        ranked = [s for s in ranked if (s["overall_score"] or 0) >= threshold]
     if limit:
-        out = out[:limit]
-    # count = rows that survived the junk filter; rows_in_import = rows captured.
-    # They differ (shop handles, broad seeds are dropped), so report both rather
-    # than let the page call the filtered number "your import".
+        ranked = ranked[:limit]
     return {"ok": True, "view": view, "captured_at": payload.get("captured_at"),
-            "count": len(out), "rows_in_import": len(rows),
-            "enriched_count": sum(1 for s in out if s.get("enriched")),
-            "results": out}
+            "count": len(ranked), "rows_in_import": len(rows),
+            "enriched_count": enriched_count, "results": ranked}

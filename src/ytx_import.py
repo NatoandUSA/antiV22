@@ -15,6 +15,7 @@ Every payload is also saved raw under data/imports/ytrends_ext/ for audit.
 Nothing here publishes anything.
 """
 import csv
+import io
 import json
 import re
 from datetime import date, datetime, timezone
@@ -23,6 +24,11 @@ from pathlib import Path
 IMPORTS = Path("data/imports")
 RAW_DIR = IMPORTS / "ytrends_ext"
 CATEGORY_CSV = IMPORTS / "category_intel.csv"
+
+# Upload guard: a keyword export is at most a few hundred rows; cap well above
+# that so a giant/accidental file can't balloon memory on the VPS. The web layer
+# also caps the raw request body (MAX_CONTENT_LENGTH), so this is belt-and-braces.
+MAX_UPLOAD_ROWS = 5000
 
 
 # ---- number parsing (handles "$1,234.56", "5.1%", "1,234", "-", "") ----------
@@ -171,6 +177,129 @@ def ingest(payload):
         out["files"].append(_write_csv(IMPORTS / f"{view}_{date.today()}.csv",
                                        headers, rows))
     return out
+
+
+def _records_to_table(records):
+    """A JSON array of objects -> (headers, rows) preserving first-seen key order."""
+    headers = []
+    for rec in records:
+        if isinstance(rec, dict):
+            for k in rec.keys():
+                if str(k) not in headers:
+                    headers.append(str(k))
+    rows = []
+    for rec in records:
+        if isinstance(rec, dict):
+            rows.append([rec.get(h) for h in headers])
+        elif isinstance(rec, (list, tuple)):
+            rows.append(list(rec))
+    return headers, rows
+
+
+def parse_upload(filename, raw):
+    """Turn a MANUALLY uploaded CSV or JSON export into the ingest() payload shape
+    {view, captured_at, source, headers, rows}. This is the file-upload twin of the
+    browser extension's JSON POST — it lands in the SAME pipeline, so the Winner
+    Finder / score-import read it with no new code path.
+
+    Accepts: the extension's own {headers, rows} JSON, a JSON array of objects, a
+    JSON {rows:[...]} object, or a plain CSV (first row = headers). Pure parsing —
+    no network, tiny memory. Raises ValueError on unusable input."""
+    text = raw.decode("utf-8-sig", errors="replace") if isinstance(raw, (bytes, bytearray)) else str(raw)
+    text = text.strip()
+    if not text:
+        raise ValueError("the file is empty")
+    name = (filename or "").lower()
+    stem = re.sub(r"[^a-z0-9]+", "-", name.rsplit(".", 1)[0]).strip("-") or "upload"
+    is_json = name.endswith(".json") or text[:1] in ("{", "[")
+    headers, rows, view = [], [], stem
+    if is_json:
+        try:
+            data = json.loads(text)
+        except ValueError as exc:
+            raise ValueError(f"not valid JSON: {exc}")
+        if isinstance(data, dict) and isinstance(data.get("headers"), list) \
+                and isinstance(data.get("rows"), list):
+            headers = [str(h) for h in data["headers"]]
+            rows = data["rows"]
+            view = str(data.get("view") or stem)
+        elif isinstance(data, dict) and isinstance(data.get("rows"), list):
+            headers, rows = _records_to_table(data["rows"])
+            view = str(data.get("view") or stem)
+        elif isinstance(data, list):
+            headers, rows = _records_to_table(data)
+        else:
+            raise ValueError("unrecognised JSON — expected an array of rows or "
+                             "an object with headers + rows")
+    else:
+        reader = csv.reader(io.StringIO(text))
+        allrows = [r for r in reader if any(str(c).strip() for c in r)]
+        if not allrows:
+            raise ValueError("no rows found in the CSV")
+        headers = [str(h).strip() for h in allrows[0]]
+        rows = allrows[1:]
+    if not headers:
+        raise ValueError("no column headers found")
+    norm = []
+    for r in rows[:MAX_UPLOAD_ROWS]:
+        if isinstance(r, dict):
+            norm.append([r.get(h) for h in headers])
+        elif isinstance(r, (list, tuple)):
+            norm.append(list(r))
+        else:
+            norm.append([r])
+    return {"view": view, "source": "file-upload",
+            "captured_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "headers": headers, "rows": norm}
+
+
+def parse_uploads(files):
+    """Merge SEVERAL uploaded exports into ONE ingest payload so they rank together
+    in the Winner Finder. `files` is a list of (filename, raw_bytes).
+
+    Each file is parsed with parse_upload; the columns are unioned (first-seen
+    order), every row is remapped to the merged header set, and rows are de-duped
+    by keyword (first occurrence wins) so the same keyword across two exports isn't
+    double-counted. Returns (payload, n_files_used). Skips unparseable files but
+    raises ValueError only if NONE were usable."""
+    parsed, errors = [], []
+    for fn, raw in files:
+        try:
+            parsed.append(parse_upload(fn, raw))
+        except ValueError as exc:
+            errors.append(f"{fn}: {exc}")
+    if not parsed:
+        raise ValueError("no usable files"
+                         + (" — " + "; ".join(errors) if errors else ""))
+    if len(parsed) == 1:
+        return parsed[0], 1
+
+    merged_headers = []
+    for p in parsed:
+        for h in p["headers"]:
+            if h not in merged_headers:
+                merged_headers.append(h)
+    kw_idx = _resolve(merged_headers)["keyword"]
+    merged_rows, seen = [], set()
+    for p in parsed:
+        hp = p["headers"]
+        for r in p["rows"]:
+            d = {hp[i]: (r[i] if i < len(r) else None) for i in range(len(hp))}
+            row = [d.get(h) for h in merged_headers]
+            if kw_idx is not None and kw_idx < len(row):
+                key = str(row[kw_idx] or "").strip().lower()
+                if key:
+                    if key in seen:
+                        continue
+                    seen.add(key)
+            merged_rows.append(row)
+            if len(merged_rows) >= MAX_UPLOAD_ROWS:
+                break
+        if len(merged_rows) >= MAX_UPLOAD_ROWS:
+            break
+    return {"view": f"merged-{len(parsed)}-files", "source": "file-upload-merged",
+            "captured_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "headers": merged_headers, "rows": merged_rows}, len(parsed)
 
 
 def latest_categories():

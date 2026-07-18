@@ -132,6 +132,174 @@ def build_edge_plan(audit, packages, best, harvest_niches=None):
     return tactics
 
 
+# --------------------------------------------------------------------------
+# MEASURED edge engine (roadmap #9): instead of the same static tactics for
+# every niche, MEASURE each weakness from the real competitor listings and rank
+# the biggest exploitable gap first. Signals with no data are reported honestly
+# as "manual check" (never given a fake magnitude), so the ranking is only ever
+# built on numbers we actually have.
+# --------------------------------------------------------------------------
+
+_PERS_TOKENS = ("personal", "custom", "monogram", "name", "initial", "your ")
+
+
+def _lst_num(v):
+    try:
+        f = float(str(v).replace(",", "").replace("$", "").replace("%", "").strip())
+        return f if f == f else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _lget(row, *keys):
+    """Tolerant getter across the field names the different sources use
+    (extension/HeyEtsy he_*, MCP hot_listings, manual audit)."""
+    for k in keys:
+        if k in row and row[k] not in (None, ""):
+            return row[k]
+    return None
+
+
+def _tag_count(row):
+    t = _lget(row, "tags", "he_tags", "tag_list")
+    if isinstance(t, (list, tuple)):
+        return len([x for x in t if str(x).strip()])
+    if isinstance(t, str) and t.strip():
+        return len([x for x in t.split(",") if x.strip()])
+    return None
+
+
+def measure_edges(listings, comp=None):
+    """Rank how to beat the listings already ranking for a niche, by MEASURING
+    each gap from the real competitor rows (+ an optional niche competition
+    snapshot). Returns a list of edges sorted biggest-measured-gap first, each:
+    {category, magnitude (0-100 or None), measured (bool), headline, action,
+     evidence, owner}. `comp` is the analyze_competition dict (saturation,
+     new_entrant_rate, avg_listing_age_days) if available."""
+    rows = [r for r in (listings or []) if isinstance(r, dict)]
+    edges = []
+
+    def add(cat, mag, measured, headline, action, evidence, owner):
+        edges.append({"category": cat, "magnitude": mag, "measured": measured,
+                      "headline": headline, "action": action,
+                      "evidence": evidence, "owner": owner})
+
+    titles = [(str(_lget(r, "title", "he_title") or "")).strip() for r in rows]
+    titles = [t for t in titles if t]
+
+    # 1) PERSONALIZATION gap - measurable straight from the titles.
+    if titles:
+        no_pers = [t for t in titles
+                   if not any(tok in t.lower() for tok in _PERS_TOKENS)]
+        pct = round(len(no_pers) / len(titles) * 100)
+        add("Personalization", pct, True,
+            f"{pct}% of the top listings don't signal personalization in the title",
+            "Offer name/initials/monogram and put it in the FIRST 40 chars of the "
+            "title + show 3 font choices in an image. This is the fastest gap to own.",
+            f"{len(no_pers)} of {len(titles)} ranking titles have no personalization "
+            "token.", "Seller + Designer")
+
+    # 2) TITLE / SEO gap - short or generic titles = weak relevancy to beat.
+    if titles:
+        weak = [t for t in titles if len(t.split()) < 6]
+        pct = round(len(weak) / len(titles) * 100)
+        if pct:
+            add("Title / SEO", pct, True,
+                f"{pct}% of rivals use short/generic titles (<6 words)",
+                "Write full, keyword-front-loaded long-tail titles (buyer + occasion "
+                "+ product). Etsy relevancy is the #1 rank signal in 2026.",
+                f"{len(weak)} of {len(titles)} titles are under 6 words.", "Seller")
+
+    # 3) TAG coverage gap - only when the source carries tag data.
+    tag_counts = [c for c in (_tag_count(r) for r in rows) if isinstance(c, int)]
+    if tag_counts:
+        weak_tags = [c for c in tag_counts if c < 13]
+        pct = round(len(weak_tags) / len(tag_counts) * 100)
+        if pct:
+            add("Tag coverage", pct, True,
+                f"{pct}% of rivals don't use all 13 tags",
+                "Fill all 13 tags with multi-word buyer-intent phrases - each empty "
+                "slot is a search you can win uncontested.",
+                f"{len(weak_tags)} of {len(tag_counts)} listings use <13 tags "
+                f"(avg {round(sum(tag_counts)/len(tag_counts),1)}).", "Seller")
+
+    # 4) TRACTION concentration - a top-heavy niche with a weak tail is beatable.
+    sold = [s for s in (_lst_num(_lget(r, "total_sold", "he_sold", "sold"))
+                        for r in rows) if s is not None]
+    if len(sold) >= 4:
+        srt = sorted(sold, reverse=True)
+        top = sum(srt[:max(1, len(srt) // 5)])          # top ~20%
+        total = sum(srt) or 1
+        share = round(top / total * 100)
+        tail = len([s for s in sold if s <= (srt[0] * 0.1)])
+        if share >= 55:
+            add("Weak tail", share, True,
+                f"Top listings hold {share}% of sales - the rest are soft",
+                "You don't need to beat the #1 - target the long tail of low-sold "
+                "listings holding rank on weak photos/SEO and outrank them.",
+                f"{tail} of {len(sold)} listings sit under 10% of the leader's sales.",
+                "Seller")
+
+    # 5) PRICE positioning - a wide spread means room to win on value, not price.
+    prices = [p for p in (_lst_num(_lget(r, "price", "he_price"))
+                          for r in rows) if p]
+    if len(prices) >= 3:
+        lo, hi = min(prices), max(prices)
+        if hi > lo:
+            spread = round((hi - lo) / hi * 100)
+            add("Price / value", spread, True,
+                f"Competitor prices span ${lo:.0f}-${hi:.0f}",
+                "Don't race to the bottom on personalized goods - price in the upper "
+                "-middle with better personalization + a bundle; cheapest reads as "
+                "low quality.",
+                f"Live spread ${lo:.0f}-${hi:.0f} ({spread}% range).", "Manager")
+
+    # 6) DISCOUNT war - heavy discounting = margin-weak rivals you can out-position.
+    disc = [d for d in (_lst_num(_lget(r, "he_discount_pct", "discount"))
+                        for r in rows) if d is not None]
+    if disc:
+        heavy = [d for d in disc if d >= 20]
+        pct = round(len(heavy) / len(disc) * 100)
+        if pct >= 30:
+            add("Anti-discount", pct, True,
+                f"{pct}% of rivals lean on 20%+ discounts",
+                "Compete on personalization + first image, not price. Discount-heavy "
+                "rivals are margin-weak; hold price and win on perceived value.",
+                f"{len(heavy)} of {len(disc)} listings run 20%+ off.", "Manager")
+
+    # 7) NICHE saturation / room - from the competition snapshot if we have it.
+    if isinstance(comp, dict) and comp:
+        ner = _lst_num(comp.get("new_entrant_rate"))
+        age = _lst_num(comp.get("avg_listing_age_days"))
+        sat = str(comp.get("saturation") or "").lower()
+        if ner is not None and ner > 0:
+            mag = min(100, round(ner * 100)) if ner <= 1 else min(100, round(ner))
+            add("Room to enter", mag, True,
+                f"New sellers are still breaking in ({mag}% new-entrant rate)",
+                "The niche still admits new shops - enter now on a narrow angle "
+                "before it saturates.",
+                f"New-entrant rate {mag}%"
+                + (f", avg listing age {int(age)}d" if age else "")
+                + (f", saturation {sat}" if sat else "") + ".", "Seller")
+
+    edges.sort(key=lambda e: (0 if e["measured"] else 1, -(e["magnitude"] or 0)))
+
+    # 8) Signals that genuinely need a human eye - reported honestly, never faked,
+    # and always last so they never outrank a measured gap.
+    add("Video", None, False,
+        "Most POD/embroidery rivals skip video - a near-universal free gap",
+        "Add a 5-15s video to every listing; Etsy boosts listings that have one.",
+        "Not in the data feed - glance at the top 5 listings to confirm (most "
+        "won't have a video).", "Designer")
+    add("First image", None, False,
+        "The single biggest CTR lever - judge it by eye",
+        "Open the top 5 listings; score each first image 1-10. Beat the weakest "
+        "with a bolder hero: big subject, visible name, clean bright background.",
+        "Image quality isn't in any data feed - a 2-minute manual scan.", "Designer")
+
+    return edges
+
+
 def top_edges_for_prompts(tactics, n=3):
     order = ["First image", "Mockup", "Personalization", "Niche angle"]
     ranked = sorted(tactics,

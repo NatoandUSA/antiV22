@@ -20,6 +20,7 @@ Politeness + safety rules (do NOT remove):
 """
 import json
 import os
+import threading
 import time
 from datetime import date
 
@@ -60,6 +61,26 @@ YTrends data are skipped until this is fixed -- no guessed numbers are shipped.
 _session_id = None      # MCP session, established once per process
 _tool_names = None      # cached tools/list result
 _last_call = 0.0
+# The web app is multi-threaded (Flask serves requests concurrently) and the
+# warm job can fan out across surfaces, so the throttle + session bookkeeping
+# below is shared across threads. This lock serialises the rate-limit slot and
+# the one-time session init; threads still overlap on the actual network wait
+# (the lock is released before the POST), so concurrency stays polite AND fast.
+_lock = threading.RLock()   # reentrant: session-init holds it while _post issues
+_next_slot = 0.0        # earliest time the next request may be ISSUED
+
+
+def _throttle_slot():
+    """Reserve the next >=1s-apart request slot atomically, then sleep to it
+    OUTSIDE the lock. N threads each get a distinct slot (so issue-rate stays
+    <=1/s, polite) while their responses overlap (so a fan-out is faster)."""
+    global _next_slot
+    with _lock:
+        start = max(time.time(), _next_slot)
+        _next_slot = start + 1.0
+    wait = start - time.time()
+    if wait > 0:
+        time.sleep(wait)
 
 
 class YTrendsMCPError(RuntimeError):
@@ -102,14 +123,11 @@ def _parse(resp):
 
 def _post(method, params, notify=False):
     """One JSON-RPC POST with 1 req/s politeness + backoff on 429/5xx."""
-    global _last_call
     body = {"jsonrpc": "2.0", "method": method, "params": params}
     if not notify:
         body["id"] = 1
 
-    wait = 1.0 - (time.time() - _last_call)
-    if wait > 0:
-        time.sleep(wait)
+    _throttle_slot()
 
     resp = None
     for attempt in range(4):
@@ -131,7 +149,6 @@ def _post(method, params, notify=False):
             time.sleep(2 ** attempt * 6)
             continue
         break
-    _last_call = time.time()
 
     if resp.status_code in (401, 403):
         raise SystemExit(
@@ -146,7 +163,14 @@ def _ensure_session():
     global _session_id, _tool_names
     if _tool_names is not None:
         return
+    with _lock:
+        if _tool_names is not None:      # another thread won the race
+            return
+        _init_session_locked()
 
+
+def _init_session_locked():
+    global _session_id, _tool_names
     init = _post("initialize", {
         "protocolVersion": PROTOCOL_VERSION,
         "capabilities": {},

@@ -645,14 +645,15 @@ def daily_brief(mode=None):
 
 
 # ---- Score the latest browser-extension import (loop-closer) ------------------
-def score_import(source=None, mode=None, enrich=False):
+def score_import(source=None, mode=None, enrich=False, gtrends=False):
     """Composite-score the most recent YTrends Exporter import and rank it.
 
     enrich=True fills each row's blanks from the YTrends MCP first, so the score
     rests on real market data instead of the handful of columns the captured
-    table happened to show."""
+    table happened to show. gtrends=True cross-checks the top rows against free
+    Google Trends demand and blends that into the Market score."""
     from src import shortlister_integration as si
-    res = si.score_latest(source=source, mode=mode, enrich=enrich)
+    res = si.score_latest(source=source, mode=mode, enrich=enrich, gtrends=gtrends)
     if not res.get("ok"):
         return ("# Score latest import\n\n> **No YTrends extension import found yet.**"
                 "\n>\n> On a YTrends page, use the **YTrends Exporter** toolbar and "
@@ -669,17 +670,26 @@ def score_import(source=None, mode=None, enrich=False):
     L = [f"# Score latest import - {res['view']}", "",
          f"_Composite Opportunity Score over your last import ({scope}). "
          "Verdicts are advisory - human review + trademark check still required._", ""]
+    _qs = "&mode=" + mode if mode else ""
     if enrich:
         L += [f"_Hybrid enrich: ON - {res.get('enriched_count', 0)} row(s) topped up "
               "from the YTrends MCP (+ marks them). Rows the server has no data on "
               "are left as-is rather than guessed._", ""]
     else:
-        _qs = "&mode=" + mode if mode else ""
         L += ["_Scored on the captured columns only. "
               f"[Enrich from YTrends MCP](/score-import?enrich=1{_qs}) "
               "to fill the blanks with real market data (slower, uses quota)._", ""]
-    L += ["| Keyword | Score | Verdict | M | C | O | Why |",
-          "|---|---|---|---|---|---|---|"]
+    if gtrends:
+        L += ["_Google Trends: ON - the top rows are cross-checked against free "
+              "Google search demand (GT column = 12-month momentum %; blended into "
+              "Market). A blank GT means Trends had no read / was rate-limited._", ""]
+    else:
+        _eq = "&enrich=1" if enrich else ""
+        L += ["_[+ Cross-check Google Trends](/score-import?gt=1"
+              f"{_eq}{_qs}) to blend free external search demand into the top rows "
+              "(slower, may be rate-limited)._", ""]
+    L += ["| Keyword | Score | Verdict | M | C | O | GT | Why |",
+          "|---|---|---|---|---|---|---|---|"]
     for s in res["results"]:
         sub = s.get("sub_scores", {})
 
@@ -689,9 +699,14 @@ def score_import(source=None, mode=None, enrich=False):
         disp = (s["overall_score"] if s.get("core_complete")
                 and s["overall_score"] is not None else "-")
         kw = _clean(s["keyword"]) + (" +" if s.get("enriched") else "")
+        gt = s.get("gtrends") or {}
+        mp = gt.get("momentum_pct")
+        gt_cell = (f"{'+' if mp >= 0 else ''}{round(mp)}%"
+                   if isinstance(mp, (int, float)) else "-")
         L.append(f"| {kw} | {disp} | {s['verdict']} "
                  f"| {_s('market_potential')} | {_s('competition_health')} "
-                 f"| {_s('opportunity_signal')} | {'; '.join(s.get('rationale', [])[:2])} |")
+                 f"| {_s('opportunity_signal')} | {gt_cell} "
+                 f"| {'; '.join(s.get('rationale', [])[:2])} |")
     if not res["results"]:
         L.append("_Nothing to score in the latest import._")
     return "\n".join(L)
@@ -766,27 +781,47 @@ def shortlist(mode="embroidery", limit=10):
     return out[:limit]
 
 
-def warm_cache(fresh=False):
+def warm_cache(fresh=False, parallel=False):
     """Pre-fetch the heavy paginated surfaces so the first web load of the day is
     instant. The raw pull is mode-independent, so one pass warms pod/embroidery/all.
     Each page is cached per day; a blocked/slow MCP just no-ops (never raises).
     Called from the daily run — safe to call anytime on the fetching machine.
 
     fresh=True forces a live re-fetch (overwriting the day's cache) — use it for a
-    scheduled every-N-hours warm so the team sees current data, not this morning's."""
+    scheduled every-N-hours warm so the team sees current data, not this morning's.
+
+    parallel=True warms the three surfaces concurrently. The MCP client is
+    thread-safe and rate-limited (issue-rate stays <=1/s), so this only overlaps
+    the network WAIT between surfaces — a safe ~2-3x speed-up for the unattended
+    warm job. Left off by default for any caller that wants the old serial walk."""
     try:   # keep agent.db bounded: the VPS warm cron is the natural place to prune
         from src import db
         db.prune_cache(keep_days=3)
     except Exception:  # noqa: BLE001
         pass
-    warmed = {}
-    for name, fn in (("trending", lambda: mcp.trending_keywords(limit=PULL, refresh=fresh)),
-                     ("opportunities", lambda: mcp.scout_opportunities(limit=PULL, refresh=fresh)),
-                     ("hidden_gems", lambda: mcp.hidden_gems(limit=PULL, refresh=fresh))):
+    surfaces = (
+        ("trending", lambda: mcp.trending_keywords(limit=PULL, refresh=fresh)),
+        ("opportunities", lambda: mcp.scout_opportunities(limit=PULL, refresh=fresh)),
+        ("hidden_gems", lambda: mcp.hidden_gems(limit=PULL, refresh=fresh)),
+    )
+
+    def _one(item):
+        name, fn = item
         try:
-            warmed[name] = len(fn())
+            return name, len(fn())
         except (SystemExit, Exception):  # noqa: BLE001 - warming must never break the run
-            warmed[name] = 0
+            return name, 0
+
+    warmed = {}
+    if parallel:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=len(surfaces)) as ex:
+            for name, n in ex.map(_one, surfaces):
+                warmed[name] = n
+    else:
+        for item in surfaces:
+            name, n = _one(item)
+            warmed[name] = n
     return ("refreshed " if fresh else "warmed ") + ", ".join(
         f"{k}={v}" for k, v in warmed.items())
 
@@ -1361,7 +1396,7 @@ def draft_listing(kw):
         rk = mcp.research_keyword(kw)
         stats = rk.get("stats", {}) if isinstance(rk, dict) else {}
         related = (rk.get("related_keywords") if isinstance(rk, dict) else None) or []
-    except Exception:  # noqa: BLE001
+    except (SystemExit, Exception):  # noqa: BLE001 - degrade to a draft skeleton offline
         stats, related = {}, []
     risk, reason = tm_check(kw.lower())
 
@@ -1446,4 +1481,601 @@ def draft_listing(kw):
           "3. We make it and ship", "",
           "Perfect gift for [occasion / recipient].", "```", "",
           f"**Trademark:** {risk} — {reason or 'verify on USPTO before publishing'}", ""]
+    return "\n".join(L)
+
+
+def _mode_for(kw, mode=None):
+    """Resolve pod/embroidery for a keyword (explicit mode wins)."""
+    if mode in ("pod", "embroidery"):
+        return mode
+    return "embroidery" if matches_mode((kw or "").lower(), "embroidery") else "pod"
+
+
+def _tags_for(kw, limit=13):
+    """Best-effort clean tag list for a keyword, reusing the live related-keyword
+    data (same source draft_listing draws its tags from). Never raises."""
+    tags, seen = [], set()
+    try:
+        rk = mcp.research_keyword(kw) or {}
+        related = (rk.get("related_keywords") if isinstance(rk, dict) else None) or []
+    except (SystemExit, Exception):  # noqa: BLE001 - stay useful if the MCP is down
+        related = []
+    for cand in [kw] + [_g(r, "tag", "keyword", "title") for r in related]:
+        c = (cand or "").strip().lower()
+        if c and c not in seen and 3 <= len(c) <= 20:
+            try:
+                r2, _ = tm_check(c)
+            except Exception:  # noqa: BLE001
+                r2 = "OK"
+            if r2 != "HIGH":
+                seen.add(c)
+                tags.append(c)
+        if len(tags) >= limit:
+            break
+    return tags
+
+
+def _price_cost_for(kw, mode):
+    """(price, product_cost, shipping_cost, conversion_rate) for a keyword from
+    live data + the supplier cost model. Any piece may be None (honest-null)."""
+    price = conv = None
+    try:
+        stats = (mcp.research_keyword(kw) or {}).get("stats", {}) or {}
+        price = _f(stats.get("median_price") or stats.get("avg_price")) or None
+        conv = _f(stats.get("avg_conversion_rate")) or None
+    except (SystemExit, Exception):  # noqa: BLE001 - degrade to honest-null
+        pass
+    base = ship = None
+    try:
+        from src.idea_report import cluster_of, load_costs
+        cluster = cluster_of(kw.lower())
+        costs = load_costs(mode=mode)
+        c = costs.get(cluster) if cluster else None
+        if c:
+            base, ship = c[0], c[1]
+    except (SystemExit, Exception):  # noqa: BLE001
+        pass
+    return price, base, ship, conv
+
+
+def photo_prompts(kw, mode=None):
+    """The full photo-prompt set for a listing - every image slot, each with a
+    ready-to-paste AI prompt. DRAFT: the honesty rule (real product photos, AI for
+    concept/graphics only) is printed on every product slot."""
+    kw = (kw or "").strip()
+    mode = _mode_for(kw, mode)
+    product = "Embroidered Sweatshirt" if mode == "embroidery" else "Printed T-Shirt"
+    from src import photo_brief
+    slots = photo_brief.build(kw, product=product, mode=mode, pers=True)
+    label = MODE_LABEL.get(mode, mode)
+    L = [f"# Photo prompt set — {kw}", "",
+         f"_{len(slots)} listing images for a **{product}** ({label}). "
+         "Etsy allows up to 10 photos; image #1 is the thumbnail and does most of "
+         "the converting._", "",
+         "> **Honesty rule (baked in):** use AI for concept, mockups, graphics and "
+         "styled scenes only. Any slot marked **REAL PHOTO** must show your actual "
+         "product / sew-out — an AI render of your real item is a misleading "
+         "product claim on Etsy.", ""]
+    for s in slots:
+        kind = "📸 REAL PHOTO" if s["real_photo"] else "🎨 AI ok"
+        L += [f"## {s['n']}. {s['slot']}  ·  {kind}",
+              f"_{s['purpose']}_", "",
+              "```", s["prompt"], "```", ""]
+    L += ["---",
+          "**Next:** shoot the REAL-PHOTO slots first (hero + macro stitch decide "
+          "the sale), generate the graphic slots, then load image #1 as your "
+          "thumbnail."]
+    return "\n".join(L)
+
+
+def ads_plan(kw, mode=None):
+    """An Etsy-accurate MANUAL Etsy Ads starter plan for a keyword: budget to
+    start, breakeven ACOS/ROAS from the real fee model, a max average CPC, the
+    tag coverage Etsy Ads matches on, and 2-week read/kill rules. No account
+    access — it tells the human exactly what to set inside Etsy's Ads dashboard."""
+    kw = (kw or "").strip()
+    mode = _mode_for(kw, mode)
+    tags = _tags_for(kw)
+    price, base, ship, conv = _price_cost_for(kw, mode)
+    from src import ads_plan as ap
+    plan = ap.build(kw, tags=tags, price=price, product_cost=base,
+                    shipping_cost=ship or 0.0, mode=mode, conversion_rate=conv)
+    econ = plan["economics"]
+    label = MODE_LABEL.get(mode, mode)
+
+    L = [f"# Etsy Ads starter plan — {kw}", "",
+         f"_Manual {label} plan. Etsy Ads is **one campaign, one daily budget** — "
+         "there is no per-keyword bidding; Etsy matches shoppers to your listing "
+         "by its **tags + title**. This tells you what to set; you set it inside "
+         "Etsy._", ""]
+
+    L += ["## 1. Budget to start"]
+    L += [f"- Start **one** campaign at **${plan['start_daily']:.0f}/day** "
+          f"(Etsy minimum is ${plan['min_daily']:.0f}/day).",
+          f"- Advertise only your **best 3–5 listings** for this niche.",
+          f"- Let it run **{plan['test_days']} days** before judging anything.", ""]
+
+    L += ["## 2. The money math (from your real Etsy fees)"]
+    if econ is None:
+        L += ["- _No price/cost on file, so breakeven is a formula, not a number:_",
+              "  `breakeven ACOS % = net profit per sale ÷ sale price × 100`",
+              "- Fill in your price and supplier cost to get the real figure + a "
+              "max average CPC.", ""]
+    elif econ.get("unprofitable"):
+        L += [f"- ⚠️ At **{_money(econ['price'])}** this sale **loses "
+              f"{_money(econ['net_profit'])} before any ad spend** — do not "
+              "advertise it. Raise the price or lower the cost first.", ""]
+    else:
+        L += [f"- Price **{_money(econ['price'])}** → net profit "
+              f"**{_money(econ['net_profit'])}/sale** ({econ['margin_pct']}% margin).",
+              f"- **Breakeven ACOS ≈ {econ['breakeven_acos_pct']}%** "
+              f"(breakeven ROAS ≈ {econ['breakeven_roas']}×) — spend more than that "
+              "on ads per sale and you lose money.",
+              f"- **Target ACOS ≈ {econ['target_acos_pct']}%** "
+              f"(ROAS ≈ {econ.get('target_roas')}×) — keeps ~40% of the margin as "
+              "profit."]
+        if plan["max_avg_cpc"] is not None:
+            crnote = (" (assumed 2% — replace once you know your real rate)"
+                      if plan["assumed_cr"] else "")
+            L += [f"- At ~{plan['clicks_per_sale']} clicks per sale{crnote}, keep "
+                  f"your **average CPC around ${plan['max_avg_cpc']:.2f} or less**. "
+                  "Etsy sets the actual CPC — you can't bid it, but this is the "
+                  "line where the campaign stays profitable."]
+        L += [""]
+
+    L += ["## 3. Tag coverage (this IS your ad targeting)"]
+    if tags:
+        L += ["Etsy Ads can only show you for searches your **tags/title** cover. "
+              "Current tags:", "",
+              ", ".join(f"`{t}`" for t in plan["priority_tags"]), ""]
+    else:
+        L += ["_No live tags found — build the 13 tags first (Listing draft tool), "
+              "then re-run this._", ""]
+    if plan["tag_gaps"]:
+        L += ["**Add tags to cover these buyer-intent gaps** (each missing one is a "
+              "shopper Etsy can't match you to): "
+              + ", ".join(f"**{g}**" for g in plan["tag_gaps"]) + ".", ""]
+    else:
+        L += ["✅ Your tags already cover personalization, gift, buyer, occasion and "
+              "product type.", ""]
+
+    L += ["## 4. Read & kill (after 2 weeks)"]
+    L += [f"- {r}" for r in plan["read_kill_rules"]]
+    L += ["", "## Setup checklist"]
+    L += [f"- {c}" for c in plan["checklist"]]
+    L += ["", "## Notes"]
+    L += [f"- {n}" for n in plan["notes"]]
+    L += ["", "_Plan only — nothing here connects to or changes your Etsy account._"]
+    return "\n".join(L)
+
+
+# ---- Winner Finder (#2) + Competitor Edge Finder (#4) ------------------------
+def _uq(kw):
+    from urllib.parse import quote_plus
+    return quote_plus((kw or "").strip())
+
+
+def _barcell(v, width=10, full="█", empty="░"):
+    """A 0-100 value as a 10-char unicode bar, for at-a-glance table cells."""
+    if not isinstance(v, (int, float)):
+        return "—"
+    f = max(0, min(width, int(round(v / 100.0 * width))))
+    return full * f + empty * (width - f)
+
+
+def _proven_orders(kw):
+    """OUR OWN proven order count for a keyword from the learning loop (0 when the
+    shop has no sales history yet). Guarded: never breaks a page if learning data
+    is absent or unreadable."""
+    try:
+        from src import learning
+        if not learning.has_history():
+            return 0
+        return int(learning.winner_orders(kw) or 0)
+    except (SystemExit, Exception):  # noqa: BLE001
+        return 0
+
+
+def winners(mode=None):
+    """Winner Finder — rank the latest extension import STRICTLY by the high-demand
+    + low-competition sweet spot (the opportunity gap), so the fastest 'what should
+    I make this week' answer is the top row. Fast lane: pure local scoring, no live
+    MCP pull, no waiting."""
+    from src import shortlister_integration as si
+    from src import opportunity_score as osc
+    res = si.score_latest(source=None, mode=mode)
+    if not res.get("ok"):
+        return ("# Winner Finder\n\n> **No import yet.** On a YTrends or Etsy search "
+                "page, use the **YTrends Exporter** toolbar and click **Send to "
+                "agent**, then reload this page.")
+    ranked = []
+    proven_any = False
+    for s in res["results"]:
+        proven = _proven_orders(s.get("keyword", ""))
+        gap = osc.opportunity_gap(s.get("sub_scores", {}), proven)
+        if gap is not None:
+            if proven > 0:
+                proven_any = True
+            ranked.append((gap, proven, s))
+    ranked.sort(key=lambda x: -x[0])
+    label = MODE_LABEL.get(mode, mode)
+    total = res.get("rows_in_import")
+    scope = f"{len(ranked)} scored" + (f" of {total} captured" if total else "")
+    L = [f"# Winner Finder — {res.get('view', 'latest import')}", "",
+         f"_Ranked strictly by the **high-demand × low-competition** sweet spot "
+         f"({scope}, {label}). Winner = geometric mean of demand & low-saturation, so "
+         "a niche must be strong on BOTH to rank. Demand bar longer = better; "
+         "Saturation bar shorter = better._", ""]
+    if proven_any:
+        L += ["_✔ = you've sold this before — the learning loop lifts its winner "
+              "score so proven niches rise automatically._", ""]
+    _gt = "&mode=" + mode if mode else ""
+    L += [f"_Cross-check the top picks on [Google Trends](/score-import?gt=1{_gt}). "
+          "Verdicts advisory — trademark + human review still required._", ""]
+    if not ranked:
+        L += ["_Nothing in this import had BOTH a demand and a competition signal, so "
+              "no winner can be called honestly. Capture a YTrends/Etsy view that "
+              "shows views + competition, or [enrich from the MCP]"
+              "(/score-import?enrich=1) to fill the blanks._"]
+        return "\n".join(L)
+    L += ["| # | Keyword | Winner | Demand | Saturation | Verdict | Next move |",
+          "|---|---|---|---|---|---|---|"]
+    for i, (gap, proven, s) in enumerate(ranked[:20], 1):
+        sub = s.get("sub_scores", {})
+        demand = sub.get("market_potential")
+        comp = sub.get("competition_health")
+        sat = (100 - comp) if isinstance(comp, (int, float)) else None
+        kw = _clean(s["keyword"]) + (" +" if s.get("enriched") else "")
+        if proven > 0:
+            kw += f" ✔{proven}"
+        nxt = _SHORTLIST_NEXT.get(s["verdict"], "Review")
+        L.append(f"| {i} | {kw} | **{gap}** | `{_barcell(demand)}` "
+                 f"| `{_barcell(sat)}` | {s['verdict']} | {nxt} |")
+    top_kw = ranked[0][2]["keyword"]
+    L += ["", f"## ◎ Sharpest pick: **{_clean(top_kw)}** — winner {ranked[0][0]}",
+          f"**▶ [Build the full Launch Kit](/launch-kit?q={_uq(top_kw)})** — verdict, "
+          "edge, listing, photos & ads on one page.", "",
+          f"Or one tool at a time: [Listing draft](/draft-listing?q={_uq(top_kw)}) · "
+          f"[Photo prompts](/photo-brief?q={_uq(top_kw)}) · "
+          f"[Ads plan](/ads-plan?q={_uq(top_kw)}) · "
+          f"[Beat competitors](/edge?q={_uq(top_kw)})"]
+    return "\n".join(L)
+
+
+def _competitor_listings(kw, limit=15):
+    """Best-effort competitor listing rows for a keyword. Prefers the latest
+    extension import when it looks like a listings export (fast, rich HeyEtsy
+    fields); falls back to the live hot-listings surface. Never raises."""
+    try:
+        from src import shortlister_integration as si
+        from src import ytx_import as yi
+        payload = si.load_latest_import()
+        if payload:
+            headers = [str(h).lower() for h in (payload.get("headers") or [])]
+            rows = payload.get("rows") or []
+
+            def col(*names):
+                for i, h in enumerate(headers):
+                    if any(n in h for n in names):
+                        return i
+                return None
+
+            ti = col("title")
+            if ti is not None and rows:
+                pi, sdi = col("price"), col("sold")
+                fi, vi = col("favorite", "fav"), col("view")
+                tgi, di = col("tag"), col("discount")
+
+                def cell(r, idx):
+                    return r[idx] if (idx is not None and idx < len(r)) else None
+
+                out = []
+                for r in rows:
+                    title = (cell(r, ti) or "").strip()
+                    if not title:
+                        continue
+                    out.append({
+                        "title": title,
+                        "price": yi.parse_number(cell(r, pi)),
+                        "total_sold": yi.parse_number(cell(r, sdi)),
+                        "favorites": yi.parse_number(cell(r, fi)),
+                        "views": yi.parse_number(cell(r, vi)),
+                        "he_tags": cell(r, tgi),
+                        "he_discount_pct": yi.parse_number(cell(r, di)),
+                    })
+                toks = [t for t in kw.lower().split() if len(t) > 2]
+                rel = ([o for o in out if any(t in o["title"].lower() for t in toks)]
+                       if toks else out)
+                if len(rel) >= 4:
+                    return rel[:40]
+                if len(out) >= 4:
+                    return out[:40]
+    except (SystemExit, Exception):  # noqa: BLE001
+        pass
+    try:
+        return mcp.hot_listings(keyword=kw, limit=limit) or []
+    except (SystemExit, Exception):  # noqa: BLE001
+        return []
+
+
+def edge_finder(kw, mode=None):
+    """Competitor Edge Finder (#4) — MEASURE how to beat the listings already
+    ranking for a keyword, ranked by the biggest exploitable gap. Built from real
+    competitor listings + the niche competition snapshot; signals with no data are
+    listed honestly as manual checks, never given a fake score."""
+    kw = (kw or "").strip()
+    mode = _mode_for(kw, mode)
+    from src import edge as edge_engine
+    listings = _competitor_listings(kw)
+    comp = {}
+    try:
+        comp = mcp.analyze_competition(kw) or {}
+    except (SystemExit, Exception):  # noqa: BLE001
+        comp = {}
+    edges = edge_engine.measure_edges(listings, comp)
+    measured = [e for e in edges if e["measured"]]
+    manual = [e for e in edges if not e["measured"]]
+    label = MODE_LABEL.get(mode, mode)
+
+    src = (f"{len(listings)} competitor listing(s)"
+           + (" + niche snapshot" if comp else "")) if listings else "niche snapshot only"
+    L = [f"# Beat the competition — {kw}", "",
+         f"_{label} · ranked by the biggest **measured** gap in the listings "
+         f"already ranking. Source: {src}. Bar = size of the gap._", ""]
+    if not listings:
+        L += ["> No competitor listings were available (import an Etsy search with "
+              "the extension for the richest read, or the live source was "
+              "unreachable). Showing the manual-check gaps below.", ""]
+    if measured:
+        L += ["## Exploitable gaps — measured, biggest first", "",
+              "| # | Gap | Size | What to do | Evidence |",
+              "|---|---|---|---|---|"]
+        for i, e in enumerate(measured, 1):
+            L.append(f"| {i} | **{e['category']}** | `{_barcell(e['magnitude'])}` "
+                     f"{e['magnitude']}% | {e['action']} | {e['evidence']} |")
+        L += ["", f"**Sharpest edge:** {measured[0]['headline']} — "
+              f"{measured[0]['action']}", ""]
+    if manual:
+        L += ["## Check by eye — not in the data, worth 2 minutes", ""]
+        for e in manual:
+            L += [f"- **{e['category']}** — {e['headline']}. {e['action']} "
+                  f"_({e['evidence']})_"]
+    L += ["", f"Build with it: [Listing draft](/draft-listing?q={_uq(kw)}) · "
+          f"[Photo prompts](/photo-brief?q={_uq(kw)}) · "
+          f"[Ads plan](/ads-plan?q={_uq(kw)})"]
+    return "\n".join(L)
+
+
+# ---- Launch Kit: the whole pipeline for one winner on a single page ----------
+def _shift_headings(md_text, by=2):
+    """Push every ATX heading down `by` levels so a reused view's headings nest
+    UNDER the Launch Kit's own section headers (capped at level 6)."""
+    out = []
+    for ln in (md_text or "").split("\n"):
+        i = 0
+        while i < len(ln) and ln[i] == "#":
+            i += 1
+        if 0 < i <= 6 and i < len(ln) and ln[i] == " ":
+            out.append("#" * min(6, i + by) + ln[i:])
+        else:
+            out.append(ln)
+    return "\n".join(out)
+
+
+def _kit_verdict(kw, mode):
+    """Compact verdict + winner-score row for one keyword, enriched from the MCP
+    when it's reachable. Returns markdown lines; never raises."""
+    from src import shortlister_integration as si
+    from src import opportunity_score as osc
+    risk, reason = "OK", ""
+    try:
+        risk, reason = tm_check(kw.lower())
+    except (SystemExit, Exception):  # noqa: BLE001
+        pass
+    d = {"tag": kw}
+    try:
+        si._enrich_row(d, mode)
+    except (SystemExit, Exception):  # noqa: BLE001
+        pass
+    try:
+        s = osc.score(d, keyword=kw, mode=mode)
+    except (SystemExit, Exception):  # noqa: BLE001
+        return [f"- **Trademark:** {risk}" + (f" — {reason}" if reason else "")]
+    sub = s.get("sub_scores", {})
+    proven = _proven_orders(kw)
+    gap = osc.opportunity_gap(sub, proven)
+
+    def cell(k):
+        v = sub.get(k)
+        return round(v) if isinstance(v, (int, float)) else "—"
+
+    overall = (s["overall_score"] if s.get("core_complete")
+               and s["overall_score"] is not None else "—")
+    winner_cell = (f"**{gap if gap is not None else '—'}**"
+                   + (f" ✔{proven}" if proven > 0 else ""))
+    L = ["| Winner | Score | Verdict | Demand | Competition | Trademark |",
+         "|---|---|---|---|---|---|",
+         f"| {winner_cell} | {overall} | **{s['verdict']}** "
+         f"| {cell('market_potential')} | {cell('competition_health')} "
+         f"| {risk} |"]
+    if proven > 0:
+        L += ["", f"> ✔ **Proven for us:** {proven} order(s) logged in this niche — "
+              "the learning loop has already lifted its winner score."]
+    if risk == "HIGH":
+        L += ["", f"> ⚠️ **Trademark HIGH on '{kw}'** — {reason}. Change the wording "
+              "before building."]
+    elif s["verdict"] == "SKIP":
+        L += ["", "> ⚠️ This scored **SKIP** — the kit is below, but the data says "
+              "sharpen the angle (narrower buyer / occasion) before you build."]
+    return L
+
+
+def launch_kit(kw, mode=None):
+    """LAUNCH KIT — everything to launch one winner on a single page: verdict +
+    winner score, the MEASURED way to beat competitors, the listing draft, the full
+    photo-prompt set, the Etsy Ads plan, and a seller action checklist. Draft only —
+    human review + real photos + trademark check before anything is published."""
+    kw = (kw or "").strip()
+    mode = _mode_for(kw, mode)
+    label = MODE_LABEL.get(mode, mode)
+    L = [f"# Launch Kit — {kw}", "",
+         f"_Everything to launch this {label} winner on one page. **Draft only** — "
+         "review it, add your real photos, and verify the trademark before "
+         "publishing. Nothing here touches your Etsy account._", "",
+         "**In this kit:** ① Verdict → ② Beat competitors → ③ Listing → ④ Photos → "
+         "⑤ Ads → ⑥ Launch checklist", "",
+         "## ① Verdict & winner score", ""]
+    L += _kit_verdict(kw, mode)
+
+    def section(title, fn):
+        L.append("")
+        L.append(title)
+        try:
+            L.append(_shift_headings(fn(), by=2))
+        except (SystemExit, Exception) as exc:  # noqa: BLE001
+            L.append(f"_This section couldn't build right now ({str(exc)[:80]}). "
+                     "Open its own tool and retry._")
+
+    section("## ② Beat the competition", lambda: edge_finder(kw, mode))
+    section("## ③ Listing draft", lambda: draft_listing(kw))
+    section("## ④ Photo prompt set", lambda: photo_prompts(kw, mode))
+    section("## ⑤ Etsy Ads plan", lambda: ads_plan(kw, mode))
+
+    L += ["", "## ⑥ Seller launch checklist", "",
+          "1. **Verdict** — trademark not HIGH, winner score healthy, demand + low "
+          "competition confirmed (cross-check Google Trends).",
+          "2. **Design** — make it stitch-safe (≤6 colors, bold, readable); order a "
+          "REAL sew-out / print proof before scaling.",
+          "3. **Listing** — paste the title (keyword in the first 40 chars), 13 tags, "
+          "description + personalization; run the Listing Analyzer ([/grade](/grade)).",
+          "4. **Profit gate** — confirm ≥35–40% net margin at your price "
+          "([/profit](/profit)).",
+          "5. **Photos** — shoot the REAL-PHOTO slots (hero + macro), generate the "
+          "graphic slots, load image #1 as the thumbnail; add a video.",
+          "6. **Edge** — apply the top 2 measured competitor gaps above before you "
+          "publish.",
+          "7. **Publish** — manually, inside Etsy; publish 3–5 variations of the "
+          "concept, not one.",
+          "8. **Ads** — start Etsy Ads at $1–3/day per the plan; read after 2 weeks, "
+          "kill losers, scale the winner into 10–20 variations.",
+          f"9. **Close the loop** — when it sells, "
+          f"[log the sale here](/feedback?keyword={_uq(kw)}&product_mode={mode}"
+          f"&title={_uq(kw.title())}) (pre-filled). Every logged order teaches the "
+          "tool, so this niche and its tags rank higher in your Winner Finder "
+          "automatically.",
+          "",
+          "_Assembled from live data where reachable; missing signals are left blank, "
+          "never invented. Logged sales feed the private learning loop that sharpens "
+          "future winner scores._"]
+    return "\n".join(L)
+
+
+# ---- Supplier Trend Finder (reverse signal: supplier heat -> demand lead) -----
+def _etsy_comp_map():
+    """{keyword_lower: competition_health 0-100} from the latest ETSY import, for
+    cross-checking supplier leads against real Etsy saturation. Best-effort."""
+    out = {}
+    try:
+        from src import shortlister_integration as si
+        from src import opportunity_score as osc
+        payload = si.load_latest_import()
+        if not payload:
+            return out
+        headers = payload.get("headers") or []
+        for row in (payload.get("rows") or []):
+            d = si.map_row_to_scorer(headers, row, payload.get("view") or "")
+            tag = (d.get("tag") or "").strip().lower()
+            if not tag:
+                continue
+            c = osc._competition(d)
+            if isinstance(c, (int, float)):
+                out[tag] = c
+    except (SystemExit, Exception):  # noqa: BLE001
+        pass
+    return out
+
+
+def _etsy_status(keyword, comp_map):
+    """Cross-check one lead vs the Etsy import -> (label, comp_health). Matches
+    exact, else an Etsy keyword that contains all of the lead's words."""
+    if not comp_map:
+        return "", None
+    kw = (keyword or "").lower()
+    comp = comp_map.get(kw)
+    if comp is None:
+        toks = set(kw.split())
+        for ek, ec in comp_map.items():
+            if toks and toks <= set(ek.split()):
+                comp = ec
+                break
+    if comp is None:
+        return "", None
+    if comp >= 65:
+        return "🟢 OPEN", comp
+    if comp >= 45:
+        return "🟡 MEDIUM", comp
+    return "🔴 CROWDED", comp
+
+
+def supplier_trends(mode=None):
+    """Supplier Trend Finder — turn a manually exported Alibaba / AliExpress / 1688
+    product table into ranked KEYWORD LEADS (supply-side demand sensing), then
+    cross-check each against the latest Etsy import so the supplier-hot + Etsy-open
+    leads float to the top. A lead is a demand LEAD, not proof — validate on Etsy."""
+    from src import supplier_trend as st
+    res = st.analyze_latest(mode)
+    if not res.get("ok"):
+        return ("# Supplier Trend Finder\n\n> **No supplier import yet.** On the "
+                "homepage drop box, choose **Supplier export** and drop an Alibaba / "
+                "AliExpress / 1688 product export (CSV/JSON).")
+    leads = res["leads"]
+    label = MODE_LABEL.get(mode, mode)
+    comp_map = _etsy_comp_map()
+    L = [f"# Supplier Trend Finder — {res.get('view', 'supplier import')}", "",
+         f"_Reverse signal: what factories are pushing = what buyers and other "
+         f"sellers are chasing. {len(leads)} keyword lead(s) from "
+         f"{res.get('rows_in_import', 0)} products ({label}). Ranked by "
+         "Supplier-Demand; the **★ gold** is supplier-hot **and** Etsy-open._", "",
+         "> Supplier heat is a demand **lead, not proof.** The Etsy column "
+         "cross-checks your latest Etsy import — a blank means the keyword isn't in "
+         "it yet, so validate before building. Confidence (●) reflects how clean the "
+         "keyword extraction was; low = a brand-stuffed title.", ""]
+    if not comp_map:
+        L += ["_Tip: import an Etsy/YTrends export too and the **Etsy** column lights "
+              "up — that's how a lead becomes a confirmed supplier-hot × Etsy-open "
+              "pick._", ""]
+    if not leads:
+        L += ["_No launchable keyword leads could be extracted (titles too "
+              "brand-stuffed, or these aren't product rows)._"]
+        return "\n".join(L)
+    L += ["| # | Keyword lead | Supplier demand | Suppliers | Sold | Reorder | Conf | Etsy | Build |",
+          "|---|---|---|---|---|---|---|---|---|"]
+    gold = []
+    for i, ld in enumerate(leads, 1):
+        sd = ld["supplier_demand"]
+        bar = _barcell(sd) if sd is not None else "—"
+        sold = (int(ld["sold_median"]) if isinstance(ld["sold_median"], (int, float))
+                else "—")
+        reo = (f'{round(ld["reorder_pct"])}%'
+               if isinstance(ld["reorder_pct"], (int, float)) else "—")
+        est, _ec = _etsy_status(ld["keyword"], comp_map)
+        is_gold = est.endswith("OPEN") and (sd or 0) >= 55
+        mark = "★ " if is_gold else ""
+        if is_gold:
+            gold.append(ld["keyword"])
+        conf = {"high": "●●●", "med": "●●○", "low": "●○○"}.get(ld["confidence"], "")
+        kwq = _uq(ld["keyword"])
+        build = f"[Kit](/launch-kit?q={kwq}) · [Etsy](/edge?q={kwq})"
+        L.append(f"| {i} | {mark}{_clean(ld['keyword'])} "
+                 f"| `{bar}` {sd if sd is not None else ''} | {ld['supplier_count']} "
+                 f"| {sold} | {reo} | {conf} | {est or '—'} | {build} |")
+    if gold:
+        top = gold[0]
+        L += ["", f"## ★ Top find: **{_clean(top)}** — supplier-hot **and** Etsy-open",
+              f"Move first: [Build the Launch Kit](/launch-kit?q={_uq(top)}) · "
+              f"[Beat competitors](/edge?q={_uq(top)})"]
+    else:
+        L += ["", "_No supplier-hot × Etsy-open pick yet. Either import an Etsy "
+              "export to cross-check, or the hot leads are already crowded on Etsy — "
+              "niche them down before building._"]
     return "\n".join(L)

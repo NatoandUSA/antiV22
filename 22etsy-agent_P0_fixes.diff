@@ -1,0 +1,349 @@
+diff --git a/src/feedback.py b/src/feedback.py
+index d8110bd..90b12b2 100644
+--- a/src/feedback.py
++++ b/src/feedback.py
+@@ -68,8 +68,17 @@ def recommend(m, day=7):
+     carts = _i(m.get("carts"))
+     orders = _i(m.get("orders"))
+     weeks = _i(m.get("weeks_live"))
+-    price, cost = _f(m.get("price")), _f(m.get("product_cost")) + _f(m.get("shipping_cost"))
+-    margin = (price - cost) / price if price else 0.0
++    price = _f(m.get("price"))
++    # True NET margin after ALL Etsy fees (was gross margin, which overstated
++    # profit and let sub-target listings pass as healthy).
++    try:
++        from src.profit import compute as _profit_compute
++        margin = (_profit_compute(price, _f(m.get("product_cost")),
++                                  _f(m.get("shipping_cost")))["margin"]
++                  if price else 0.0)
++    except Exception:  # noqa: BLE001 - never let profit import break the recommender
++        cost = _f(m.get("product_cost")) + _f(m.get("shipping_cost"))
++        margin = (price - cost) / price if price else 0.0
+ 
+     # nothing logged yet -> can't recommend (a logged 0 counts as data).
+     metric_keys = ("day_1_impressions", "impressions", "day_3_views",
+diff --git a/src/harvest.py b/src/harvest.py
+index 02175a7..a7d23a4 100644
+--- a/src/harvest.py
++++ b/src/harvest.py
+@@ -292,7 +292,13 @@ def harvest(append=True, cap_pod=140, cap_emb=90, log=lambda s: None):
+     chosen = emb + pod
+ 
+     wrote_data = 0
+-    if append:
++    # Never overwrite the report fuel with an EMPTY pull. A total source
++    # outage yields a zero-tag store; writing it would blank keyword_data.csv
++    # (header only) until the next good pull. Keep the previous file instead.
++    if append and not store:
++        log("  ⚠ pull returned ZERO tags (source outage?) — KEEPING the "
++            "existing keyword_data.csv, not overwriting it with an empty file")
++    elif append:
+         # Fuel the reports: overwrite keyword_data.csv from the full live pull.
+         # (keywords.csv, the small curated Google-Trends seed list, is left
+         #  alone; the permanent archive of discoveries is the DB below.)
+diff --git a/src/idea_report.py b/src/idea_report.py
+index 9068937..b383dab 100644
+--- a/src/idea_report.py
++++ b/src/idea_report.py
+@@ -78,6 +78,7 @@ PAYMENT_FEE_PCT = 0.03
+ PAYMENT_FEE_FLAT = 0.25
+ LISTING_FEE = 0.20
+ ADS_RESERVE = 0.10  # save 10% of price for Etsy Ads / offsite ads exposure
++CURRENCY_RATE = 0.025  # ~2.5% USD->VND payout conversion (VN shops); 0.0 if USD payout
+ 
+ 
+ def load_costs(path="costs.csv", mode=None):
+diff --git a/src/product_manager.py b/src/product_manager.py
+index afe2f78..ba98c54 100644
+--- a/src/product_manager.py
++++ b/src/product_manager.py
+@@ -17,7 +17,8 @@ from src.discover import (SERVICE_TERMS, looks_like_shop_name, demand_signal,
+                           matches_mode)
+ from src.idea_report import (CLUSTER_MAP, cluster_of, intents_of, season_of,
+                              TRANSACTION_FEE, PAYMENT_FEE_PCT,
+-                             PAYMENT_FEE_FLAT, LISTING_FEE, ADS_RESERVE)
++                             PAYMENT_FEE_FLAT, LISTING_FEE, ADS_RESERVE,
++                             CURRENCY_RATE)
+ from src.trademark import check as tm_check
+ from src.ytrends_client import top_keywords, trending, hidden_gems, top_listings
+ from src.supplier_pull import (classify_production_type, best_record_for,
+@@ -32,7 +33,7 @@ GENERIC_GIFT = {"gift for her", "gift for him", "birthday gift", "wedding gift",
+                 "gift for dad", "bridesmaid gift", "baby shower gift"}
+ GENERIC_MAP = "personalized pouch, makeup bag, travel organizer, tote bag"
+ 
+-FEE_PCT = TRANSACTION_FEE + PAYMENT_FEE_PCT + ADS_RESERVE
++FEE_PCT = TRANSACTION_FEE + PAYMENT_FEE_PCT + ADS_RESERVE + CURRENCY_RATE
+ FEE_FLAT = PAYMENT_FEE_FLAT + LISTING_FEE
+ 
+ TM_STATES = ("TM_VERIFIED_CLEAR", "TM_HEURISTIC_OK_NOT_VERIFIED",
+@@ -211,7 +212,8 @@ def profit_model(price, sup):
+     tx = round(price * TRANSACTION_FEE, 2)
+     pay = round(price * PAYMENT_FEE_PCT + PAYMENT_FEE_FLAT, 2)
+     ads = round(price * ADS_RESERVE, 2)
+-    total = round(base + ship + LISTING_FEE + tx + pay + ads, 2)
++    cur = round(price * CURRENCY_RATE, 2)   # USD->VND payout conversion
++    total = round(base + ship + LISTING_FEE + tx + pay + ads + cur, 2)
+     net = round(price - total, 2)
+     fixed = base + ship + FEE_FLAT
+     return {
+@@ -219,6 +221,7 @@ def profit_model(price, sup):
+         "base_cost": base, "shipping_cost": ship,
+         "etsy_listing_fee": LISTING_FEE, "etsy_transaction_fee": tx,
+         "payment_processing_fee": pay, "ad_allowance": ads,
++        "currency_conversion_fee": cur,
+         "offsite_ad_risk": "N/A (under $10k/yr revenue; 15% if mandatory tier)",
+         "total_cost": total, "net_profit": net,
+         "profit_margin_pct": round(net / price * 100, 1) if price else 0,
+@@ -565,6 +568,7 @@ def listing_package(name, sup, audit_status, primary_data_check=False,
+     from src.publish_gate import publish_gate
+     gate_result = publish_gate({
+         "title": p["title"], "tags": p["tags"], "description": desc,
++        "primary_keyword": p.get("primary", ""),
+         "supplier_status": sup_status, "supplier_record": sup_rec,
+         "tm_states": list(tm_states),
+         "manager_tm_approval": MANAGER_TM_APPROVAL,
+diff --git a/src/profit.py b/src/profit.py
+index dbe2e75..ebfec35 100644
+--- a/src/profit.py
++++ b/src/profit.py
+@@ -19,11 +19,13 @@ TRANSACTION_RATE = 0.065      # 6.5% of item + shipping
+ PAYMENT_RATE = 0.03           # ~3% ...
+ PAYMENT_FIXED = 0.25          # ... + $0.25 (US)
+ OFFSITE_ADS_RATE = 0.15       # only when the sale came from an offsite ad
++CURRENCY_RATE = 0.025         # ~2.5% USD->VND payout conversion (VN shops).
++                              #   Set to 0.0 if your Etsy payout account is USD.
+ 
+ COLS = ["record_id", "date", "keyword", "product_mode", "supplier",
+         "sale_price", "product_cost", "shipping_cost", "listing_fee",
+-        "transaction_fee", "payment_fee", "offsite_ad_fee", "refund_or_issue",
+-        "net_profit", "margin", "notes"]
++        "transaction_fee", "payment_fee", "offsite_ad_fee", "currency_fee",
++        "refund_or_issue", "net_profit", "margin", "notes"]
+ 
+ 
+ def _f(v):
+@@ -41,16 +43,20 @@ def compute(price, product_cost, shipping_cost=0.0, offsite_ad=False,
+         # refund: you lose the product+ship cost and keep no revenue.
+         net = -(pc + sc)
+         return {"listing_fee": LISTING_FEE, "transaction_fee": 0.0,
+-                "payment_fee": 0.0, "offsite_ad_fee": 0.0,
++                "payment_fee": 0.0, "offsite_ad_fee": 0.0, "currency_fee": 0.0,
+                 "net_profit": round(net, 2),
+                 "margin": round(net / price, 4) if price else 0.0}
+     txn = TRANSACTION_RATE * (price + sc)
+     pay = PAYMENT_RATE * price + PAYMENT_FIXED
+-    offsite = OFFSITE_ADS_RATE * price if offsite_ad else 0.0
+-    net = price - pc - sc - LISTING_FEE - txn - pay - offsite
++    # Etsy charges offsite ads on the full order (item + shipping), not item only.
++    offsite = OFFSITE_ADS_RATE * (price + sc) if offsite_ad else 0.0
++    # Currency conversion applies to the whole payout (item + shipping).
++    currency = CURRENCY_RATE * (price + sc)
++    net = price - pc - sc - LISTING_FEE - txn - pay - offsite - currency
+     return {"listing_fee": round(LISTING_FEE, 2),
+             "transaction_fee": round(txn, 2), "payment_fee": round(pay, 2),
+-            "offsite_ad_fee": round(offsite, 2), "net_profit": round(net, 2),
++            "offsite_ad_fee": round(offsite, 2),
++            "currency_fee": round(currency, 2), "net_profit": round(net, 2),
+             "margin": round(net / price, 4) if price else 0.0}
+ 
+ 
+diff --git a/src/publish_gate.py b/src/publish_gate.py
+index 4247463..792801a 100644
+--- a/src/publish_gate.py
++++ b/src/publish_gate.py
+@@ -36,12 +36,39 @@ EVIDENCE = {"supplier_confirmed", "product_url_recorded",
+             "trademark_verified_or_approved"}
+ REVIEW = {"title_quality_pass", "tag_quality_pass", "manual_review_complete"}
+ 
++MIN_NET_PROFIT = 6.0     # dollars floor per sale
++MIN_NET_MARGIN = 30.0    # percent net margin hard floor (target is 35-40%)
++
++
++def _profit_ok(pm):
++    """True only if we clear BOTH the $ floor and the net-margin floor.
++
++    Margin is enforced only when the profit model reports it (the real
++    pipeline always does); callers that pass just {"net_profit": N} still
++    work off the dollar floor."""
++    if not pm:
++        return False
++    if (pm.get("net_profit") or 0) < MIN_NET_PROFIT:
++        return False
++    margin = pm.get("profit_margin_pct")
++    if margin is not None and margin < MIN_NET_MARGIN:
++        return False
++    return True
++
++
++def _profit_reason(pm):
++    pm = pm or {}
++    return (f"net=${pm.get('net_profit', '?')}, "
++            f"margin={pm.get('profit_margin_pct', '?')}% "
++            f"(need >=${MIN_NET_PROFIT:.0f} and >={MIN_NET_MARGIN:.0f}%)")
++
+ 
+ def publish_gate(c):
+     """c: dict candidate. Returns structured gate result."""
+     sup = c.get("supplier_record") or {}
+     material = sup.get("material", "")
+-    title_ok, title_issues = validate_title(c.get("title", ""), material)
++    title_ok, title_issues = validate_title(c.get("title", ""), material,
++                                            c.get("primary_keyword", ""))
+     tags_ok, tag_issues = validate_tags(c.get("tags", []), material)
+     tm_states = c.get("tm_states") or []
+     desc = c.get("description", "")
+@@ -108,9 +135,8 @@ def publish_gate(c):
+              "flagged rows exist in cluster - researcher must clear them"
+              if c.get("cluster_has_flagged") else "clean"),
+         "profitability_verified":
+-            (bool(c.get("profit_model"))
+-             and (c["profit_model"].get("net_profit") or 0) >= 6,
+-             f"net=${(c.get('profit_model') or {}).get('net_profit', '?')}"),
++            (_profit_ok(c.get("profit_model")),
++             _profit_reason(c.get("profit_model"))),
+         "title_quality_pass": (title_ok, "; ".join(title_issues) or "clean"),
+         "tag_quality_pass": (tags_ok, "; ".join(tag_issues) or "clean"),
+         "no_placeholders":
+diff --git a/src/selftest.py b/src/selftest.py
+index 733b601..af7725d 100644
+--- a/src/selftest.py
++++ b/src/selftest.py
+@@ -890,7 +890,7 @@ def run_selftest():
+           and "track_snapshots" in _ops_src)
+     _pfc = _pf.compute(30, 8, 0)
+     check("Profit Center: Etsy fee model + supplier learning + route",
+-          _pfc["net_profit"] == 18.70 and callable(_pf.add)
++          _pfc["net_profit"] == 17.95 and callable(_pf.add)
+           and "/profit" in _web_src and 'href="/profit"' in _web_src)
+     check("Launchpad board: columns + self-populating from saved runs",
+           isinstance(_lp.COLUMNS, list) and len(_lp.COLUMNS) >= 8
+diff --git a/src/signals.py b/src/signals.py
+index d5cc169..3c5321d 100644
+--- a/src/signals.py
++++ b/src/signals.py
+@@ -10,8 +10,9 @@ best cluster's keywords against independent sources:
+    The system NEVER invents a social signal.
+ 
+ Verdicts per keyword:
+-  CONFIRMED   - Etsy demand + at least one independent source agrees
+-  MIXED       - independent sources disagree
++  CONFIRMED   - Etsy demand + at least one independent source is RISING
++  MIXED       - independent sources disagree (both rising and declining)
++  STABLE      - only steady signals: demand holds but isn't growing (not a green light)
+   ETSY_ONLY   - no independent confirmation yet (not bad - just unverified)
+   DECLINING   - independent sources point down: extra caution
+ """
+@@ -78,14 +79,16 @@ def cross_check(keywords):
+         signals = ([g_dir] if g_dir else []) + s_dirs
+         if not signals:
+             verdict = "ETSY_ONLY"
+-        elif "DECLINING" in signals and "RISING" in signals:
++        elif "RISING" in signals and "DECLINING" in signals:
+             verdict = "MIXED"
+-        elif all(s == "DECLINING" for s in signals):
+-            verdict = "DECLINING"
+         elif "RISING" in signals:
+             verdict = "CONFIRMED"
++        elif "DECLINING" in signals:
++            # any independent down-signal (no rising) = caution, never green
++            verdict = "DECLINING"
+         else:
+-            verdict = "CONFIRMED" if signals else "ETSY_ONLY"
++            # only STABLE signals: steady, not growing — NOT a "confirmed" green
++            verdict = "STABLE"
+         evidence = []
+         if g:
+             evidence.append(f"Google Trends {g['momentum_pct']:+.0f}% "
+diff --git a/src/validators.py b/src/validators.py
+index 7a8cb84..76d7264 100644
+--- a/src/validators.py
++++ b/src/validators.py
+@@ -25,12 +25,18 @@ GENERIC_TAGS = {"gift", "gifts", "cute", "trendy", "new", "best seller",
+ STOP = {"a", "an", "the", "for", "with", "and", "of", "to", "in", "on"}
+ 
+ 
+-def validate_title(title, confirmed_material=""):
++def validate_title(title, confirmed_material="", primary_keyword=""):
+     """Return (passed, issues). Buyer-friendly title rules."""
+     issues = []
+     words = [w.strip(",").lower() for w in title.split() if w.strip(",")]
+     if len(title) > 140:
+         issues.append(f"over Etsy's 140 chars ({len(title)})")
++    # Relevancy is Etsy's #1 signal and mobile shows only ~40 chars, so the
++    # main keyword must appear in the first 40 characters of the title.
++    pk = (primary_keyword or "").strip().lower()
++    if pk and pk not in title[:40].lower():
++        issues.append(f"main keyword '{primary_keyword}' not in first 40 "
++                      "chars (mobile cuts off ~40; Etsy weights the front)")
+     if len(words) > 15:
+         issues.append(f"too long for buyers ({len(words)} words; keep <=15)")
+     if title.count(",") > 3:
+diff --git a/src/web.py b/src/web.py
+index f390147..8b69b63 100644
+--- a/src/web.py
++++ b/src/web.py
+@@ -125,6 +125,16 @@ def build_app(password, secret):
+             "frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
+         return resp
+ 
++    @app.before_request
++    def _csrf_guard():
++        # Blanket CSRF backstop: every POST must carry the per-session token.
++        # Individual routes may still call _check_csrf() (harmless double-check);
++        # this guarantees a newly-added POST route can't ship unprotected.
++        # Login is exempt (no session/token exists yet at that point).
++        if request.method == "POST" and request.endpoint not in ("login",):
++            if request.form.get("_csrf") != session.get("_csrf"):
++                abort(403)
++
+     auth.appdb.init_db()
+ 
+     def _ip():
+@@ -1086,7 +1096,8 @@ def build_app(password, secret):
+             items += ('<div class="saveditem"><div class="sihead">'
+                       f'<b>{_h.escape((r.get("title") or r.get("listing_url") or "")[:58])}</b> '
+                       f'<span class="pill apill">{_h.escape(a7)}</span> '
+-                      f'<a class="cbtn" href="/feedback/del/{r["id"]}">delete</a></div>'
++                      + _post_btn(f'/feedback/del/{r["id"]}', "delete",
++                                  confirm="Delete this feedback entry?") + '</div>'
+                       f'<div class="note">{_h.escape(r.get("product_mode",""))} · '
+                       f'{v} views · {r.get("favorites",0)} favs · '
+                       f'{r.get("carts",0)} carts · {r.get("orders",0)} orders · '
+@@ -1115,9 +1126,10 @@ def build_app(password, secret):
+              product_mode=d.get("product_mode"))
+         return redirect(url_for("feedback"))
+ 
+-    @app.route("/feedback/del/<int:fid>")
++    @app.route("/feedback/del/<int:fid>", methods=["POST"])
+     @login_required
+     def feedback_del(fid):
++        _check_csrf()
+         from src import feedback as fb
+         fb.delete(fid)
+         return redirect(url_for("feedback"))
+@@ -2543,13 +2555,22 @@ def build_app(password, secret):
+     @app.route("/admin/users/role", methods=["POST"])
+     @require_perm("users.manage")
+     def admin_users_role():
++        _check_csrf()
+         target = request.form.get("email")
+-        # only OWNER may change another OWNER
++        new_role = request.form.get("role")
++        actor = current_user()
+         tu = auth.get_user_by_email(target or "")
+-        if tu and tu["role"] == "OWNER" and current_user()["role"] != "OWNER":
++        # nobody may change their own role (no self-escalation)
++        if (target or "").strip().lower() == (actor["email"] or "").strip().lower():
++            return redirect(url_for("admin_users"))
++        # only OWNER may change an existing OWNER
++        if tu and tu["role"] == "OWNER" and actor["role"] != "OWNER":
++            return redirect(url_for("admin_users"))
++        # only an OWNER may GRANT the OWNER role (blocks ADMIN->OWNER escalation)
++        if new_role == "OWNER" and actor["role"] != "OWNER":
+             return redirect(url_for("admin_users"))
+         try:
+-            auth.set_role(target, request.form.get("role"))
++            auth.set_role(target, new_role)
+         except Exception:  # noqa: BLE001
+             pass
+         return redirect(url_for("admin_users"))

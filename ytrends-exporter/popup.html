@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+         width: 300px; margin: 0; padding: 14px; color: #222; }
+  h1 { font-size: 14px; margin: 0 0 4px; }
+  p { font-size: 12px; color: #666; margin: 0 0 10px; line-height: 1.45; }
+  label { font-size: 12px; font-weight: 600; display: block; margin: 8px 0 4px; }
+  input { width: 100%; box-sizing: border-box; padding: 8px; font-size: 13px;
+          border: 1px solid #ddd; border-radius: 8px; }
+  button { margin-top: 10px; width: 100%; background: #F1641E; color: #fff; border: 0;
+           border-radius: 8px; padding: 9px; font-weight: 700; font-size: 13px; cursor: pointer; }
+  button:hover { background: #d9531a; }
+  .ok { color: #15803d; font-size: 12px; margin-top: 8px; min-height: 14px; }
+  .hint { font-size: 11px; color: #888; margin-top: 8px; }
+</style>
+</head>
+<body>
+  <h1>YTrends Exporter</h1>
+  <p>On any YTrends page, use the <b>Export CSV</b> button (bottom-right) to download the table you're viewing.</p>
+  <label for="agent">Agent import URL (optional)</label>
+  <input id="agent" type="text" placeholder="http://localhost:8000/api/import">
+  <label for="token">Import token (X-Import-Token)</label>
+  <input id="token" type="text" placeholder="matches YTX_IMPORT_TOKEN in the agent .env">
+  <button id="save">Save</button>
+  <div class="ok" id="ok"></div>
+  <div class="hint">"Send to agent" POSTs the table as JSON to this URL with your token. Leave blank to only download CSVs. The 22etsy-agent exposes <code>/api/import</code>; set the same secret as <code>YTX_IMPORT_TOKEN</code> in its <code>.env</code>.</div>
+</body>
+<script src="popup.js"></script>
+</html>

@@ -349,6 +349,157 @@ def build_app(password, secret):
                   if modes and (mdir / f).exists()]
         active_label = ({m[0]: m[1] for m in modes}.get(active, active)
                         if modes else "Print on Demand")
+
+        # === Workflow-first pipeline rail (the hero of the home): the real
+        # fast-lane spine CSV -> analyze -> winner -> launch -> learn, styled with
+        # the portal's own theme vars so it matches light + dark automatically. ===
+        _plcss = (
+            '<style>'
+            '.plpipe{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}'
+            '.plstep{border:1px solid var(--line);border-radius:14px;padding:14px 13px;'
+            'position:relative;display:flex;flex-direction:column;background:var(--surface)}'
+            '.plstep::after{content:"\\2192";position:absolute;right:-10px;top:24px;'
+            'color:var(--line-strong);font-size:16px}'
+            '.plstep:last-child::after{display:none}'
+            '.plstep .n{width:25px;height:25px;border-radius:50%;display:grid;place-items:center;'
+            'font-size:13px;font-weight:800;color:#fff;margin-bottom:8px;background:var(--accent)}'
+            '.plstep.plfin .n{background:var(--ok)}'
+            '.plstep h3{margin:0 0 3px;font-size:14px;color:var(--ink)}'
+            '.plstep .w{font-size:11.5px;color:var(--ink-soft);flex:1;margin-bottom:10px;line-height:1.45}'
+            '.plstep .p{font-size:12.5px;font-weight:600;color:#fff;background:var(--accent);'
+            'border-radius:8px;padding:7px 9px;text-align:center;text-decoration:none;'
+            'display:block;margin-bottom:6px}'
+            '.plstep.plfin .p{background:var(--ok)}'
+            '.plstep .s{display:flex;flex-direction:column}'
+            '.plstep .s a{font-size:11px;color:var(--ink-soft);text-decoration:none;padding:3px 0;'
+            'border-top:1px solid var(--line)}'
+            '.plstep .s a:first-child{border-top:0}.plstep .s a:hover{color:var(--accent)}'
+            '.plnudge{display:flex;align-items:center;gap:12px;margin:14px 0 4px;'
+            'background:var(--accent-bg);border:1px solid var(--line);border-radius:12px;padding:11px 14px}'
+            '.plnudge .t{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;'
+            'color:var(--accent);white-space:nowrap}'
+            '.plnudge .x{font-size:13px;color:var(--ink-soft);flex:1}.plnudge .x b{color:var(--ink)}'
+            '.pldrop{display:flex;flex-direction:column;gap:6px;margin-bottom:6px}'
+            '.pldz{border:1.5px dashed var(--line-strong);border-radius:9px;padding:12px 8px;'
+            'text-align:center;cursor:pointer;background:var(--accent-bg);transition:border-color .15s}'
+            '.pldz:hover,.pldz.drag{border-color:var(--accent)}'
+            '.pldz .plch{font-size:11px;color:var(--ink-soft);line-height:1.35}'
+            '.pldz .plfn{display:block;font-size:11px;color:var(--accent);font-weight:600;'
+            'margin-top:4px;word-break:break-all}'
+            '.plmeta{font-size:10.5px;color:var(--ink-faint);margin:0 0 6px;line-height:1.3}'
+            '.plmeta b{color:var(--ink-soft)}'
+            '.plkind{width:100%;font-size:11px;padding:5px 6px;border:1px solid var(--line);'
+            'border-radius:7px;background:var(--surface);color:var(--ink);margin-bottom:6px}'
+            '@media(max-width:860px){.plpipe{grid-template-columns:1fr 1fr}.plstep::after{display:none}}'
+            '@media(max-width:520px){.plpipe{grid-template-columns:1fr}}'
+            '</style>')
+        _csrf_tok = _csrf()
+        try:   # newest import: powers both the next-step nudge and the "last
+            from src import shortlister_integration as _si   # import" status line
+            _imp_info = _si.latest_import_info()
+        except Exception:  # noqa: BLE001
+            _imp_info = None
+        _has_imp = bool(_imp_info)
+
+        def _ago(s):
+            if s is None:
+                return ""
+            if s < 60:
+                return "just now"
+            if s < 3600:
+                return f"{s // 60}m ago"
+            if s < 86400:
+                return f"{s // 3600}h ago"
+            return f"{s // 86400}d ago"
+
+        if _imp_info:
+            _v = _imp_info.get("view") or ""
+            _implabel_html = ('<div class="plmeta">Last import: '
+                              f'<b>{_imp_info["rows"]} rows</b> · '
+                              f'{_ago(_imp_info.get("age_seconds"))}'
+                              + (f' · {_h_esc(_v)}' if _v else '') + '</div>')
+        else:
+            _implabel_html = '<div class="plmeta">No imports yet — drop your first file.</div>'
+        if _has_imp:
+            _nt, _nx, _nh, _nl = ("Import ready",
+                "You have a fresh keyword import — rank it by the high-demand × "
+                "low-competition sweet spot now.", f"/winners?mode={active}",
+                "Find winners →")
+        else:
+            _nt, _nx, _nh, _nl = ("Start here",
+                "No import yet — capture keywords from YTrends/Etsy with the browser "
+                "extension, then analyze them here.", "/imports", "Import Center →")
+        _plnudge = (f'<div class="plnudge"><span class="t">▶ {_nt}</span>'
+                    f'<span class="x">{_nx}</span>'
+                    f'<a class="pullbtn primary" href="{_nh}">{_nl}</a></div>')
+        _plrail = (
+            '<h2 class="grouph">🧭 Your workflow — YTrends → analyze → winner → '
+            'launch → learn</h2>'
+            + _plnudge + '<div class="plpipe">'
+            '<div class="plstep"><div class="n">1</div><h3>Capture</h3>'
+            '<div class="w">Drop CSV / JSON — Etsy/YTrends keywords go to the Winner '
+            'Finder; supplier exports (Alibaba/AliExpress/1688) go to the Supplier '
+            'Trend Finder.</div>'
+            '<form class="pldrop" method="post" action="/import-file" '
+            'enctype="multipart/form-data">'
+            f'<input type="hidden" name="_csrf" value="{_csrf_tok}">'
+            f'<input type="hidden" name="mode" value="{active}">'
+            '<select class="plkind" name="kind">'
+            '<option value="auto">Auto-detect source</option>'
+            '<option value="keywords">Etsy / YTrends keywords</option>'
+            '<option value="supplier">Supplier — Alibaba/AliExpress/1688</option>'
+            '</select>'
+            '<label class="pldz" id="pldz">'
+            '<input type="file" name="file" accept=".csv,.json,.txt" id="plfile" multiple hidden>'
+            '<span class="plch">⬆ Drop CSV / JSON<br>(one or many) or click</span>'
+            '<span class="plfn" id="plfn"></span></label>'
+            '<button class="p" type="submit">Import → analyze</button></form>'
+            + _implabel_html +
+            f'<div class="s"><a href="/supplier-trends?mode={active}">Supplier trends →</a>'
+            '<a href="/imports">Import Center →</a></div></div>'
+            f'<div class="plstep"><div class="n">2</div><h3>Find winners</h3>'
+            '<div class="w">The tool analyzes the keywords locally and ranks the '
+            'high-demand × low-competition sweet spot. Instant.</div>'
+            f'<a class="p" href="/winners?mode={active}">🏆 Winner Finder</a>'
+            f'<div class="s"><a href="/score-import?mode={active}">Score latest import →</a>'
+            f'<a href="/score-import?gt=1&mode={active}">+ Google Trends →</a>'
+            f'<a href="/daily-brief?mode={active}">Daily brief →</a></div></div>'
+            f'<div class="plstep"><div class="n">3</div><h3>Build</h3>'
+            '<div class="w">One winner → verdict, competitor edge, SEO listing, all '
+            'photo prompts and the ads plan on one page.</div>'
+            f'<a class="p" href="/launch-kit?mode={active}">🚀 Launch Kit</a>'
+            '<div class="s"><a href="/draft-listing">Listing draft →</a>'
+            f'<a href="/photo-brief?mode={active}">Photo prompts →</a>'
+            f'<a href="/edge?mode={active}">Beat competitors →</a></div></div>'
+            f'<div class="plstep"><div class="n">4</div><h3>Launch</h3>'
+            '<div class="w">Manual review inside Etsy, publish 3–5 variations, start '
+            'Etsy Ads at $1–3/day per the plan.</div>'
+            f'<a class="p" href="/ads-plan?mode={active}">📣 Ads plan</a>'
+            '<div class="s"><a href="/grade">Listing Analyzer / gate →</a>'
+            '<a href="/profit">Profit gate →</a><a href="/launchpad">Launchpad →</a></div></div>'
+            '<div class="plstep plfin"><div class="n">5</div><h3>Learn</h3>'
+            '<div class="w">Log the sale — every order teaches the tool, so proven '
+            'niches rise in your Winner Finder automatically.</div>'
+            '<a class="p" href="/feedback">📉 Log a sale</a>'
+            '<div class="s"><a href="/feedback">Feedback loop →</a>'
+            '<a href="/trackers">Trackers →</a><a href="/profit">Profit Center →</a></div></div>'
+            '</div>'
+            # drag-drop + auto-submit: drop or choose a file and it goes straight in
+            '<script>(function(){'
+            'var dz=document.getElementById("pldz"),fi=document.getElementById("plfile"),'
+            'fn=document.getElementById("plfn");if(!dz||!fi)return;'
+            'function go(){if(fi.files&&fi.files.length){fn.textContent=fi.files.length>1?'
+            '(fi.files.length+" files"):fi.files[0].name;dz.closest("form").submit();}}'
+            'fi.addEventListener("change",go);'
+            '["dragenter","dragover"].forEach(function(e){dz.addEventListener(e,function(ev){'
+            'ev.preventDefault();dz.classList.add("drag");});});'
+            '["dragleave","drop"].forEach(function(e){dz.addEventListener(e,function(ev){'
+            'ev.preventDefault();dz.classList.remove("drag");});});'
+            'dz.addEventListener("drop",function(ev){if(ev.dataTransfer&&ev.dataTransfer.files'
+            '&&ev.dataTransfer.files.length){fi.files=ev.dataTransfer.files;go();}});'
+            '})();</script>')
+        pipeline_html = _plcss + _plrail
+
         # --- Instant Product Command Center: one keyword -> full workspace ---
         tools = (
             '<h2 class="grouph">⚡ Instant Product Command Center</h2>'
@@ -378,11 +529,15 @@ def build_app(password, secret):
             '<button formaction="/analyze" name="do" value="expand">Expand keywords</button>'
             '<button formaction="/should-sell">Should I sell?</button>'
             '<button formaction="/draft-listing">Draft listing</button>'
+            '<button formaction="/photo-brief">Photo prompts</button>'
+            '<button formaction="/ads-plan">Ads plan</button>'
+            '<button formaction="/edge">Beat competitors</button>'
+            '<button class="primary" formaction="/launch-kit">🚀 Launch Kit</button>'
             '</div></details></form>'
-            # --- DAILY: the everyday loop (Scope Reduction). The other ~40
-            # surfaces still work; they live under "Advanced tools" below so a
-            # staff member sees the daily loop first, not 19 cards. ---
-            '<h2 class="grouph">🎯 Daily — your everyday loop</h2>'
+            + pipeline_html +
+            # --- DAILY: the team loop. The pipeline rail above is the hero; the
+            # everyday team surfaces stay here, the ~40 others under Advanced. ---
+            '<h2 class="grouph">🎯 Daily — the team loop</h2>'
             '<p class="note" style="margin:-4px 0 10px">Research on '
             '<b>YTuong / HeyEtsy</b>, then work the loop here: confirm → assign → '
             'supplier check → draft → manager review → manual publish.</p>'
@@ -408,6 +563,12 @@ def build_app(password, secret):
             'research, library &amp; analytics (open when you need them)</summary>'
             '<h2 class="grouph">🔍 Research &amp; discovery</h2>'
             '<div class="toolgrid">'
+            f'<a class="toolcard" href="/winners?mode={active}"><b>🏆 Winner Finder</b>'
+            '<span>High-demand × low-competition sweet spot — the fastest pick, ranked</span></a>'
+            f'<a class="toolcard" href="/launch-kit?mode={active}"><b>🚀 Launch Kit</b>'
+            '<span>One winner → verdict, edge, listing, photos & ads on one page</span></a>'
+            f'<a class="toolcard" href="/supplier-trends?mode={active}"><b>🏭 Supplier Trend Finder</b>'
+            '<span>Reverse signal: Alibaba/AliExpress/1688 heat → keyword demand leads</span></a>'
             f'<a class="toolcard" href="/daily-brief?mode={active}"><b>🌅 Daily brief</b>'
             '<span>Today\'s scored build-list (Opportunity Score) — read first</span></a>'
             f'<a class="toolcard" href="/score-import?mode={active}"><b>🎯 Score latest import</b>'
@@ -435,6 +596,12 @@ def build_app(password, secret):
             '</div>'
             '<h2 class="grouph">🚀 Execute &amp; improve</h2>'
             '<div class="toolgrid">'
+            f'<a class="toolcard" href="/photo-brief?mode={active}"><b>📸 Photo prompt set</b>'
+            '<span>Every listing image + a ready AI prompt (real-photo honesty rule)</span></a>'
+            f'<a class="toolcard" href="/ads-plan?mode={active}"><b>📣 Etsy Ads plan</b>'
+            '<span>Manual starter: budget, breakeven ACOS, tag coverage, kill rules</span></a>'
+            f'<a class="toolcard" href="/edge?mode={active}"><b>🥊 Beat competitors</b>'
+            '<span>Measured gaps in the ranking listings, biggest weakness first</span></a>'
             '<a class="toolcard" href="/grade"><b>📋 Listing Analyzer</b>'
             '<span>SEO / Trust / Image scores + publish gate</span></a>'
             '<a class="toolcard" href="/feedback"><b>📉 Sales feedback</b>'
@@ -1161,36 +1328,46 @@ def build_app(password, secret):
     def feedback():
         import html as _h
         from src import feedback as fb
-        form = ('<form class="savedform" method="post" action="/feedback/add">'
+
+        def _pf(name, maxlen=200):
+            return _h.escape((request.args.get(name) or "").strip()[:maxlen], quote=True)
+
+        prefilled = bool(request.args.get("keyword") or request.args.get("title"))
+        prebanner = ('<p class="note" style="border-left:3px solid var(--accent,#1baf7a);'
+                     'padding-left:10px">Pre-filled from your <b>Launch Kit</b> — add the '
+                     'metrics when it sells, then submit to teach the tool.</p>'
+                     if prefilled else '')
+        form = (f'<form class="savedform" method="post" action="/feedback/add">'
                 # 6 core fields cover the Day-3/7 call; the rest are optional detail.
-                '<input name="listing_url" placeholder="Listing URL" required>'
-                '<input name="keyword" placeholder="Main keyword (links the saved run)">'
-                '<input name="price" type="number" step="any" placeholder="Price">'
-                '<input name="day_7_views" type="number" placeholder="Day 7 views">'
-                '<input name="orders" type="number" placeholder="Orders">'
-                '<input name="revenue" type="number" step="any" placeholder="Revenue">'
-                '<details class="fbmore"><summary>＋ More metrics (optional)</summary>'
-                '<div class="fbgrid">'
-                '<input name="publish_date" placeholder="Publish date (YYYY-MM-DD)">'
-                '<input name="product_mode" placeholder="Mode (pod/embroidery)">'
-                '<input name="supplier" placeholder="Supplier">'
-                '<input name="product_cost" type="number" step="any" placeholder="Product cost">'
-                '<input name="shipping_cost" type="number" step="any" placeholder="Shipping cost">'
-                '<input name="title" placeholder="Title">'
-                '<input name="main_image_version" placeholder="Main image version (e.g. v2)">'
-                '<input name="mockup_style" placeholder="Mockup style (flat / lifestyle / gift)">'
-                '<input name="personalization_offer" placeholder="Personalization offered">'
-                '<input name="bundle_offer" placeholder="Bundle offered">'
-                '<input name="day_1_impressions" type="number" placeholder="Day 1 impressions">'
-                '<input name="day_3_views" type="number" placeholder="Day 3 views">'
-                '<input name="favorites" type="number" placeholder="Favorites">'
-                '<input name="carts" type="number" placeholder="Carts">'
-                '<input name="profit" type="number" step="any" placeholder="Profit">'
-                '<input name="refund_or_issue" placeholder="Refund / issue (or none)">'
-                '</div></details>'
-                '<textarea name="notes" placeholder="Notes"></textarea>'
-                '<button class="primary" type="submit">Log + get Day-3/7 recommendation</button>'
-                '</form>')
+                f'<input name="listing_url" value="{_pf("listing_url", 300)}" placeholder="Listing URL" required>'
+                f'<input name="keyword" value="{_pf("keyword", 80)}" placeholder="Main keyword (links the saved run)">'
+                f'<input name="price" type="number" step="any" value="{_pf("price", 12)}" placeholder="Price">'
+                f'<input name="day_7_views" type="number" placeholder="Day 7 views">'
+                f'<input name="orders" type="number" placeholder="Orders">'
+                f'<input name="revenue" type="number" step="any" placeholder="Revenue">'
+                f'<details class="fbmore"{" open" if prefilled else ""}><summary>＋ More metrics (optional)</summary>'
+                f'<div class="fbgrid">'
+                f'<input name="publish_date" value="{_pf("publish_date", 20)}" placeholder="Publish date (YYYY-MM-DD)">'
+                f'<input name="product_mode" value="{_pf("product_mode", 20)}" placeholder="Mode (pod/embroidery)">'
+                f'<input name="supplier" value="{_pf("supplier", 80)}" placeholder="Supplier">'
+                f'<input name="product_cost" type="number" step="any" placeholder="Product cost">'
+                f'<input name="shipping_cost" type="number" step="any" placeholder="Shipping cost">'
+                f'<input name="title" value="{_pf("title", 140)}" placeholder="Title">'
+                f'<input name="tags" value="{_pf("tags", 300)}" placeholder="Tags (comma-separated — folds into learning)">'
+                f'<input name="main_image_version" placeholder="Main image version (e.g. v2)">'
+                f'<input name="mockup_style" placeholder="Mockup style (flat / lifestyle / gift)">'
+                f'<input name="personalization_offer" value="{_pf("personalization_offer", 80)}" placeholder="Personalization offered">'
+                f'<input name="bundle_offer" placeholder="Bundle offered">'
+                f'<input name="day_1_impressions" type="number" placeholder="Day 1 impressions">'
+                f'<input name="day_3_views" type="number" placeholder="Day 3 views">'
+                f'<input name="favorites" type="number" placeholder="Favorites">'
+                f'<input name="carts" type="number" placeholder="Carts">'
+                f'<input name="profit" type="number" step="any" placeholder="Profit">'
+                f'<input name="refund_or_issue" placeholder="Refund / issue (or none)">'
+                f'</div></details>'
+                f'<textarea name="notes" placeholder="Notes"></textarea>'
+                f'<button class="primary" type="submit">Log + get Day-3/7 recommendation</button>'
+                f'</form>')
         items = ""
         for r in reversed(fb.load()):
             a7 = r.get("day7_action") or r.get("recommendation", "")
@@ -1212,7 +1389,9 @@ def build_app(password, secret):
         return page("Sales feedback", bar + '<article class="md"><h1>Sales feedback '
                     'loop</h1><p>After you MANUALLY publish, log the listing\'s real '
                     'numbers to get a Day-3/7 <b>KEEP / CHANGE / KILL / SCALE</b> '
-                    'recommendation. This private performance data is your edge.</p>'
+                    'recommendation. This private performance data is your edge — every '
+                    'logged order feeds the learning loop that lifts proven niches in '
+                    'your Winner Finder.</p>' + prebanner
                     + form + (items or '<p class="empty">No listings tracked yet.</p>')
                     + '</article>')
 
@@ -1312,6 +1491,51 @@ def build_app(password, secret):
     def draft_listing():
         return _kw_tool(lambda iv, q: iv.draft_listing(q), "Listing draft")
 
+    def _kw_mode():
+        """(cleaned keyword, mode) from ?q= plus ?mode= or the command bar's
+        supplier_type radio (embroidery/pod/both)."""
+        raw = (request.args.get("q") or "").strip()[:80]
+        q = "".join(c for c in raw if c.isalnum() or c in " '&-.").strip()
+        m = request.args.get("mode") or request.args.get("supplier_type")
+        mode = m if m in ("pod", "embroidery") else None
+        return q, mode
+
+    def _kw_mode_tool(fn, title):
+        q, mode = _kw_mode()
+        if not q:
+            bar = _bar()
+            return page(title, bar + f'<article class="md"><h1>{title}</h1>'
+                        '<p class="empty">Type a keyword in the search box on the '
+                        '<a href="/">home page</a>, then pick this tool.</p></article>')
+        from src import interactive
+        try:
+            return _render_tool(f"{title}: {q}", fn(interactive, q, mode))
+        except (SystemExit, Exception) as exc:  # noqa: BLE001
+            return _tool_error(title, exc)
+
+    @app.route("/photo-brief")
+    @login_required
+    def photo_brief():
+        return _kw_mode_tool(lambda iv, q, m: iv.photo_prompts(q, m),
+                             "Photo prompt set")
+
+    @app.route("/ads-plan")
+    @login_required
+    def ads_plan():
+        return _kw_mode_tool(lambda iv, q, m: iv.ads_plan(q, m),
+                             "Etsy Ads starter plan")
+
+    @app.route("/edge")
+    @login_required
+    def edge():
+        return _kw_mode_tool(lambda iv, q, m: iv.edge_finder(q, m),
+                             "Beat the competition")
+
+    @app.route("/launch-kit")
+    @login_required
+    def launch_kit():
+        return _kw_mode_tool(lambda iv, q, m: iv.launch_kit(q, m), "Launch Kit")
+
     @app.route("/trending")
     @login_required
     def trending():
@@ -1364,15 +1588,40 @@ def build_app(password, secret):
         mode = m if m in ("pod", "embroidery") else None
         source = (request.args.get("source") or "").strip() or None
         enrich = request.args.get("enrich") == "1"
+        gtrends = request.args.get("gt") == "1"
         try:
             return _render_tool("Score latest import",
-                                interactive.score_import(source, mode, enrich))
+                                interactive.score_import(source, mode, enrich,
+                                                         gtrends))
         except (SystemExit, Exception) as exc:  # noqa: BLE001
             return _tool_error("Score latest import", exc)
 
+    @app.route("/winners")
+    @login_required
+    def winners():
+        from src import interactive
+        m = request.args.get("mode")
+        mode = m if m in ("pod", "embroidery") else None
+        try:
+            return _render_tool("Winner Finder", interactive.winners(mode))
+        except (SystemExit, Exception) as exc:  # noqa: BLE001
+            return _tool_error("Winner Finder", exc)
+
+    @app.route("/supplier-trends")
+    @login_required
+    def supplier_trends():
+        from src import interactive
+        m = request.args.get("mode")
+        mode = m if m in ("pod", "embroidery") else None
+        try:
+            return _render_tool("Supplier Trend Finder",
+                                interactive.supplier_trends(mode))
+        except (SystemExit, Exception) as exc:  # noqa: BLE001
+            return _tool_error("Supplier Trend Finder", exc)
+
     # ---- YTrends Exporter extension ingest (token-gated, CORS, no session) ----
     ALLOWED_IMPORT_ORIGINS = {"https://trends.ytuong.ai", "https://ytuong.me",
-                              "https://heyetsy.com"}
+                              "https://heyetsy.com", "https://www.etsy.com"}
 
     def _json_resp(obj, code=200):
         import json as _j
@@ -1422,6 +1671,51 @@ def build_app(password, secret):
         except Exception:  # noqa: BLE001
             pass
         return _cors(_json_resp({"ok": True, **summary}), origin)
+
+    @app.route("/import-file", methods=["POST"])
+    @login_required
+    def import_file():
+        # Manual CSV/JSON upload straight from the homepage -> same ingest path as
+        # the extension -> jump to the Winner Finder. Session-authed + CSRF (unlike
+        # the token-gated public /api/import). Pure local parse; no MCP, no network.
+        _check_csrf()
+        m = request.form.get("mode")
+        modeq = f"?mode={m}" if m in ("pod", "embroidery") else ""
+        # One OR many files (drop several exports -> one merged, ranked list).
+        uploads = [(f.filename, f.read()) for f in request.files.getlist("file")
+                   if f and f.filename]   # total bounded by MAX_CONTENT_LENGTH (8 MB)
+        if not uploads:
+            return _tool_error("Import file", ValueError(
+                "No file chosen. Pick one or more .csv / .json exports and try again."))
+        try:
+            from src import ytx_import
+            from src import supplier_trend as st
+            payload, n_files = ytx_import.parse_uploads(uploads)
+            kind = (request.form.get("kind") or "auto").lower()
+            # Supplier exports (Alibaba/AliExpress/1688) go to the reverse-signal
+            # lane and are stored SEPARATELY so the Etsy Winner Finder never scores
+            # supplier rows as Etsy keywords. Auto-detect from the columns.
+            is_supplier = kind == "supplier" or (
+                kind == "auto" and st.looks_like_supplier(payload.get("headers")))
+            if is_supplier:
+                st.save_payload(payload)
+                dest = f"/supplier-trends{modeq}"
+                act = f"supplier upload({n_files}): {len(payload.get('rows') or [])} rows"
+            else:
+                summary = ytx_import.ingest(payload)
+                dest = f"/winners{modeq}"
+                act = (f'upload({n_files} file(s)):{summary.get("view")} '
+                       f'{summary.get("rows_received", 0)} rows')
+        except ValueError as exc:
+            return _tool_error("Import file", exc)
+        except Exception as exc:  # noqa: BLE001
+            app.logger.exception("import_file failed")
+            return _tool_error("Import file", exc)
+        try:
+            activity.log("ytrends_import", module="ytx_import", action=act)
+        except Exception:  # noqa: BLE001
+            pass
+        return redirect(dest)
 
     @app.route("/calendar")
     @login_required

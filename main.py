@@ -1,6 +1,7 @@
 """Etsy niche research agent.
 
 Commands:
+  py main.py                     -> validate keywords.csv via Google Trends
   py main.py discover            -> pull live YTrends data and rank new ideas
   py main.py discover pod        -> print-on-demand keywords only
   py main.py discover embroidery -> embroidery keywords only (also: ideas pod / ideas embroidery)
@@ -34,7 +35,57 @@ Commands:
   py main.py printify "pouch"    -> find Printify products + real US shipping
   py main.py printify cost 1090  -> shipping costs per print provider
 """
+import csv
 import sys
+
+
+def load_keywords(path="keywords.csv"):
+    rows = []
+    with open(path, newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            kw = (row.get("keyword") or "").strip()
+            comp_raw = (row.get("competition") or "").strip()
+            comp = int(comp_raw) if comp_raw.isdigit() else None
+            if kw:
+                rows.append((kw, comp))
+    return rows
+
+
+def research():
+    from src.gtrends import fetch_momentum
+    from src.scoring import opportunity_score
+    from src.db import save_snapshot
+    from src.report import write_report
+
+    kws = load_keywords()
+    print(f"Researching {len(kws)} keywords via Google Trends (takes a few minutes)...")
+    stats = fetch_momentum([k for k, _ in kws])
+
+    results = []
+    for kw, comp in kws:
+        s = stats.get(kw)
+        if not s:
+            print(f"  No trend data for: {kw}")
+            continue
+        results.append({
+            "keyword": kw,
+            "competition": comp,
+            "opportunity": opportunity_score(s["avg_interest"], s["momentum_pct"], comp),
+            **s,
+        })
+
+    results.sort(key=lambda r: r["opportunity"], reverse=True)
+    save_snapshot([
+        (r["keyword"], r["avg_interest"], r["momentum_pct"], r["competition"], r["opportunity"])
+        for r in results
+    ])
+    path = write_report(results)
+
+    print(f"\nDone. Full report: {path}\n")
+    print("Top opportunities:")
+    for i, r in enumerate(results[:10], 1):
+        print(f"{i:2}. {r['keyword']:<32} "
+              f"opportunity={r['opportunity']:<8} momentum={r['momentum_pct']}%")
 
 
 def expand(tag):
@@ -468,10 +519,25 @@ def cmd_warm(cmd, args):
     is instant. --fresh forces a live re-fetch (for a scheduled every-N-hours warm)
     instead of returning the day's cached copy."""
     fresh = any(a.lstrip("-").lower() == "fresh" for a in args)
+    serial = any(a.lstrip("-").lower() == "serial" for a in args)
     from src import interactive
     print("Refreshing keyword cache (live)..." if fresh
           else "Warming keyword cache (deep pull)...")
-    print("  " + interactive.warm_cache(fresh=fresh))
+    # Parallel by default: the MCP client is thread-safe + rate-limited, so
+    # warming the three surfaces concurrently is a safe ~2-3x speed-up for this
+    # unattended job. `serial` forces the old one-at-a-time walk.
+    print("  " + interactive.warm_cache(fresh=fresh, parallel=not serial))
+    if any(a.lstrip("-").lower() in ("cron", "help", "schedule") for a in args):
+        print(
+            "\nSchedule it so the team never waits on a cold pull:\n"
+            "  Linux/VPS (crontab -e) — refresh every 3h, 6am-9pm:\n"
+            "    0 6-21/3 * * * cd /path/to/22etsy-agent && "
+            "python main.py warm fresh >> logs/warm.log 2>&1\n"
+            "  Windows (Task Scheduler) — daily 6:00am:\n"
+            "    schtasks /Create /SC DAILY /ST 06:00 /TN etsy-warm "
+            "/TR \"python C:\\path\\to\\22etsy-agent\\main.py warm fresh\"\n"
+            "  Then /daily-brief, /winners and /score-import load from cache, "
+            "instantly.")
 
 
 def cmd_clean(cmd, args):
@@ -654,8 +720,14 @@ def main(argv):
         pass
 
     if len(argv) <= 1:
-        # Bare command: show the list of available commands.
-        print(__doc__)
+        # Bare command: Google Trends validation of keywords.csv.
+        try:
+            research()
+        except ImportError as exc:
+            print(f"Google Trends check unavailable: {exc}")
+            print("Fix: py -m pip install pytrends")
+            print("Or use: python main.py listreports / allreports / manager")
+            sys.exit(1)
         return
 
     cmd = argv[1]

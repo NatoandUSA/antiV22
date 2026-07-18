@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Etsy Tools Hub</title>
+<style>
+:root {
+  --bg:#f6f7fb; --surface:#ffffff; --surface-2:#f0f2f7; --text:#172033;
+  --muted:#667085; --line:#dde2ea; --brand:#f1641e; --brand-dark:#c9490c;
+  --purple:#6941c6; --green:#067647; --green-bg:#ecfdf3; --blue:#175cd3;
+  --blue-bg:#eff8ff; --yellow:#854a0e; --yellow-bg:#fffaeb; --gray-bg:#f2f4f7;
+  --shadow:0 12px 35px rgba(16,24,40,.09);
+}
+@media (prefers-color-scheme:dark) {
+  :root {
+    --bg:#0d1117; --surface:#151b23; --surface-2:#1d2632; --text:#f4f7fb;
+    --muted:#a5b0c0; --line:#2d3745; --brand:#ff7a3d; --brand-dark:#ff9a6c;
+    --green:#75e0a7; --green-bg:#123c2d; --blue:#84caff; --blue-bg:#102a43;
+    --yellow:#f7d070; --yellow-bg:#3b2e12; --gray-bg:#252e3a;
+    --shadow:0 14px 40px rgba(0,0,0,.25);
+  }
+}
+* { box-sizing:border-box; }
+html { scroll-behavior:smooth; }
+body {
+  margin:0; background:var(--bg); color:var(--text);
+  font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+button,input,select { font:inherit; }
+button,a { -webkit-tap-highlight-color:transparent; }
+.wrap { width:min(1460px,calc(100% - 28px)); margin:auto; }
+.topbar {
+  position:sticky; top:0; z-index:50; border-bottom:1px solid var(--line);
+  background:color-mix(in srgb,var(--surface) 92%,transparent); backdrop-filter:blur(14px);
+}
+.topbar-inner { height:68px; display:flex; align-items:center; gap:14px; }
+.brand { display:flex; align-items:center; gap:10px; font-weight:900; white-space:nowrap; }
+.logo {
+  width:36px; height:36px; border-radius:12px; display:grid; place-items:center;
+  color:white; background:linear-gradient(135deg,var(--brand),#ffad72); box-shadow:var(--shadow);
+}
+.nav-spacer { flex:1; }
+.top-btn {
+  border:1px solid var(--line); background:var(--surface); color:var(--text);
+  border-radius:11px; padding:10px 13px; font-weight:750; cursor:pointer;
+}
+.top-btn:hover { border-color:var(--brand); }
+.hero { padding:38px 0 22px; }
+.hero-card {
+  border:1px solid var(--line); border-radius:26px; padding:30px;
+  background:
+    radial-gradient(circle at 90% 10%,rgba(241,100,30,.18),transparent 24rem),
+    radial-gradient(circle at 10% 100%,rgba(105,65,198,.12),transparent 23rem),
+    var(--surface);
+  box-shadow:var(--shadow);
+}
+.kicker { color:var(--brand); font-size:12px; letter-spacing:.15em; text-transform:uppercase; font-weight:900; }
+h1 { margin:10px 0; font-size:clamp(34px,5vw,62px); line-height:1.02; letter-spacing:-.04em; }
+.hero p { max-width:860px; color:var(--muted); line-height:1.65; font-size:16px; }
+.stats { margin-top:24px; display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
+.stat { border:1px solid var(--line); background:color-mix(in srgb,var(--surface) 78%,transparent); border-radius:16px; padding:16px; }
+.stat strong { display:block; font-size:25px; }
+.stat span { color:var(--muted); font-size:12px; }
+.main { padding-bottom:46px; }
+.controls {
+  position:sticky; top:82px; z-index:30; padding:14px; border:1px solid var(--line);
+  border-radius:18px; background:var(--surface); box-shadow:var(--shadow);
+}
+.search-row { display:grid; grid-template-columns:minmax(240px,1fr) 220px 180px auto; gap:10px; }
+.control {
+  width:100%; min-height:46px; border:1px solid var(--line); border-radius:12px;
+  background:var(--surface-2); color:var(--text); padding:10px 13px; outline:none;
+}
+.control:focus { border-color:var(--brand); box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 16%,transparent); }
+.clear {
+  min-height:46px; border:0; border-radius:12px; padding:0 17px;
+  background:var(--text); color:var(--surface); font-weight:850; cursor:pointer;
+}
+.clear:hover { opacity:.88; }
+.chips { display:flex; gap:8px; overflow:auto; padding-top:12px; scrollbar-width:thin; }
+.chip {
+  border:1px solid var(--line); background:var(--surface-2); color:var(--text);
+  padding:8px 12px; border-radius:999px; white-space:nowrap; cursor:pointer; font-weight:750; font-size:13px;
+}
+.chip.active { background:var(--brand); border-color:var(--brand); color:white; }
+.status-row { display:flex; justify-content:space-between; gap:12px; align-items:center; margin:20px 2px 13px; }
+.status-row h2 { margin:0; font-size:22px; }
+.result-text { color:var(--muted); font-size:13px; }
+.grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
+.card {
+  min-height:242px; display:flex; flex-direction:column; border:1px solid var(--line);
+  border-radius:18px; background:var(--surface); padding:18px; box-shadow:0 4px 14px rgba(16,24,40,.04);
+}
+.card:hover { transform:translateY(-2px); box-shadow:var(--shadow); transition:.18s ease; }
+.card-top { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.badge { border-radius:999px; padding:6px 9px; font-size:11px; text-transform:uppercase; letter-spacing:.05em; font-weight:900; }
+.badge-essential { color:var(--green); background:var(--green-bg); }
+.badge-important { color:var(--blue); background:var(--blue-bg); }
+.badge-useful { color:var(--yellow); background:var(--yellow-bg); }
+.badge-optional { color:var(--muted); background:var(--gray-bg); }
+.favorite {
+  width:38px; height:38px; border-radius:11px; border:1px solid var(--line);
+  background:var(--surface-2); color:var(--muted); cursor:pointer; font-size:21px;
+}
+.favorite.saved { color:#d69200; }
+.meta { margin-top:15px; color:var(--purple); font-size:11px; text-transform:uppercase; letter-spacing:.08em; font-weight:900; }
+.card h3 { margin:8px 0 8px; font-size:19px; }
+.card p { margin:0 0 17px; color:var(--muted); font-size:14px; line-height:1.58; flex:1; }
+.actions { display:grid; grid-template-columns:1fr auto; gap:9px; }
+.open-link {
+  display:flex; min-height:43px; align-items:center; justify-content:center; text-decoration:none;
+  background:var(--brand); color:white; font-weight:850; border-radius:11px; padding:10px 13px;
+}
+.open-link:hover { background:var(--brand-dark); }
+.copy-link {
+  min-width:46px; min-height:43px; border:1px solid var(--line); border-radius:11px;
+  background:var(--surface-2); color:var(--text); cursor:pointer; font-weight:850;
+}
+.empty {
+  grid-column:1/-1; text-align:center; border:1px dashed var(--line); border-radius:18px;
+  background:var(--surface); color:var(--muted); padding:55px 18px;
+}
+.workflow { margin-top:30px; border:1px solid var(--line); border-radius:22px; background:var(--surface); padding:24px; }
+.workflow h2 { margin:7px 0 17px; }
+.steps { display:grid; grid-template-columns:repeat(5,1fr); gap:11px; }
+.step { border:1px solid var(--line); background:var(--surface-2); border-radius:15px; padding:15px; }
+.step-num { width:28px; height:28px; display:grid; place-items:center; color:white; background:var(--brand); border-radius:9px; font-weight:900; }
+.step strong { display:block; margin:10px 0 5px; }
+.step span { color:var(--muted); font-size:12px; line-height:1.5; }
+.toast {
+  position:fixed; left:50%; bottom:22px; transform:translate(-50%,20px); opacity:0;
+  background:var(--text); color:var(--surface); border-radius:12px; padding:11px 16px;
+  pointer-events:none; z-index:100; font-weight:800; transition:.2s;
+}
+.toast.show { opacity:1; transform:translate(-50%,0); }
+footer { text-align:center; color:var(--muted); font-size:12px; padding:28px 0; }
+@media(max-width:1020px) {
+  .grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .search-row { grid-template-columns:1fr 1fr; }
+  .steps { grid-template-columns:repeat(2,1fr); }
+}
+@media(max-width:680px) {
+  .wrap { width:min(100% - 18px,1460px); }
+  .hero { padding-top:18px; }
+  .hero-card { padding:22px 18px; border-radius:20px; }
+  .stats { grid-template-columns:repeat(2,1fr); }
+  .controls { top:76px; padding:10px; }
+  .search-row { grid-template-columns:1fr; }
+  .grid { grid-template-columns:1fr; }
+  .steps { grid-template-columns:1fr; }
+  .status-row { align-items:flex-start; flex-direction:column; }
+  .hide-mobile { display:none; }
+}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap topbar-inner">
+    <div class="brand"><span class="logo">E</span><span>Etsy Tools Hub</span></div>
+    <div class="nav-spacer"></div>
+    <button class="top-btn hide-mobile" id="showEssentials" type="button">Show essentials</button>
+    <button class="top-btn" id="showFavorites" type="button">★ Favorites</button>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="wrap hero-card">
+    <div class="kicker">Seller resource library</div>
+    <h1>Find the right Etsy tool quickly.</h1>
+    <p>Search and filter reliable resources for Etsy research, SEO, POD, embroidery, design, mockups, operations, finance, legal checks, marketing and education.</p>
+    <div class="stats">
+      <div class="stat"><strong>143</strong><span>Curated resources</span></div>
+      <div class="stat"><strong>14</strong><span>Clear categories</span></div>
+      <div class="stat"><strong>28</strong><span>Essential tools</span></div>
+      <div class="stat"><strong id="favoriteCount">0</strong><span>Saved favorites</span></div>
+    </div>
+  </div>
+</section>
+
+<main class="wrap main">
+  <section class="controls" aria-label="Tool filters">
+    <div class="search-row">
+      <input class="control" id="searchInput" type="search" placeholder="Search tool or use, e.g. keyword, mockup, embroidery">
+      <select class="control" id="categorySelect" aria-label="Category">
+        <option value="">All categories</option>
+        <option value="AI Tools">AI Tools</option><option value="Communities">Communities</option><option value="Design &amp; Creative">Design &amp; Creative</option><option value="Embroidery">Embroidery</option><option value="Legal &amp; IP">Legal &amp; IP</option><option value="Listing &amp; Operations">Listing &amp; Operations</option><option value="Marketing &amp; Social">Marketing &amp; Social</option><option value="Mockups &amp; Photography">Mockups &amp; Photography</option><option value="Official Etsy">Official Etsy</option><option value="POD &amp; Suppliers">POD &amp; Suppliers</option><option value="SEO &amp; Research">SEO &amp; Research</option><option value="Shipping &amp; Finance">Shipping &amp; Finance</option><option value="Trends &amp; Demand">Trends &amp; Demand</option><option value="YouTube &amp; KOL">YouTube &amp; KOL</option>
+      </select>
+      <select class="control" id="prioritySelect" aria-label="Priority">
+        <option value="">All priorities</option>
+        <option value="Essential">Essential</option>
+        <option value="Important">Important</option>
+        <option value="Useful">Useful</option>
+        <option value="Optional">Optional</option>
+      </select>
+      <button class="clear" id="resetButton" type="button">Reset</button>
+    </div>
+    <div class="chips" id="categoryChips" aria-label="Quick categories"></div>
+  </section>
+
+  <div class="status-row">
+    <h2>Tool directory</h2>
+    <div class="result-text"><strong id="resultCount">143</strong> results <span id="modeText">· All tools</span></div>
+  </div>
+
+  <section class="grid" id="toolGrid" aria-live="polite"></section>
+
+  <section class="workflow">
+    <div class="kicker">Simple workflow</div>
+    <h2>Use fewer tools in the correct order</h2>
+    <div class="steps">
+      <div class="step"><div class="step-num">1</div><strong>Research</strong><span>Marketplace Insights, eRank, Google Trends and Pinterest Trends.</span></div>
+      <div class="step"><div class="step-num">2</div><strong>Validate</strong><span>EverBee, Etsy search, buyer reviews and trademark checks.</span></div>
+      <div class="step"><div class="step-num">3</div><strong>Create</strong><span>AI planning, Canva or Kittl, Photoshop and embroidery digitizing.</span></div>
+      <div class="step"><div class="step-num">4</div><strong>Launch</strong><span>Strong photos, personalization, attributes, pricing and shipping.</span></div>
+      <div class="step"><div class="step-num">5</div><strong>Improve</strong><span>Etsy Stats, click rate, conversion, margin and buyer feedback.</span></div>
+    </div>
+  </section>
+</main>
+
+<div class="toast" id="toast" role="status"></div>
+<footer class="wrap">Standalone HTML · No installation required · Works without localStorage</footer>
+
+<script>
+(function () {
+  "use strict";
+
+  var tools = [{"category": "Official Etsy", "name": "Etsy Shop Manager", "url": "https://www.etsy.com/your/shops/me/dashboard", "description": "Listings, orders, messages, finances, ads and shop statistics.", "priority": "Essential", "type": "Operations"}, {"category": "Official Etsy", "name": "Etsy Marketplace Insights", "url": "https://www.etsy.com/your/shops/me/marketplace-insights", "description": "Etsy search-demand, competition and trend research.", "priority": "Essential", "type": "Research"}, {"category": "Official Etsy", "name": "Etsy Seller Handbook", "url": "https://www.etsy.com/seller-handbook", "description": "Official Etsy SEO, photography, ads, policy and shop guidance.", "priority": "Essential", "type": "Learning"}, {"category": "Official Etsy", "name": "Etsy Help Center", "url": "https://help.etsy.com/", "description": "Official account, listing, payment and technical support.", "priority": "Essential", "type": "Support"}, {"category": "Official Etsy", "name": "Etsy Seller App", "url": "https://www.etsy.com/seller-app", "description": "Mobile order, listing, message and shop management.", "priority": "Essential", "type": "Operations"}, {"category": "Official Etsy", "name": "Etsy Ads", "url": "https://www.etsy.com/your/shops/me/advertising", "description": "Paid placement inside Etsy search.", "priority": "Important", "type": "Marketing"}, {"category": "Official Etsy", "name": "Etsy Stats", "url": "https://www.etsy.com/your/shops/me/stats", "description": "Track visits, orders, revenue and traffic sources.", "priority": "Essential", "type": "Analytics"}, {"category": "Official Etsy", "name": "Etsy Messages", "url": "https://www.etsy.com/messages", "description": "Buyer communication and personalization confirmation.", "priority": "Essential", "type": "Customer Service"}, {"category": "Official Etsy", "name": "Etsy Orders & Shipping", "url": "https://www.etsy.com/your/orders/sold", "description": "Manage fulfillment, dispatch and tracking.", "priority": "Essential", "type": "Operations"}, {"category": "Official Etsy", "name": "Etsy Finances", "url": "https://www.etsy.com/your/account/payments", "description": "Review Etsy fees, refunds, deposits and statements.", "priority": "Essential", "type": "Finance"}, {"category": "Official Etsy", "name": "Etsy Integrations", "url": "https://www.etsy.com/your/shops/me/integrations", "description": "Approved connections to third-party services.", "priority": "Important", "type": "Operations"}, {"category": "Official Etsy", "name": "Etsy Community", "url": "https://community.etsy.com/", "description": "Official seller forums and discussions.", "priority": "Useful", "type": "Community"}, {"category": "Official Etsy", "name": "Etsy Status", "url": "https://www.etsystatus.com/", "description": "Check Etsy outages and platform incidents.", "priority": "Useful", "type": "Support"}, {"category": "Official Etsy", "name": "Etsy Legal & Policies", "url": "https://www.etsy.com/legal/", "description": "Seller, handmade, payment, privacy and marketplace policies.", "priority": "Essential", "type": "Legal"}, {"category": "Official Etsy", "name": "Etsy Creativity Standards", "url": "https://www.etsy.com/legal/creativity/", "description": "Rules for handmade products, designed items and production partners.", "priority": "Essential", "type": "Legal"}, {"category": "Official Etsy", "name": "Etsy Official YouTube", "url": "https://www.youtube.com/etsy", "description": "Official tutorials, seller events and updates.", "priority": "Important", "type": "Learning"}, {"category": "SEO & Research", "name": "eRank", "url": "https://erank.com/", "description": "Keyword research, trends, competitors, rank tracking and listing audits.", "priority": "Essential", "type": "Research"}, {"category": "SEO & Research", "name": "EverBee", "url": "https://everbee.io/", "description": "Estimated listing sales, product validation and competitor research.", "priority": "Essential", "type": "Research"}, {"category": "SEO & Research", "name": "Marmalead", "url": "https://marmalead.com/", "description": "Keyword engagement, seasonality and Etsy SEO.", "priority": "Important", "type": "Research"}, {"category": "SEO & Research", "name": "Alura", "url": "https://www.alura.io/", "description": "Product research, listing optimization and shop tools.", "priority": "Important", "type": "Research"}, {"category": "SEO & Research", "name": "EtsyHunt", "url": "https://etsyhunt.com/", "description": "Product database, keyword research and shop analytics.", "priority": "Useful", "type": "Research"}, {"category": "SEO & Research", "name": "Sale Samurai", "url": "https://salesamurai.io/", "description": "Long-tail keyword research and tag discovery.", "priority": "Useful", "type": "Research"}, {"category": "SEO & Research", "name": "InsightFactory", "url": "https://insightfactory.app/", "description": "Trending product and niche discovery.", "priority": "Useful", "type": "Research"}, {"category": "SEO & Research", "name": "Koalanda", "url": "https://koalanda.pro/", "description": "Keyword, shop and listing analytics.", "priority": "Useful", "type": "Research"}, {"category": "SEO & Research", "name": "Listadum", "url": "https://www.listadum.com/", "description": "Listing analysis, SEO checks and shop management.", "priority": "Important", "type": "SEO"}, {"category": "SEO & Research", "name": "Keyword Tool.io Etsy", "url": "https://keywordtool.io/etsy", "description": "Autocomplete-based Etsy keyword ideas.", "priority": "Useful", "type": "SEO"}, {"category": "SEO & Research", "name": "AnswerThePublic", "url": "https://answerthepublic.com/", "description": "Discover buyer questions and search language.", "priority": "Useful", "type": "Research"}, {"category": "SEO & Research", "name": "AlsoAsked", "url": "https://alsoasked.com/", "description": "Find related Google questions for content and descriptions.", "priority": "Optional", "type": "Research"}, {"category": "Trends & Demand", "name": "Google Trends", "url": "https://trends.google.com/", "description": "Validate seasonality, geography and interest over time.", "priority": "Essential", "type": "Research"}, {"category": "Trends & Demand", "name": "Pinterest Trends", "url": "https://trends.pinterest.com/", "description": "Discover visual, gifting, wedding, fashion and home trends.", "priority": "Essential", "type": "Research"}, {"category": "Trends & Demand", "name": "Pinterest Predicts", "url": "https://business.pinterest.com/pinterest-predicts/", "description": "Annual forecast of emerging lifestyle and design trends.", "priority": "Useful", "type": "Research"}, {"category": "Trends & Demand", "name": "TikTok Creative Center", "url": "https://ads.tiktok.com/business/creativecenter/", "description": "Trending hashtags, creators, videos and commercial content.", "priority": "Essential", "type": "Research"}, {"category": "Trends & Demand", "name": "Exploding Topics", "url": "https://explodingtopics.com/", "description": "Find early-stage topics with growing interest.", "priority": "Useful", "type": "Research"}, {"category": "Trends & Demand", "name": "Amazon Best Sellers", "url": "https://www.amazon.com/gp/bestsellers", "description": "Validate broad consumer demand and gift categories.", "priority": "Useful", "type": "Research"}, {"category": "Trends & Demand", "name": "Amazon Movers & Shakers", "url": "https://www.amazon.com/gp/movers-and-shakers", "description": "Spot rapidly rising product categories.", "priority": "Useful", "type": "Research"}, {"category": "Trends & Demand", "name": "Reddit", "url": "https://www.reddit.com/", "description": "Research buyer problems, language and niche communities.", "priority": "Useful", "type": "Research"}, {"category": "Trends & Demand", "name": "Behance", "url": "https://www.behance.net/", "description": "Professional visual, branding and illustration trends.", "priority": "Useful", "type": "Design"}, {"category": "Trends & Demand", "name": "Dribbble", "url": "https://dribbble.com/", "description": "Typography, UI and graphic design inspiration.", "priority": "Optional", "type": "Design"}, {"category": "Listing & Operations", "name": "Vela", "url": "https://getvela.com/", "description": "Bulk-edit Etsy listings, prices, photos, variations and tags.", "priority": "Essential", "type": "Operations"}, {"category": "Listing & Operations", "name": "Nembol", "url": "https://www.nembol.com/", "description": "Multichannel listing management.", "priority": "Useful", "type": "Operations"}, {"category": "Listing & Operations", "name": "LitCommerce", "url": "https://litcommerce.com/", "description": "Sync Etsy listings with other marketplaces.", "priority": "Useful", "type": "Operations"}, {"category": "Listing & Operations", "name": "Sellbrite", "url": "https://www.sellbrite.com/", "description": "Inventory and listing management across channels.", "priority": "Optional", "type": "Operations"}, {"category": "Listing & Operations", "name": "BaseLinker", "url": "https://baselinker.com/", "description": "Orders, inventory and marketplace operations.", "priority": "Important", "type": "Operations"}, {"category": "Listing & Operations", "name": "Google Sheets", "url": "https://sheets.google.com/", "description": "Keyword maps, profit calculators and listing databases.", "priority": "Essential", "type": "Operations"}, {"category": "Listing & Operations", "name": "Airtable", "url": "https://www.airtable.com/", "description": "Product-development and listing workflow database.", "priority": "Important", "type": "Operations"}, {"category": "Listing & Operations", "name": "Notion", "url": "https://www.notion.so/", "description": "SOPs, product plans and content calendars.", "priority": "Important", "type": "Operations"}, {"category": "Listing & Operations", "name": "ClickUp", "url": "https://clickup.com/", "description": "Team tasks, launches and production workflow.", "priority": "Useful", "type": "Operations"}, {"category": "Design & Creative", "name": "Canva", "url": "https://www.canva.com/", "description": "Listing images, banners, size charts and social content.", "priority": "Essential", "type": "Design"}, {"category": "Design & Creative", "name": "Adobe Photoshop", "url": "https://www.adobe.com/products/photoshop.html", "description": "Professional product editing, mockups and image cleanup.", "priority": "Essential", "type": "Design"}, {"category": "Design & Creative", "name": "Adobe Illustrator", "url": "https://www.adobe.com/products/illustrator.html", "description": "Vector artwork, typography and production files.", "priority": "Important", "type": "Design"}, {"category": "Design & Creative", "name": "Affinity Designer", "url": "https://affinity.serif.com/designer/", "description": "Professional vector design without a subscription.", "priority": "Useful", "type": "Design"}, {"category": "Design & Creative", "name": "Procreate", "url": "https://procreate.com/", "description": "Hand-drawn artwork on iPad.", "priority": "Useful", "type": "Design"}, {"category": "Design & Creative", "name": "Inkscape", "url": "https://inkscape.org/", "description": "Free vector design and SVG editing.", "priority": "Useful", "type": "Design"}, {"category": "Design & Creative", "name": "Photopea", "url": "https://www.photopea.com/", "description": "Browser-based Photoshop alternative.", "priority": "Useful", "type": "Design"}, {"category": "Design & Creative", "name": "Kittl", "url": "https://www.kittl.com/", "description": "Typography, vintage graphics and POD design.", "priority": "Important", "type": "Design"}, {"category": "Design & Creative", "name": "Figma", "url": "https://www.figma.com/", "description": "Digital-product layouts and collaborative design.", "priority": "Useful", "type": "Design"}, {"category": "Design & Creative", "name": "Vectorizer.ai", "url": "https://vectorizer.ai/", "description": "Convert raster artwork into vectors.", "priority": "Useful", "type": "Design"}, {"category": "Design & Creative", "name": "Remove.bg", "url": "https://www.remove.bg/", "description": "Automatic background removal.", "priority": "Important", "type": "Design"}, {"category": "Design & Creative", "name": "Topaz Photo AI", "url": "https://www.topazlabs.com/topaz-photo-ai", "description": "Sharpen and upscale product photography.", "priority": "Useful", "type": "Design"}, {"category": "Design & Creative", "name": "Creative Fabrica", "url": "https://www.creativefabrica.com/", "description": "Fonts, SVGs, embroidery files and graphics.", "priority": "Important", "type": "Assets"}, {"category": "Design & Creative", "name": "Design Bundles", "url": "https://designbundles.net/", "description": "Craft, SVG, font and POD assets.", "priority": "Important", "type": "Assets"}, {"category": "Design & Creative", "name": "Creative Market", "url": "https://creativemarket.com/", "description": "Professional fonts, templates and mockups.", "priority": "Useful", "type": "Assets"}, {"category": "Design & Creative", "name": "Envato Elements", "url": "https://elements.envato.com/", "description": "Large subscription library of graphics and templates.", "priority": "Useful", "type": "Assets"}, {"category": "AI Tools", "name": "ChatGPT", "url": "https://chatgpt.com/", "description": "Product ideas, keyword clustering, copywriting and customer replies.", "priority": "Essential", "type": "AI"}, {"category": "AI Tools", "name": "Claude", "url": "https://claude.ai/", "description": "Long-form analysis, SOPs, coding and workflow design.", "priority": "Essential", "type": "AI"}, {"category": "AI Tools", "name": "Google Gemini", "url": "https://gemini.google.com/", "description": "Copywriting, image analysis and Google ecosystem work.", "priority": "Important", "type": "AI"}, {"category": "AI Tools", "name": "Perplexity", "url": "https://www.perplexity.ai/", "description": "Source-based public research.", "priority": "Useful", "type": "AI"}, {"category": "AI Tools", "name": "Adobe Firefly", "url": "https://firefly.adobe.com/", "description": "Commercial-oriented AI creative workflows.", "priority": "Useful", "type": "AI"}, {"category": "AI Tools", "name": "Ideogram", "url": "https://ideogram.ai/", "description": "Graphic concepts that contain text.", "priority": "Useful", "type": "AI"}, {"category": "AI Tools", "name": "Midjourney", "url": "https://www.midjourney.com/", "description": "Visual concepts and aesthetic development.", "priority": "Useful", "type": "AI"}, {"category": "AI Tools", "name": "Recraft", "url": "https://www.recraft.ai/", "description": "Vector-style graphics, icons and visual assets.", "priority": "Important", "type": "AI"}, {"category": "AI Tools", "name": "Photoroom", "url": "https://www.photoroom.com/", "description": "AI backgrounds and product image cleanup.", "priority": "Important", "type": "AI"}, {"category": "AI Tools", "name": "Grammarly", "url": "https://www.grammarly.com/", "description": "Grammar, tone and copy cleanup.", "priority": "Useful", "type": "Writing"}, {"category": "AI Tools", "name": "DeepL", "url": "https://www.deepl.com/", "description": "High-quality listing and message translation.", "priority": "Useful", "type": "Translation"}, {"category": "Mockups & Photography", "name": "Placeit", "url": "https://placeit.net/", "description": "Large apparel and lifestyle mockup library.", "priority": "Essential", "type": "Mockups"}, {"category": "Mockups & Photography", "name": "Smartmockups", "url": "https://smartmockups.com/", "description": "Simple mockups with Canva integration.", "priority": "Useful", "type": "Mockups"}, {"category": "Mockups & Photography", "name": "MockupMark", "url": "https://mockupmark.com/", "description": "Apparel mockups for POD products.", "priority": "Important", "type": "Mockups"}, {"category": "Mockups & Photography", "name": "Yellow Images", "url": "https://yellowimages.com/", "description": "High-quality professional product mockups.", "priority": "Useful", "type": "Mockups"}, {"category": "Mockups & Photography", "name": "Artboard Studio", "url": "https://artboard.studio/", "description": "Browser-based animated and static mockups.", "priority": "Useful", "type": "Mockups"}, {"category": "Mockups & Photography", "name": "Dynamic Mockups", "url": "https://dynamicmockups.com/", "description": "Bulk mockup generation.", "priority": "Important", "type": "Mockups"}, {"category": "Mockups & Photography", "name": "Pixelcut", "url": "https://www.pixelcut.ai/", "description": "AI product photography and image cleanup.", "priority": "Useful", "type": "Mockups"}, {"category": "POD & Suppliers", "name": "Printify", "url": "https://printify.com/", "description": "Large POD supplier network and competitive costs.", "priority": "Essential", "type": "Supplier"}, {"category": "POD & Suppliers", "name": "Printful", "url": "https://www.printful.com/", "description": "Reliable integration, branding and quality control.", "priority": "Essential", "type": "Supplier"}, {"category": "POD & Suppliers", "name": "Gelato", "url": "https://www.gelato.com/", "description": "Localized international production.", "priority": "Important", "type": "Supplier"}, {"category": "POD & Suppliers", "name": "Gooten", "url": "https://www.gooten.com/", "description": "Broad POD catalog for scaling.", "priority": "Useful", "type": "Supplier"}, {"category": "POD & Suppliers", "name": "CustomCat", "url": "https://customcat.com/", "description": "Apparel and US fulfillment.", "priority": "Useful", "type": "Supplier"}, {"category": "POD & Suppliers", "name": "Apliiq", "url": "https://www.apliiq.com/", "description": "Premium apparel, private labels, patches and embroidery.", "priority": "Important", "type": "Supplier"}, {"category": "POD & Suppliers", "name": "Prodigi", "url": "https://www.prodigi.com/", "description": "Art prints, wall art and global fulfillment.", "priority": "Useful", "type": "Supplier"}, {"category": "POD & Suppliers", "name": "ShineOn", "url": "https://www.shineon.com/", "description": "Personalized jewelry and message-card products.", "priority": "Important", "type": "Supplier"}, {"category": "POD & Suppliers", "name": "Merchize", "url": "https://merchize.com/", "description": "Vietnam-based global POD fulfillment.", "priority": "Important", "type": "Supplier"}, {"category": "POD & Suppliers", "name": "BurgerPrints", "url": "https://burgerprints.com/", "description": "POD fulfillment and apparel.", "priority": "Useful", "type": "Supplier"}, {"category": "POD & Suppliers", "name": "Printed Mint", "url": "https://printedmint.com/", "description": "Giftable POD presentation and packaging.", "priority": "Useful", "type": "Supplier"}, {"category": "POD & Suppliers", "name": "Local Embroidery Supplier", "url": "https://www.google.com/search?q=local+embroidery+supplier", "description": "Flexible personalization, thread colors and real sew-out control.", "priority": "Essential", "type": "Supplier"}, {"category": "Embroidery", "name": "Wilcom EmbroideryStudio", "url": "https://wilcom.com/", "description": "Professional embroidery digitizing.", "priority": "Important", "type": "Embroidery"}, {"category": "Embroidery", "name": "Hatch Embroidery", "url": "https://hatchembroidery.com/", "description": "Accessible professional digitizing workflow.", "priority": "Important", "type": "Embroidery"}, {"category": "Embroidery", "name": "Embrilliance", "url": "https://embrilliance.com/", "description": "Embroidery editing, lettering and home production.", "priority": "Useful", "type": "Embroidery"}, {"category": "Embroidery", "name": "Ink/Stitch", "url": "https://inkstitch.org/", "description": "Free embroidery extension for Inkscape.", "priority": "Useful", "type": "Embroidery"}, {"category": "Embroidery", "name": "Madeira USA", "url": "https://www.madeirausa.com/", "description": "Thread charts, stabilizers and embroidery supplies.", "priority": "Useful", "type": "Embroidery"}, {"category": "Embroidery", "name": "Isacord", "url": "https://www.isacordthread.com/", "description": "Embroidery thread references.", "priority": "Useful", "type": "Embroidery"}, {"category": "Embroidery", "name": "SanMar", "url": "https://www.sanmar.com/", "description": "Wholesale blank apparel.", "priority": "Important", "type": "Supplier"}, {"category": "Embroidery", "name": "S&S Activewear", "url": "https://www.ssactivewear.com/", "description": "Wholesale blanks for apparel production.", "priority": "Important", "type": "Supplier"}, {"category": "Embroidery", "name": "BELLA+CANVAS", "url": "https://www.bellacanvas.com/", "description": "Popular retail-style blank garments.", "priority": "Useful", "type": "Supplier"}, {"category": "Embroidery", "name": "Gildan", "url": "https://www.gildan.com/", "description": "Cost-effective tees and sweatshirts.", "priority": "Useful", "type": "Supplier"}, {"category": "Embroidery", "name": "Comfort Colors", "url": "https://www.comfortcolors.com/", "description": "Popular garment-dyed apparel.", "priority": "Useful", "type": "Supplier"}, {"category": "Embroidery", "name": "Richardson", "url": "https://m2.richardsonsports.com/", "description": "Popular caps for embroidery.", "priority": "Useful", "type": "Supplier"}, {"category": "Shipping & Finance", "name": "Pirate Ship", "url": "https://www.pirateship.com/", "description": "Discounted US shipping labels.", "priority": "Important", "type": "Shipping"}, {"category": "Shipping & Finance", "name": "ShipStation", "url": "https://www.shipstation.com/", "description": "Multichannel shipping automation.", "priority": "Important", "type": "Shipping"}, {"category": "Shipping & Finance", "name": "Shippo", "url": "https://goshippo.com/", "description": "Labels, tracking and carrier comparison.", "priority": "Useful", "type": "Shipping"}, {"category": "Shipping & Finance", "name": "Easyship", "url": "https://www.easyship.com/", "description": "International shipping and duties.", "priority": "Useful", "type": "Shipping"}, {"category": "Shipping & Finance", "name": "AfterShip", "url": "https://www.aftership.com/", "description": "Branded tracking and shipment notifications.", "priority": "Useful", "type": "Shipping"}, {"category": "Shipping & Finance", "name": "Order Desk", "url": "https://www.orderdesk.com/", "description": "Route orders between stores and suppliers.", "priority": "Important", "type": "Operations"}, {"category": "Shipping & Finance", "name": "Craftybase", "url": "https://craftybase.com/", "description": "Materials, manufacturing, COGS and inventory.", "priority": "Important", "type": "Finance"}, {"category": "Shipping & Finance", "name": "QuickBooks Online", "url": "https://quickbooks.intuit.com/", "description": "Accounting and financial reporting.", "priority": "Important", "type": "Finance"}, {"category": "Shipping & Finance", "name": "Xero", "url": "https://www.xero.com/", "description": "Cloud bookkeeping.", "priority": "Useful", "type": "Finance"}, {"category": "Shipping & Finance", "name": "A2X", "url": "https://www.a2xaccounting.com/", "description": "Marketplace payout reconciliation.", "priority": "Useful", "type": "Finance"}, {"category": "Shipping & Finance", "name": "Taxomate", "url": "https://taxomate.com/", "description": "Etsy-to-accounting data synchronization.", "priority": "Useful", "type": "Finance"}, {"category": "Legal & IP", "name": "USPTO Trademark Search", "url": "https://tmsearch.uspto.gov/", "description": "Search US registered and pending trademarks.", "priority": "Essential", "type": "Legal"}, {"category": "Legal & IP", "name": "WIPO Global Brand Database", "url": "https://branddb.wipo.int/", "description": "International trademark research.", "priority": "Important", "type": "Legal"}, {"category": "Legal & IP", "name": "EUIPO eSearch", "url": "https://euipo.europa.eu/", "description": "European Union trademark research.", "priority": "Useful", "type": "Legal"}, {"category": "Legal & IP", "name": "Google Patents", "url": "https://patents.google.com/", "description": "Patent and design-reference research.", "priority": "Useful", "type": "Legal"}, {"category": "Legal & IP", "name": "US Copyright Office", "url": "https://www.copyright.gov/", "description": "US copyright information and records.", "priority": "Important", "type": "Legal"}, {"category": "Legal & IP", "name": "Google Lens", "url": "https://lens.google/", "description": "Find visually similar products and images.", "priority": "Important", "type": "Legal"}, {"category": "Legal & IP", "name": "TinEye", "url": "https://tineye.com/", "description": "Reverse-image search.", "priority": "Useful", "type": "Legal"}, {"category": "Marketing & Social", "name": "Pinterest Business", "url": "https://business.pinterest.com/", "description": "Organic pins, business analytics and advertising.", "priority": "Important", "type": "Marketing"}, {"category": "Marketing & Social", "name": "Tailwind", "url": "https://www.tailwindapp.com/", "description": "Pinterest scheduling and workflow.", "priority": "Useful", "type": "Marketing"}, {"category": "Marketing & Social", "name": "CapCut", "url": "https://www.capcut.com/", "description": "Short-form product and process videos.", "priority": "Essential", "type": "Video"}, {"category": "Marketing & Social", "name": "Meta Business Suite", "url": "https://business.facebook.com/", "description": "Manage Facebook and Instagram content and messages.", "priority": "Important", "type": "Marketing"}, {"category": "Marketing & Social", "name": "Meta Ad Library", "url": "https://www.facebook.com/ads/library/", "description": "Research active Facebook and Instagram ads.", "priority": "Useful", "type": "Research"}, {"category": "Marketing & Social", "name": "Metricool", "url": "https://metricool.com/", "description": "Cross-platform scheduling and analytics.", "priority": "Useful", "type": "Marketing"}, {"category": "Marketing & Social", "name": "Buffer", "url": "https://buffer.com/", "description": "Simple social scheduling.", "priority": "Useful", "type": "Marketing"}, {"category": "Marketing & Social", "name": "Later", "url": "https://later.com/", "description": "Visual content planning and scheduling.", "priority": "Useful", "type": "Marketing"}, {"category": "Marketing & Social", "name": "Manychat", "url": "https://manychat.com/", "description": "Instagram and Messenger automation.", "priority": "Optional", "type": "Marketing"}, {"category": "YouTube & KOL", "name": "Starla Moore", "url": "https://www.youtube.com/@StarlaMoore", "description": "Data-driven Etsy SEO, trend research and platform updates.", "priority": "Important", "type": "YouTube"}, {"category": "YouTube & KOL", "name": "Kara Buntin", "url": "https://www.youtube.com/c/KaraBuntin", "description": "Practical Etsy search, policy and shop strategy.", "priority": "Important", "type": "YouTube"}, {"category": "YouTube & KOL", "name": "Dylan Jahraus", "url": "https://www.youtube.com/channel/UCeO8Gmc2B-3G2fgcFnRR4Xw", "description": "Product positioning, shop strategy and scaling.", "priority": "Useful", "type": "YouTube"}, {"category": "YouTube & KOL", "name": "Cassiy Johnson", "url": "https://www.youtube.com/results?search_query=Cassiy+Johnson+Etsy", "description": "Etsy POD, product research and shop case studies.", "priority": "Useful", "type": "YouTube"}, {"category": "YouTube & KOL", "name": "Detour Shirts", "url": "https://www.youtube.com/results?search_query=Detour+Shirts", "description": "POD design, niches and business education.", "priority": "Useful", "type": "YouTube"}, {"category": "YouTube & KOL", "name": "Wholesale Ted", "url": "https://www.youtube.com/results?search_query=Wholesale+Ted", "description": "POD, e-commerce and product ideas.", "priority": "Useful", "type": "YouTube"}, {"category": "YouTube & KOL", "name": "Creative Hive", "url": "https://www.youtube.com/results?search_query=Creative+Hive+Etsy", "description": "Handmade business, marketing and product strategy.", "priority": "Useful", "type": "YouTube"}, {"category": "YouTube & KOL", "name": "eRank YouTube", "url": "https://www.youtube.com/results?search_query=eRank+Etsy", "description": "eRank tutorials, SEO and trend education.", "priority": "Useful", "type": "YouTube"}, {"category": "Communities", "name": "Reddit r/EtsySellers", "url": "https://www.reddit.com/r/EtsySellers/", "description": "Seller experiences, platform issues and shop feedback.", "priority": "Useful", "type": "Community"}, {"category": "Communities", "name": "Reddit r/PrintOnDemand", "url": "https://www.reddit.com/r/printondemand/", "description": "POD suppliers, workflows and product discussions.", "priority": "Useful", "type": "Community"}, {"category": "Communities", "name": "Reddit r/MachineEmbroidery", "url": "https://www.reddit.com/r/MachineEmbroidery/", "description": "Machine embroidery production and troubleshooting.", "priority": "Useful", "type": "Community"}];
+  var state = {
+    query: "",
+    category: "",
+    priority: "",
+    favoritesOnly: false
+  };
+  var favoriteIds = [];
+  var storageAvailable = false;
+
+  var grid = document.getElementById("toolGrid");
+  var searchInput = document.getElementById("searchInput");
+  var categorySelect = document.getElementById("categorySelect");
+  var prioritySelect = document.getElementById("prioritySelect");
+  var resetButton = document.getElementById("resetButton");
+  var resultCount = document.getElementById("resultCount");
+  var favoriteCount = document.getElementById("favoriteCount");
+  var modeText = document.getElementById("modeText");
+  var chips = document.getElementById("categoryChips");
+  var toast = document.getElementById("toast");
+
+  function safeLoadFavorites() {
+    try {
+      var raw = window.localStorage.getItem("etsy_tools_favorites_v2");
+      favoriteIds = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(favoriteIds)) favoriteIds = [];
+      storageAvailable = true;
+    } catch (error) {
+      favoriteIds = [];
+      storageAvailable = false;
+    }
+  }
+
+  function safeSaveFavorites() {
+    if (!storageAvailable) return;
+    try {
+      window.localStorage.setItem("etsy_tools_favorites_v2", JSON.stringify(favoriteIds));
+    } catch (error) {
+      storageAvailable = false;
+    }
+  }
+
+  function escapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, function (char) {
+      return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[char];
+    });
+  }
+
+  function isFavorite(index) {
+    return favoriteIds.indexOf(index) !== -1;
+  }
+
+  function showToast(message) {
+    toast.textContent = message;
+    toast.classList.add("show");
+    window.clearTimeout(showToast.timer);
+    showToast.timer = window.setTimeout(function () {
+      toast.classList.remove("show");
+    }, 1600);
+  }
+
+  function filteredTools() {
+    var query = state.query.toLowerCase();
+    return tools.map(function (tool, index) {
+      return { tool:tool, index:index };
+    }).filter(function (entry) {
+      var tool = entry.tool;
+      var haystack = [tool.name,tool.description,tool.category,tool.type,tool.priority].join(" ").toLowerCase();
+      return (!query || haystack.indexOf(query) !== -1)
+        && (!state.category || tool.category === state.category)
+        && (!state.priority || tool.priority === state.priority)
+        && (!state.favoritesOnly || isFavorite(entry.index));
+    });
+  }
+
+  function renderChips() {
+    var all = [''].concat(["AI Tools", "Communities", "Design & Creative", "Embroidery", "Legal & IP", "Listing & Operations", "Marketing & Social", "Mockups & Photography", "Official Etsy", "POD & Suppliers", "SEO & Research", "Shipping & Finance", "Trends & Demand", "YouTube & KOL"]);
+    chips.innerHTML = all.map(function (category) {
+      var label = category || "All";
+      var active = state.category === category ? " active" : "";
+      return '<button type="button" class="chip' + active + '" data-category="' +
+        escapeHtml(category) + '">' + escapeHtml(label) + '</button>';
+    }).join("");
+  }
+
+  function render() {
+    var entries = filteredTools();
+    resultCount.textContent = String(entries.length);
+    favoriteCount.textContent = String(favoriteIds.length);
+    modeText.textContent = state.favoritesOnly ? "· Favorites only" : "· All tools";
+    renderChips();
+
+    if (!entries.length) {
+      grid.innerHTML = '<div class="empty"><h3>No matching tools</h3><p>Clear a filter or try another search phrase.</p></div>';
+      return;
+    }
+
+    grid.innerHTML = entries.map(function (entry) {
+      var tool = entry.tool;
+      var index = entry.index;
+      var priorityClass = "badge-" + tool.priority.toLowerCase();
+      var saved = isFavorite(index);
+      return '<article class="card">' +
+        '<div class="card-top">' +
+          '<span class="badge ' + priorityClass + '">' + escapeHtml(tool.priority) + '</span>' +
+          '<button type="button" class="favorite' + (saved ? ' saved' : '') +
+            '" data-favorite="' + index + '" aria-label="Save favorite">' + (saved ? '★' : '☆') + '</button>' +
+        '</div>' +
+        '<div class="meta">' + escapeHtml(tool.category) + ' · ' + escapeHtml(tool.type) + '</div>' +
+        '<h3>' + escapeHtml(tool.name) + '</h3>' +
+        '<p>' + escapeHtml(tool.description) + '</p>' +
+        '<div class="actions">' +
+          '<a class="open-link" href="' + escapeHtml(tool.url) + '" target="_blank" rel="noopener noreferrer">Open website ↗</a>' +
+          '<button type="button" class="copy-link" data-copy="' + escapeHtml(tool.url) + '" title="Copy link">⧉</button>' +
+        '</div>' +
+      '</article>';
+    }).join("");
+  }
+
+  function resetFilters() {
+    state.query = "";
+    state.category = "";
+    state.priority = "";
+    state.favoritesOnly = false;
+    searchInput.value = "";
+    categorySelect.value = "";
+    prioritySelect.value = "";
+    render();
+  }
+
+  searchInput.addEventListener("input", function () {
+    state.query = searchInput.value.trim();
+    render();
+  });
+
+  categorySelect.addEventListener("change", function () {
+    state.category = categorySelect.value;
+    render();
+  });
+
+  prioritySelect.addEventListener("change", function () {
+    state.priority = prioritySelect.value;
+    render();
+  });
+
+  resetButton.addEventListener("click", resetFilters);
+
+  document.getElementById("showEssentials").addEventListener("click", function () {
+    state.priority = "Essential";
+    state.favoritesOnly = false;
+    prioritySelect.value = "Essential";
+    render();
+    document.querySelector(".controls").scrollIntoView({behavior:"smooth",block:"start"});
+  });
+
+  document.getElementById("showFavorites").addEventListener("click", function () {
+    state.favoritesOnly = !state.favoritesOnly;
+    render();
+    if (!storageAvailable) showToast("Favorites work for this session only");
+  });
+
+  chips.addEventListener("click", function (event) {
+    var button = event.target.closest("[data-category]");
+    if (!button) return;
+    state.category = button.getAttribute("data-category") || "";
+    categorySelect.value = state.category;
+    render();
+  });
+
+  grid.addEventListener("click", function (event) {
+    var favoriteButton = event.target.closest("[data-favorite]");
+    if (favoriteButton) {
+      var index = Number(favoriteButton.getAttribute("data-favorite"));
+      var existing = favoriteIds.indexOf(index);
+      if (existing >= 0) favoriteIds.splice(existing,1);
+      else favoriteIds.push(index);
+      safeSaveFavorites();
+      render();
+      if (!storageAvailable) showToast("Saved for this browser session");
+      return;
+    }
+
+    var copyButton = event.target.closest("[data-copy]");
+    if (copyButton) {
+      var url = copyButton.getAttribute("data-copy");
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(url).then(function () {
+          showToast("Link copied");
+        }).catch(function () {
+          fallbackCopy(url);
+        });
+      } else {
+        fallbackCopy(url);
+      }
+    }
+  });
+
+  function fallbackCopy(text) {
+    var area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly","");
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.appendChild(area);
+    area.select();
+    try {
+      document.execCommand("copy");
+      showToast("Link copied");
+    } catch (error) {
+      showToast("Copy unavailable");
+    }
+    document.body.removeChild(area);
+  }
+
+  window.addEventListener("error", function () {
+    /* Keep the rest of the standalone dashboard usable if a browser blocks one feature. */
+  });
+
+  safeLoadFavorites();
+  render();
+}());
+</script>
+</body>
+</html>

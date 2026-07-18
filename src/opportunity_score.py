@@ -80,8 +80,28 @@ def _first(row, *keys):
 
 # --- component scorers: each returns a 0-100 float, or None if no source data --
 
-def _market(row):
-    """Demand (40%) + Velocity (35%) + Conversion (25%), over what's present."""
+def _trend_signals(gt):
+    """Google Trends dict -> (demand_corroboration, velocity) each 0-100 or None.
+
+    avg_interest is already Google's 0-100 relative-demand index. momentum_pct is
+    recent-vs-earlier % change; centre it on 50 (0% = neutral 50, +50% -> 100,
+    -50% -> 0) so a rising niche lifts velocity and a cooling one drags it. A
+    missing field stays None so it can't fabricate a signal (honest-nulls)."""
+    if not isinstance(gt, dict):
+        return None, None
+    ai = _num(gt.get("avg_interest"))
+    mp = _num(gt.get("momentum_pct"))
+    demand = min(100.0, max(0.0, ai)) if ai is not None else None
+    vel = min(100.0, max(0.0, 50.0 + mp)) if mp is not None else None
+    return demand, vel
+
+
+def _market(row, gt=None):
+    """Demand (40%) + Velocity (35%) + Conversion (25%), over what's present.
+
+    When a Google Trends read for this keyword is supplied it's blended in as an
+    EXTERNAL corroboration (its own demand + velocity parts). With no Trends data
+    passed this is byte-for-byte the original three-part market score."""
     demand = _first(row, "demand", "demand_score")
     if demand is None:
         v = _first(row, "views_24h", "views")
@@ -90,6 +110,11 @@ def _market(row):
     cr = _first(row, "avg_conversion_rate", "conversion_rate", "conversion")
     conversion = min(100.0, cr * 100.0 * 20.0) if cr is not None else None  # 5%->100
     parts = [(demand, 0.40), (velocity, 0.35), (conversion, 0.25)]
+    gt_demand, gt_vel = _trend_signals(gt)
+    if gt_demand is not None:
+        parts.append((gt_demand, 0.15))   # external search-demand corroboration
+    if gt_vel is not None:
+        parts.append((gt_vel, 0.15))       # external rising/cooling signal
     avail = [(x, w) for x, w in parts if x is not None]
     if not avail:
         return None
@@ -205,7 +230,7 @@ def _feasibility(keyword, mode):
     return round(min(100.0, feas), 1), ip_risk
 
 
-def _rationale(subs, missing, ip_risk, core_missing):
+def _rationale(subs, missing, ip_risk, core_missing, gt=None):
     r = []
     m, c, o, p, f = (subs["market_potential"], subs["competition_health"],
                      subs["opportunity_signal"], subs["private_boost"],
@@ -218,6 +243,12 @@ def _rationale(subs, missing, ip_risk, core_missing):
         r.append("Hidden-gem / enter-now signal")
     if isinstance(p, (int, float)) and p > 70:
         r.append("Matches a proven private winner")
+    if isinstance(gt, dict) and isinstance(gt.get("momentum_pct"), (int, float)):
+        mp = gt["momentum_pct"]
+        if mp >= 20:
+            r.append(f"Google Trends rising (+{round(mp)}%)")
+        elif mp <= -20:
+            r.append(f"Google Trends cooling ({round(mp)}%)")
     if ip_risk == "high":
         r.append("HIGH trademark risk - do not build")
     elif isinstance(f, (int, float)) and f < 55:
@@ -229,14 +260,21 @@ def _rationale(subs, missing, ip_risk, core_missing):
     return r or ["Balanced profile across available metrics"]
 
 
-def score(row, keyword=None, mode=None, private=None, category=None):
+def score(row, keyword=None, mode=None, private=None, category=None,
+          gtrends_dir=None):
     """Score one row. Returns overall_score (or None), verdict, sub_scores (None
-    allowed), the list of missing components, ip_risk, and a rationale."""
+    allowed), the list of missing components, ip_risk, and a rationale.
+
+    gtrends_dir: optional Google Trends read for THIS keyword
+    ({"avg_interest": float, "momentum_pct": float}) - blended into the Market
+    component as external corroboration. None (the default) leaves the score
+    exactly as it was before Trends existed (honest-nulls: a secondary signal
+    never fabricates confidence when it's absent)."""
     w = load_weights(category)
     keyword = keyword or row.get("tag") or row.get("keyword") or ""
     F, ip_risk = _feasibility(keyword, mode)
     subs = {
-        "market_potential": _market(row),
+        "market_potential": _market(row, gtrends_dir),
         "competition_health": _competition(row),
         "opportunity_signal": _opportunity(row),
         "private_boost": _private(keyword) if private is None else private,
@@ -266,8 +304,61 @@ def score(row, keyword=None, mode=None, private=None, category=None):
     return {"keyword": keyword, "overall_score": overall, "verdict": verdict,
             "sub_scores": subs, "missing": missing, "ip_risk": ip_risk,
             "core_complete": not core_missing,
-            "rationale": _rationale(subs, missing, ip_risk, core_missing),
+            "rationale": _rationale(subs, missing, ip_risk, core_missing,
+                                    gtrends_dir),
             "weights_used": wt_map}
+
+
+def opportunity_gap(subs, proven_orders=0):
+    """Winner score (0-100) for the Winner Finder: it rewards the high-demand +
+    low-competition CORNER specifically, not a good all-round score.
+
+    It's the geometric mean of Market (demand) and Competition-health (= low
+    saturation). Because it multiplies the two axes, a niche must be strong on
+    BOTH to score high: high demand in a saturated niche, or an open niche with
+    no demand, both get pulled down hard - which is exactly the trade-off the
+    seller cares about. Returns None when either core axis is missing (honest-
+    null: you can't call something a winner without both signals present).
+
+    proven_orders is OUR OWN sales history for this keyword (learning loop): a
+    niche we've actually sold gets a capped lift (1 sale -> +3 ... 10+ -> +12) so
+    proven winners rise in the ranking. 0 (a brand-new shop) leaves the score
+    exactly as the public data alone would put it - the edge only ever adds."""
+    if not isinstance(subs, dict):
+        return None
+    m = subs.get("market_potential")
+    c = subs.get("competition_health")
+    if not isinstance(m, (int, float)) or not isinstance(c, (int, float)):
+        return None
+    base = math.sqrt(max(0.0, m) * max(0.0, c))
+    po = proven_orders if isinstance(proven_orders, (int, float)) else 0
+    if po and po > 0:
+        base = min(100.0, base + min(12.0, 2.0 + po))
+    return round(base, 1)
+
+
+def gtrends_dirs(keywords, geo="US"):
+    """Best-effort {keyword: {"avg_interest", "momentum_pct"}} for a batch of
+    keywords, ready to hand to score(gtrends_dir=...).
+
+    NEVER raises and never blocks a scoring run: Google Trends is a free but
+    flaky secondary signal (offline, HTTP 429 rate-limit, pytrends missing), so
+    any failure just returns {} and every keyword is scored as an honest null.
+    De-duplicates and drops blanks before hitting the network."""
+    kws = []
+    seen = set()
+    for k in keywords or []:
+        k = (k or "").strip()
+        if k and k.lower() not in seen:
+            seen.add(k.lower())
+            kws.append(k)
+    if not kws:
+        return {}
+    try:
+        from src import gtrends
+        return gtrends.fetch_momentum(kws, geo=geo) or {}
+    except Exception:  # noqa: BLE001 - secondary signal; never break scoring
+        return {}
 
 
 def cell(row, keyword=None, mode=None):
