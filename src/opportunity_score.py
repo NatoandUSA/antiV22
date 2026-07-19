@@ -277,7 +277,7 @@ def _rationale(subs, missing, ip_risk, core_missing, gt=None):
         r.append(f"Feasibility / IP concern ({ip_risk})")
     if core_missing:
         r.append("Core market data incomplete (" + ", ".join(
-            k for k in ("market_potential", "competition_health", "opportunity_signal")
+            k for k in ("market_potential", "competition_health")
             if subs[k] is None) + ") - capped at WATCH")
     return r or ["Balanced profile across available metrics"]
 
@@ -309,8 +309,13 @@ def score(row, keyword=None, mode=None, private=None, category=None,
     avail = [(v, wt_map[k]) for k, v in subs.items() if v is not None]
     overall = (round(sum(v * wt for v, wt in avail) / sum(wt for _, wt in avail), 1)
                if avail else None)
+    # CORE = Market + Competition only (V30.1, external review): the opportunity
+    # signal is a bonus/discriminator, not a prerequisite - its absence must NOT
+    # cap a fully-measured market row at WATCH. When O is absent its weight is
+    # renormalised across the present components (M .376 / C .329 / P .176 /
+    # F .118 with the default weights).
     core_missing = any(subs[k] is None for k in
-                       ("market_potential", "competition_health", "opportunity_signal"))
+                       ("market_potential", "competition_health"))
     if ip_risk == "high":
         verdict = SKIP
     elif overall is None or core_missing:

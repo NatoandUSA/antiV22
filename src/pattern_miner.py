@@ -25,6 +25,7 @@ import statistics as _stats
 from collections import Counter
 from pathlib import Path
 
+from src import supplier_trend as st
 from src.product_fit import POD_NOUNS, JEWELRY_NOUNS, ACRYLIC_NOUNS, EMB_SIGNS
 
 MASTER = Path("etsy_listings.csv")
@@ -35,7 +36,9 @@ _GIFT = {"gift", "gifts", "gift-for", "present"}
 _STOP = {"the", "a", "an", "for", "with", "of", "and", "to", "your", "you", "in",
          "on", "or", "by", "from", "&", "|", "-", "s", "is", "it", "this", "that",
          "her", "him", "his", "my", "our", "are", "be", "de"}
-_VND_PER_USD = 25000.0   # rough; only used to normalise obvious-VND price fields
+def _vnd_rate():
+    from src.engine_config import get as _cfg
+    return float(_cfg("vnd_per_usd"))   # configurable in config/engine.json
 
 
 def _num(v):
@@ -132,7 +135,11 @@ def load_batch(keyword=None):
 
 # --------------------------- the mining ------------------------------------
 def _tokens(title):
-    return [w for w in re.findall(r"[a-z0-9]+", (title or "").lower())
+    # Singularise so plural product words ("sweatshirts", "mugs") collapse to their
+    # singular and match the singular-only product-noun sets — otherwise the miner
+    # under-counts "names a product" and the Keyword Lab picks "sweatshirts" as a
+    # subject and emits nonsense long-tails.
+    return [st._singular(w) for w in re.findall(r"[a-z0-9]+", (title or "").lower())
             if w not in _STOP and len(w) > 1]
 
 
@@ -140,12 +147,18 @@ def _price_band(prices):
     vals = [p for p in prices if isinstance(p, (int, float)) and p > 0]
     if not vals:
         return None
-    usd = [p / _VND_PER_USD if p > 1000 else p for p in vals]   # normalise obvious VND
-    usd.sort()
-    note = "converted from VND" if any(p > 1000 for p in vals) else "USD"
+    # Decide VND vs USD from the DISTRIBUTION (median), not per-price - otherwise a
+    # single premium USD listing ($1,299) gets divided by 25,000 and mislabels the
+    # whole band as VND.
+    is_vnd = _stats.median(vals) > 2000
+    usd = sorted((p / _vnd_rate()) if is_vnd else p for p in vals)
+    n = len(usd)
+    lo_i = n // 5 if n >= 5 else 0
+    hi_i = min(n - 1, (n * 4) // 5) if n >= 5 else n - 1   # symmetric ~P80
     return {"median": round(_stats.median(usd), 2),
-            "low": round(usd[len(usd) // 5], 2) if len(usd) >= 5 else round(usd[0], 2),
-            "high": round(usd[-max(1, len(usd) // 5)], 2), "note": note}
+            "low": round(usd[lo_i], 2), "high": round(usd[hi_i], 2),
+            "note": (f"converted from VND @ {int(_vnd_rate()):,}/USD"
+                     if is_vnd else "USD")}
 
 
 def mine(keyword=None):

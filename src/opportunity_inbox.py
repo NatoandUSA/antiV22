@@ -71,10 +71,17 @@ def _to_scorer(row):
         d["avg_conversion_rate"] = cr
     mom = _num(row.get("momentum") or row.get("momentum_score"))
     if mom is not None:
-        # momentum feeds BOTH velocity (Market) and the opportunity signal, since
-        # these rows came from the opportunity/trending feeds.
+        # momentum = the VELOCITY input only. It must NOT also be copied into
+        # gem_score: that double-counts one input (0.32*0.35 velocity + 0.15
+        # opportunity = ~26% of the overall from a single field). Audited + fixed.
         d["momentum_score"] = mom
-        d["gem_score"] = mom
+    # V30.1 (external review consensus): provenance is NOT a numeric opportunity
+    # signal. A same-source feed made O a constant 85 for every row - pure score
+    # inflation with zero ranking information. O now stays an honest null unless a
+    # REAL discriminating signal exists (explicit gem/opportunity score column),
+    # its weight renormalises away, and core = Market+Competition so its absence
+    # no longer caps the verdict at WATCH. Provenance stays visible as `source`.
+    d["source"] = str(row.get("source") or "").strip()
     lvl = (row.get("competition_level") or "").strip()
     if lvl:
         d["competition_level"] = lvl
@@ -107,8 +114,38 @@ def _evidence(comp, views, rev, cr, mom):
 
 _TIER = {"GO": 0, "CONDITIONAL": 1, "WATCH": 2, "SKIP": 3}
 
+# Small in-process cache: scoring ~1,100 keywords on every homepage load is wasteful.
+# Key on (mode, master mtime, proof mtime) so it auto-invalidates when data changes.
+_CACHE = {}
+
+
+_PROOF_LATEST = Path("data/imports/etsy_proof/latest.json")
+
+
+def _data_stamp():
+    def mt(p):
+        try:
+            return Path(p).stat().st_mtime
+        except OSError:
+            return 0.0
+    return (mt(MASTER), mt(MASTER_ALT), mt(_PROOF_LATEST))
+
 
 def build_inbox(mode=None, limit=80):
+    """Cached wrapper: recompute only when the underlying data files change."""
+    stamp = (mode,) + _data_stamp()
+    hit = _CACHE.get(stamp)
+    if hit is not None:
+        return {"counts": hit["counts"], "rows": hit["rows"][:limit],
+                "has_proof": hit["has_proof"]}
+    full = _build_inbox(mode, limit=100000)
+    _CACHE.clear()                      # only ever keep the newest stamp
+    _CACHE[stamp] = full
+    return {"counts": full["counts"], "rows": full["rows"][:limit],
+            "has_proof": full["has_proof"]}
+
+
+def _build_inbox(mode=None, limit=80):
     """Rank the master keyword data through the LAYERED engine. Returns {counts, rows}.
 
     Per keyword: L0 risk/product-fit gate (product_fit + trademark) can BLOCK or CAP,
@@ -116,6 +153,11 @@ def build_inbox(mode=None, limit=80):
     market signal AND the final action, sorted by final action then market score, so
     a high market score on a broad / theme / risky term never reads as 'Build'."""
     raw = _load_master()
+    try:
+        from src import etsy_proof as ep
+        proof_map = ep.build_proof(mode)
+    except Exception:  # noqa: BLE001
+        proof_map = {}
     best = {}
     for row in raw:
         d, comp, views, rev, cr, mom = _to_scorer(row)
@@ -126,12 +168,19 @@ def build_inbox(mode=None, limit=80):
             s = osc.score(d, keyword=kw, mode=mode)
         except Exception:  # noqa: BLE001
             continue
+        proof = None
+        if proof_map:
+            try:
+                from src import etsy_proof as ep
+                proof = ep.proof_for(kw, proof_map)
+            except Exception:  # noqa: BLE001
+                proof = None
         try:
-            act = re_eng.decide(kw, s["verdict"], mode=mode)
+            act = re_eng.decide(kw, s["verdict"], mode=mode, proof=proof)
         except Exception:  # noqa: BLE001
             act = {"action": "WATCH", "reason": "", "route": "analyze",
                    "fit_status": "", "fit_label": "", "launchable": False,
-                   "priority": 2}
+                   "priority": 2, "proof_tier": 9, "proof": None}
         rec = {
             "keyword": kw,
             "verdict": s["verdict"],          # L2 market-signal verdict
@@ -145,22 +194,33 @@ def build_inbox(mode=None, limit=80):
             "fit_status": act["fit_status"],
             "fit_label": act["fit_label"],
             "priority": act["priority"],
+            "proof_tier": act.get("proof_tier", 9),   # L1: 0 proven, 1 selling
+            "proof": act.get("proof"),
             "comp": comp, "views": views, "rev": rev, "conv": cr, "momentum": mom,
             "evidence": _evidence(comp, views, rev, cr, mom),
             "tier": _TIER.get(s["verdict"], 9),
         }
+        # WATCH sub-rank (review consensus): momentum x conversion bubbles the most
+        # promising of a big WATCH pool to the top ("Next 20 to investigate").
+        rec["watch_rank"] = round((mom or 0.0) * (cr or 0.0) * 100, 1)
         k = kw.lower()
         cur = best.get(k)
-        # keep the stronger row: higher final-action priority, then market score
-        if cur is None or (rec["priority"], rec["score"] or 0) > \
-                (cur["priority"], cur["score"] or 0):
+        # keep the stronger row: proof tier, then final-action priority, then score
+        rank = (-rec["proof_tier"], rec["priority"], rec["score"] or 0)
+        if cur is None or rank > (-cur["proof_tier"], cur["priority"],
+                                  cur["score"] or 0):
             best[k] = rec
 
-    # sort by final action (most actionable first), then market score
+    # sort: Etsy-proof group first, then final action, then (for WATCH rows) the
+    # momentum x conversion sub-rank, then market score (spec order + review fix)
     rows = sorted(best.values(),
-                  key=lambda r: (-r["priority"], -(r["score"] or 0)))
+                  key=lambda r: (r["proof_tier"], -r["priority"],
+                                 -(r["watch_rank"] if r["action"] == "WATCH" else 0),
+                                 -(r["score"] or 0)))
     counts = {
         "total": len(rows),
+        "proven": sum(1 for r in rows if r["proof_tier"] == 0),
+        "selling": sum(1 for r in rows if r["proof_tier"] in (1, 2)),
         "build": sum(1 for r in rows if r["action"] == "BUILD_NOW"),
         "confirm": sum(1 for r in rows if r["action"] == "CONFIRM_FIRST"),
         "review": sum(1 for r in rows if r["action"] == "REVIEW"),
@@ -168,4 +228,4 @@ def build_inbox(mode=None, limit=80):
         "skip": sum(1 for r in rows if r["action"] == "SKIP"),
         "blocked": sum(1 for r in rows if r["action"] == "BLOCKED"),
     }
-    return {"counts": counts, "rows": rows[:limit]}
+    return {"counts": counts, "rows": rows[:limit], "has_proof": bool(proof_map)}

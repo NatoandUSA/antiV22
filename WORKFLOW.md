@@ -1,153 +1,98 @@
-# 🧭 Quy trình nhóm — Etsy Winner Machine (V28)
+# 🧭 Quy trình nhóm — 22Etsy Opportunity OS (V30)
 
-> **Nguyên tắc 1 câu:** Chọn **người mua có ví tiền + cảm xúc** trước, rồi mới thiết kế cho họ.
-> Mọi bước dưới đây tồn tại để **giết ý tưởng yếu TRƯỚC KHI** tốn tiền sản xuất.
+> **Nguyên tắc 1 câu:** Không clone YTuong/eRank/Alura. YTuong/MCP = **máy nghiên cứu**;
+> dashboard này = **máy thực thi + học**: chọn cơ hội → mổ winner → ra keyword mới →
+> dựng listing → ảnh → ads → duyệt → đăng tay → học.
 >
-> 🔒 **KHÔNG BAO GIỜ tự đăng.** Công cụ chỉ chuẩn bị; **người thật bấm đăng thủ công** trên Etsy.
+> 🔒 **KHÔNG BAO GIỜ tự đăng.** Công cụ chỉ chuẩn bị; **người thật bấm đăng thủ công**.
 > 📄 Tài liệu viết **tiếng Việt** cho team; listing luôn viết **tiếng Anh**.
 
-## Mục lục
-
-[TOC]
-
----
-
-## Sơ đồ đường ống mới (fast lane) — 5 bước trên trang chủ
+## Sơ đồ đường ống (trang chủ) — 9 bước
 
 ```
- ①  CAPTURE            📥 Thả file CSV/JSON vào ô trên trang chủ (hoặc extension "Send to agent")
-        │                 → Tự nhận diện nguồn, đưa về đúng "lane"
-        ▼
- ②  FIND WINNERS       🏆 Winner Finder  →  xếp hạng theo "nhu cầu cao × ít cạnh tranh"
-        │                 (chấm điểm cục bộ, tức thì, KHÔNG chờ server)
-        ▼
- ③  BUILD              🚀 Launch Kit  →  1 keyword ra HẾT: verdict + đối thủ + listing SEO
-        │                 + prompt ảnh + kế hoạch ads + checklist, trên MỘT trang
-        ▼
- ④  LAUNCH             ✋ Duyệt tay trong Etsy → đăng 3–5 biến thể → Etsy Ads $1–3/ngày
-        │
-        ▼
- ⑤  LEARN             📉 Ghi nhận đơn bán → vòng học nâng điểm cho niche đã bán được
-        └───────────────────────────────── vòng lặp: winner đã bán tự lên hạng lần sau
+① FEED         → ② RANK        → ③ PATTERN MINER → ④ KEYWORD LAB → ⑤ RE-RANK
+ (MCP + CSV)      (Opportunity     (mổ 5–10 winner   (ra keyword     (quay lại
+                   Inbox)           để biết vì sao)    mới từ mẫu)     Inbox)
+                                                                          │
+ ⑨ LEARN ← ⑧ ADS ← ⑦ PHOTO STUDIO ← ⑥ BUILD (Launch Kit) ←───────────────┘
+ (ghi đơn,   (kế hoạch  (12 slot ảnh,     (title/13 tag/mô tả/
+  Day 3/7)    tay)       real-photo flag)   cá nhân hoá)
 ```
 
-> 🧭 **Điều hướng:** mọi trang có thanh trên cùng (Home · Research · Import · Team · Review · Guide).
-> Ô thả file (Capture) nằm ngay ở bước ① trên trang chủ.
+---
+
+## ② RANK — Opportunity Inbox: **hệ thống xếp hạng NHIỀU LỚP** (trái tim V30)
+
+Điểm thị trường **không phải quan toà duy nhất**. Mỗi keyword đi qua các lớp, và Inbox
+hiển thị **HÀNH ĐỘNG CUỐI** (Final Action), không phải một con số trần trụi:
+
+| Lớp | Tên | Làm gì |
+|---|---|---|
+| **L0** | **Cổng rủi ro / product-fit** | Chạy **TRƯỚC** khi chấm điểm. Trademark → **BLOCKED**; tên shop/không phải sản phẩm → **SKIP**; theme thiếu sản phẩm / seed quá rộng → chặn ở **CONFIRM**; policy (tâm linh…) → **REVIEW**. |
+| **L1** | **Etsy Proof (bằng chứng bán thật)** | Khi có export Alura/EverBee: xếp theo **đơn bán thật + doanh thu + số shop + young-winner**. Niche **đang bán thật** đứng TRÊN niche chỉ đẹp trên giấy. |
+| **L2** | **Market Signal (điểm thị trường)** | Composite từ dữ liệu YTuong thật: demand · competition · conversion · momentum → GO/COND/WATCH/SKIP. Đây là **mô hình giải thích được (dữ liệu thật + trọng số ta chọn)**, không phải toàn bộ quyết định. |
+| **L4** | **Final Action** | 🚀 BUILD NOW · 🔍 CONFIRM FIRST · 🚩 REVIEW · 🟡 WATCH · ⛔ SKIP · 🚫 BLOCKED |
+
+**Thứ tự sắp xếp:** Etsy Proof → Final Action → Market Signal. Đọc từ trên xuống, làm
+hàng **Build now** trước, rồi **Confirm first**.
+
+> 💡 **Bật lớp L1:** thả **CSV Product Research của Alura / EverBee** (có đơn bán, doanh
+> thu, tuổi listing thật) vào ô Capture → chọn nguồn *"Alura/EverBee products"* → Inbox
+> hiện thêm cột **Etsy proof** và tier 🏆 PROVEN / 🟢 SELLING lên đầu.
 
 ---
 
-## ① CAPTURE — thả dữ liệu, tool tự đưa về đúng chỗ
+## ① FEED — thả dữ liệu, tool tự đưa đúng lane
 
-Kéo–thả **1 hoặc NHIỀU** file CSV/JSON vào ô trên trang chủ. Có ô chọn **nguồn** (mặc định **Tự nhận diện**).
-Nhiều file sẽ được **gộp + khử trùng lặp** theo keyword.
+Kéo–thả **1 hoặc NHIỀU** file. Ô chọn nguồn mặc định **Tự nhận diện**.
 
-| Nguồn thả vào | Là loại dữ liệu gì | Tool đưa tới | Ý nghĩa tín hiệu |
-|---|---|---|---|
-| **Etsy / YTrends keywords** | Bảng **keyword** (có cột Views + Competition) | 🏆 **Winner Finder** | Nhu cầu Etsy thật → xếp hạng winner |
-| **Etsy listings / spy** | Bảng **listing** (title + sold + tags, KHÔNG có cột keyword) | 🕵️ **Etsy Spy → keyword leads** | Keyword lặp lại nhiều = có cầu (coi chừng bão hoà) |
-| **Supplier (1688/Alibaba/AliExpress)** | Sản phẩm nhà máy (sold, reorder, MOQ) | 🏭 **Supplier Trend Finder** | Nhà máy đẩy mạnh = người bán đang săn (tín hiệu ĐI TRƯỚC) |
-| **Pinterest** | Pin (title/mô tả, saves) | 📌 **Pinterest Trend Finder** | Người mua quà lên kế hoạch sớm → saves cao = cầu đang lên |
-| **Amazon Xray (Helium 10)** | Keyword Amazon (search volume, competing) | 🏆 Winner Finder (**gắn nhãn tham khảo**) | Chỉ để đối chiếu — cầu Amazon ≠ cầu Etsy |
+| Nguồn | Là gì | Vai trò |
+|---|---|---|
+| **YTuong keyword** (MCP/CSV) | demand/comp/conversion/momentum | → **xếp hạng Inbox (L2)** |
+| **Alura/EverBee products** | đơn bán + doanh thu + tuổi listing thật | → **Etsy Proof (L1)** — bằng chứng bán thật |
+| **Etsy Spy listings** | title/price/shop/ad/star | → **Pattern Miner** (không có đơn bán) |
+| **Pinterest / Supplier** | saves / nhà máy | → xác nhận cầu (badge) |
+| **Amazon Xray** | search volume | → tham khảo, kiểm lại trên Etsy |
 
-> **Trung thực (honest-nulls):** thiếu cột nào thì để trống, **không bịa số**. Nguồn ngoài Etsy chỉ là
-> **manh mối cầu**, phải đối chiếu lại với Etsy trước khi build.
-
-Dưới ô thả có dòng **"Last import: N rows · X phút trước · nguồn"** để biết đang dùng dữ liệu nào.
+> **Trung thực (honest-nulls):** thiếu cột nào để trống, **không bịa số**.
 
 ---
 
-## ② FIND WINNERS — Winner Finder (trái tim của tool)
+## ③ PATTERN MINER — mổ 5–10 winner để biết **VÌ SAO chúng thắng**
 
-`🏆 Winner Finder` lấy import mới nhất và **xếp hạng đúng góc "cầu cao × ít cạnh tranh"**.
+Thả file Etsy Spy cho 1 keyword → tool rút: **từ khoá tiêu đề hay lặp**, **từ đầu 40 ký
+tự** (Etsy coi trọng), **cấu trúc tiêu đề**, **khoảng giá** (tự đổi VND→USD), **% cá nhân
+hoá / gift / free-ship / star-seller**, và **khe hở khai thác được**. Ra **seed keyword**
+cho bước ④.
 
-- **Winner** = trung bình nhân của **Nhu cầu (Demand)** và **Sức khoẻ cạnh tranh (ít bão hoà)**.
-  Phải **mạnh CẢ HAI** mới lên hạng — cầu cao mà bão hoà, hoặc thoáng mà không có cầu, đều bị kéo xuống.
-- Cột **Demand** (dài = tốt) và **Saturation** (ngắn = tốt) hiển thị bằng thanh trực quan.
-- **✔N** cạnh keyword = **shop mình đã bán N đơn** niche này → vòng học đã tự nâng điểm (xem bước ⑤).
-- Bấm **+ Google Trends** để đối chiếu cầu ngoài Etsy cho top 12.
-- **Sharpest pick** ở cuối → bấm thẳng **Build the full Launch Kit**.
+## ④ KEYWORD LAB — ra keyword MỚI từ mẫu thắng (không đoán bừa)
 
-Verdict: **GO ≥ 80 · CONDITIONAL ≥ 65 · WATCH ≥ 50 · SKIP**. Thiếu tín hiệu lõi → tối đa **WATCH** (không GO ẩu).
-
----
-
-## ③ BUILD — Launch Kit (1 winner ra tất cả)
-
-`🚀 Launch Kit` gom mọi thứ để launch **1 winner** trên **một trang**:
-
-1. **Verdict & winner score** — điểm, verdict, trademark; báo đỏ nếu HIGH-risk hoặc SKIP.
-2. **Beat competitors** — khe hở cạnh tranh **đo được** (thiếu cá nhân hoá / title yếu / thiếu tag / video / …), lớn nhất trước.
-3. **Listing draft** — title (keyword trong 40 ký tự đầu), 13 tag, mô tả, cá nhân hoá, bài toán lợi nhuận.
-4. **Photo prompt set** — 10 slot ảnh + prompt AI. **Slot đánh dấu 📸 REAL PHOTO phải là ảnh thật** (mũi chỉ/sản phẩm thật); AI chỉ dùng cho mockup/đồ hoạ.
-5. **Etsy Ads plan** — ngân sách bắt đầu, **breakeven ACOS từ phí Etsy thật**, phủ tag, luật đọc/giết sau 2 tuần.
-6. **Seller launch checklist** — 9 bước từ trademark → sew-out → listing → profit gate → ảnh → publish → ads → **ghi nhận đơn bán**.
-
-> Các công cụ lẻ vẫn có nếu cần: `/draft-listing`, `/photo-brief`, `/ads-plan`, `/edge` (Beat competitors).
+Nhận seed từ Pattern Miner → sinh keyword theo **người mua lân cận cùng niche** (ví dụ
+nurse → ER/ICU/NICU nurse, nurse practitioner…) + biến thể sản phẩm/dịp. Mỗi keyword có
+nút **Score it** → quay lại Inbox để **xếp hạng lại** qua đúng engine nhiều lớp.
 
 ---
 
-## ④ LAUNCH — vẫn 100% thủ công trong Etsy
+## ⑥ BUILD → ⑦ PHOTO → ⑧ ADS → ⑨ LEARN
 
-1. Thiết kế **stitch-safe** (≤6 màu chỉ, hình bold, chữ đọc được); **làm sew-out/proof thật trước khi scale**.
-2. Chạy `📋 Listing Analyzer` (`/grade`) + `💰 Profit Center` (`/profit`) — chốt biên lợi nhuận **≥ 35–40% NET**.
-3. **Người thật** dán nội dung, đăng **3–5 biến thể** của 1 concept (khác angle/sản phẩm), KHÔNG đăng 1 cái.
-4. Bật **Etsy Ads $1–3/ngày** theo kế hoạch — chỉ để gom dữ liệu click, chưa cần lời ngay.
-
----
-
-## ⑤ LEARN — vòng học tự nâng điểm
-
-Khi bán được, vào `📉 Sales feedback` (Launch Kit có sẵn **link điền sẵn**) ghi: keyword, tag, mode, giá, đơn.
-
-- Mỗi đơn ghi nhận → cập nhật `winner_patterns` → **Winner Finder tự nâng điểm** niche đó (và tag liên quan) lần sau.
-- Công cụ gợi ý **GIỮ / SỬA / GIẾT / SCALE** theo Ngày 3 / Ngày 7.
-- Winner đã bán được hiện **✔N** và nổi lên đầu bảng → bạn nhân bản concept thắng ra 10–20 biến thể.
-
-**Flywheel:** capture → winner → launch kit → publish → ghi đơn → vòng học sắc hơn → lần capture sau tốt hơn.
+- **⑥ Launch Kit:** 1 winner → verdict, khe hở đối thủ, title (keyword trong 40 ký tự
+  đầu), 13 tag, mô tả, cá nhân hoá, lợi nhuận — trên một trang.
+- **⑦ Photo Studio:** 12 slot ảnh (hero, macro mũi chỉ, size chart, color chart, cách
+  đặt, bundle, gift, trust/ship, video…). Slot **📸 REAL PHOTO** (embroidery: hero/macro/
+  số đo/sew-out) **phải ảnh thật**; AI chỉ cho mockup/đồ hoạ.
+- **⑧ Ads Test:** kế hoạch **tay** — ngân sách, breakeven ACOS, luật đọc/sửa/giết Day 3/7/14.
+- **⑨ Learn:** ghi đơn (keyword, tag, giá, đơn) → nâng điểm niche & mẫu thắng lần sau.
 
 ---
 
-## Vòng team (khi cần giao việc, không làm 1 mình)
+## Cổng đăng bán & Quy tắc vàng (BẮT BUỘC)
 
-Fast lane ở trên là để **1 người chạy nhanh**. Khi cần chia việc cho team, dùng vòng cũ (vẫn hoạt động):
-
-```
-✅ Confirm & Assign  →  🧭 Research Queue  →  (supplier · design · draft)  →  🔍 Review Queue (Manager duyệt)  →  ✋ Đăng thủ công
-```
-
-- **Manager desk** trên trang chủ: Imported today · In flight · To review · Ready to publish · Blocked · Day 3/7 due.
-- `👥 Team` / `📅 Team Calendar`: giao việc, xem "ai đang làm gì", hạn chót.
-
----
-
-## Bảng điểm Cơ hội (0–100) — cách chấm
-
-`Overall = Market(0.32) + Competition(0.28) + Opportunity(0.15) + Private(0.15) + Feasibility(0.10)`
-
-- **Market** = cầu (views/momentum/conversion). **Competition** = 100 − độ bão hoà.
-- **Private** = dữ liệu bán thật của shop (vòng học). **Feasibility** = sản xuất được + rủi ro trademark.
-- Thiếu tín hiệu lõi (Market/Competition/Opportunity) → **cap ở WATCH**. Trademark HIGH → **SKIP**.
-
----
-
-## Cổng đăng bán (Publish Gate) & Quy tắc vàng (BẮT BUỘC)
-
-- 🔒 **Không tự đăng.** Listing chỉ lên khi mọi cổng cứng đạt **VÀ** Manager ký **VÀ** người thật bấm đăng.
-- 🎯 **Real photo:** ảnh hero + macro mũi chỉ + số đo **phải là ảnh thật**. AI render sản phẩm thật = quảng cáo sai.
-- 🧵 **Sew-out trước khi scale** với thêu. Đo lợi nhuận **thật**, không đo doanh thu.
-- ⚖️ **Trademark:** kiểm mọi cụm từ/thiết kế (USPTO + Google). Không brand/đội/trường/nhân vật/lyrics.
-- 🤖 **KHÔNG** nối tự động hoá vào tài khoản Etsy/Seller Central. Mọi thao tác chạm tài khoản = người thật, thủ công.
-- ✅ **Data-driven, trung thực:** thiếu dữ liệu thì nói thiếu, không bịa "GO".
-
----
-
-## Nhịp làm việc tuần (giữ đơn giản)
-
-- **T2 — Nghiên cứu:** thả 1–3 file (Etsy/YTrends + supplier/pinterest) → Winner Finder → chọn 3 GO.
-- **T3 — Thiết kế:** design + đặt sew-out cho cái qua cổng.
-- **T4 — Listing:** Launch Kit → dán vào Etsy (đăng tay), chạy profit gate.
-- **T5 — Tối ưu:** đọc Stats, áp bảng "triệu chứng → sửa" cho listing đang chạy.
-- **T6 — Marketing:** 3–5 pin Pinterest + 1 video ngắn cho top listing.
+- 🔒 **Không tự đăng.** Listing chỉ lên khi mọi cổng cứng đạt **VÀ** Manager ký **VÀ** người thật bấm đăng. `PUBLISH_AUTOMATION = false`.
+- 🎯 Ảnh hero + macro mũi chỉ + số đo **phải ảnh thật**.
+- 🧵 Sew-out trước khi scale. Đo **lợi nhuận thật**, không đo doanh thu.
+- ⚖️ Kiểm trademark mọi cụm từ/thiết kế. Không brand/đội/trường/nhân vật/lyrics.
+- 🤖 **KHÔNG** nối tự động hoá vào tài khoản Etsy/Seller Central.
+- ✅ Data-driven, trung thực: thiếu dữ liệu thì nói thiếu, **không bịa "GO"**.
 
 ---
 
@@ -161,4 +106,3 @@ ssh -p 55317 etsy@51.79.200.65 "cd ~/etsy-agent && git fetch origin && git reset
 ```
 
 In ra **`active`** = đã lên. Mở https://etsy.theglobalserviceteam.site (Ctrl+F5).
-`push-to-vps.ps1` là **đồng bộ DỮ LIỆU** (report/keyword), **không** deploy code.

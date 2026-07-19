@@ -67,11 +67,64 @@ _ROUTE = {BUILD_NOW: "build", CONFIRM_FIRST: "analyze", REVIEW: "review",
           WATCH: "analyze", SKIP: "skip", BLOCKED: "blocked"}
 
 
-def decide(keyword, market_verdict, mode=None, fit=None):
-    """Combine L0 gate + L2 market verdict into a Final Action.
+def decide(keyword, market_verdict, mode=None, fit=None, proof=None):
+    """Full layered decision: L0 gate -> L1 Etsy proof -> L2 market -> L4 action.
 
-    Returns {action, reason, route, fit_status, fit_label, launchable}. `fit` may be
-    a pre-computed product_fit.classify() dict (to avoid re-classifying)."""
+    `proof` (optional) is an etsy_proof record with real sales evidence. When present
+    and the term isn't hard-gated (trademark/shop-name/policy), real Etsy sales OVERRIDE
+    the market signal - a niche that is actually selling ranks above one that only looks
+    good on paper. Returns the base fields plus proof_tier (0 proven, 1 selling, 9 none)
+    and proof (echoed for the view)."""
+    base = _base_decide(keyword, market_verdict, mode, fit)
+    base["proof_tier"] = 9
+    base["proof"] = None
+    if not proof:
+        return base
+    base["proof"] = proof
+    # Hard gates still win: a trademark/shop-name/policy term stays blocked/skipped/
+    # under review even if it's selling - selling a trademarked item is still risky.
+    if base["action"] in (BLOCKED, SKIP, REVIEW):
+        return base
+    v = proof.get("verdict")
+    ev = proof.get("evidence", "")
+    match = proof.get("match", "exact")
+    conf = proof.get("match_confidence", 1.0)
+    from src.engine_config import get as _cfg
+    high_conf = match == "exact" or (conf or 0) >= _cfg("proof_match_high_conf")
+    if v == "PROVEN_WINNER" and high_conf:
+        base.update({"action": BUILD_NOW, "route": "build", "proof_tier": 0,
+                     "priority": _PRI[BUILD_NOW],
+                     "reason": f"PROVEN on Etsy - real sales, spread across shops "
+                     f"({ev})"})
+    elif v == "PROVEN_WINNER":
+        # medium-confidence fuzzy match: strong evidence but the keyword<->proof
+        # link needs a human eye before it can promote to BUILD (review consensus).
+        if _PRI[base["action"]] < _PRI[CONFIRM_FIRST]:
+            base.update({"action": CONFIRM_FIRST, "route": "analyze",
+                         "priority": _PRI[CONFIRM_FIRST]})
+        base["proof_tier"] = 1
+        base["reason"] = (f"PROVEN evidence via fuzzy match (confidence {conf}) - "
+                          f"confirm the match, then build ({ev})")
+    elif v == "STRONG_SELLER":
+        if _PRI[base["action"]] < _PRI[CONFIRM_FIRST]:
+            base.update({"action": CONFIRM_FIRST, "route": "analyze",
+                         "priority": _PRI[CONFIRM_FIRST]})
+        base["proof_tier"] = 1
+        base["reason"] = f"strong seller on Etsy ({ev}) - {base['reason']}"
+    elif v == "SELLING":
+        # already selling -> at least confirm-first; keep build if the base earned it
+        if _PRI[base["action"]] < _PRI[CONFIRM_FIRST]:
+            base.update({"action": CONFIRM_FIRST, "route": "analyze",
+                         "priority": _PRI[CONFIRM_FIRST]})
+        base["proof_tier"] = 2
+        base["reason"] = f"already selling on Etsy ({ev}) - {base['reason']}"
+    return base
+
+
+def _base_decide(keyword, market_verdict, mode=None, fit=None):
+    """L0 gate + L2 market verdict -> a base Final Action (no proof).
+
+    Returns {action, reason, route, fit_status, fit_label, launchable, priority}."""
     fit = fit or classify(keyword or "", mode)
     status = fit.get("status", "")
     launchable = status in LAUNCHABLE
@@ -102,9 +155,35 @@ def decide(keyword, market_verdict, mode=None, fit=None):
                     "find the winning angle before Launch Kit", "pattern",
                     fit, launchable)
 
+    # LONG-TAIL RULE (owner: "long-tail always converts better; MORE than 3 words";
+    # matches eRank/seller consensus; thresholds configurable in config/engine.json):
+    # - <= short_tail_max_words (2): saturated price-war territory -> Pattern Miner.
+    # - exactly 3 words: BORDERLINE - still not enough specificity for a blind
+    #   build; confirm/expand to a 4-5 word buyer-intent angle first.
+    # - >= long_tail_min_words (4): true long-tail, heuristic BUILD allowed.
+    # Real Etsy PROOF still overrides later in decide() - evidence beats heuristics.
+    from src.engine_config import get as _cfg
+    n_words = _word_count(keyword)
+    lt_min = int(_cfg("long_tail_min_words"))
+    st_max = int(_cfg("short_tail_max_words"))
+    if launchable and market_action == BUILD_NOW and n_words < lt_min:
+        if n_words <= st_max:
+            return _out(CONFIRM_FIRST,
+                        f"short-tail keyword ({n_words} words) - saturated + "
+                        "price-war territory; expand to a 4-5 word long-tail angle "
+                        "(Pattern Miner / Keyword Lab) before building", "pattern",
+                        fit, launchable)
+        return _out(CONFIRM_FIRST,
+                    f"borderline long-tail ({n_words} words) - strong signal, but "
+                    f"expand to a {lt_min}+ word buyer-intent angle (or bring real "
+                    "sales proof) before building", "pattern", fit, launchable)
+
     # no gate -> a launchable product WITH a design angle: the market signal decides
-    return _out(market_action, _market_reason(market_verdict), _ROUTE[market_action],
-                fit, launchable)
+    reason = _market_reason(market_verdict)
+    if launchable and n_words >= lt_min and market_action in (BUILD_NOW, CONFIRM_FIRST):
+        reason += (f" - long-tail ({n_words} words): higher buyer intent, "
+                   "lower competition")
+    return _out(market_action, reason, _ROUTE[market_action], fit, launchable)
 
 
 def _market_reason(verdict, gate_note=None):
@@ -115,6 +194,10 @@ def _market_reason(verdict, gate_note=None):
         "SKIP": "market signal too weak - saturated or thin",
     }.get(verdict, "insufficient signal")
     return f"{base} (note: {gate_note})" if gate_note else base
+
+
+def _word_count(keyword):
+    return len(re.findall(r"[a-z0-9]+", (keyword or "").lower()))
 
 
 def _out(action, reason, route, fit, launchable):

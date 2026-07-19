@@ -1789,16 +1789,25 @@ def inbox(mode=None):
         L += ["> **No keyword data yet.** Feed keywords from the YTrends MCP "
               "(auto) or drop a YTrends keyword CSV on the home page, then reload."]
         return "\n".join(L)
-    L += [f"_**{c['total']}** keywords ranked — "
+    proof_line = ""
+    if data.get("has_proof"):
+        proof_line = (f"\U0001F3C6 **{c.get('proven', 0)}** proven · "
+                      f"\U0001F7E2 **{c.get('selling', 0)}** selling (real Etsy sales) · ")
+    L += [f"_**{c['total']}** keywords ranked — {proof_line}"
           f"\U0001F680 **{c['build']}** build now · "
           f"\U0001F50D **{c['confirm']}** confirm first · "
           f"\U0001F6A9 **{c['review']}** review · "
           f"\U0001F7E1 **{c['watch']}** watch · "
           f"⛔ **{c['skip']}** skip · \U0001F6AB **{c['blocked']}** blocked. "
-          "Sorted by **final action**, then market signal. The gate runs first, so a "
-          "high market score on a broad or risky term never reads as 'Build'._", "",
-          "| # | Keyword | Product-fit | Final action | Market signal | Comp. | Conv. | Mom. | Do |",
-          "|---|---|---|---|---|---|---|---|---|"]
+          "Sorted by **Etsy proof → final action → market signal** (the layered "
+          "engine). Real sales rank above a good-looking market score._", ""]
+    if not data.get("has_proof"):
+        L += ["> \U0001F4A1 _No Etsy Proof export loaded yet. Drop an **Alura / "
+              "EverBee product-research CSV** (real sold + revenue + listing age) to "
+              "switch on the proof tier that ranks *already-selling* niches on top._",
+              ""]
+    L += ["| # | Keyword | Etsy proof | Product-fit | Final action | Market | Comp. | Conv. | Mom. | Do |",
+          "|---|---|---|---|---|---|---|---|---|---|"]
     for i, r in enumerate(rows, 1):
         kw = _clean(r["keyword"])
         a_icon = _ACTION_ICON.get(r["action"], "")
@@ -1807,20 +1816,31 @@ def inbox(mode=None):
                f"({r['score']})" if r["score"] is not None else
                f"{_MKT_ICON.get(r['verdict'], '')} {r['verdict']}")
         fit = r.get("fit_label") or "—"
+        pr = r.get("proof")
+        tier = r.get("proof_tier", 9)
+        if pr and tier == 0:
+            proof_cell = f"\U0001F3C6 {pr['evidence']}"
+        elif pr and tier == 1:
+            proof_cell = f"\U0001F4AA {pr['evidence']}"   # strong seller / fuzzy-proven
+        elif pr and tier == 2:
+            proof_cell = f"\U0001F7E2 {pr['evidence']}"
+        else:
+            proof_cell = "—"
         comp = int(r["comp"]) if r["comp"] is not None else "—"
         conv = f"{r['conv']*100:.1f}%" if r["conv"] is not None else "—"
         mom = int(r["momentum"]) if r["momentum"] is not None else "—"
-        L.append(f"| {i} | {kw} | {fit} | {action} | {mkt} | {comp} "
+        L.append(f"| {i} | {kw} | {proof_cell} | {fit} | {action} | {mkt} | {comp} "
                  f"| {conv} | {mom} | {_inbox_do(r)} |")
     top = next((r for r in rows if r["action"] in ("BUILD_NOW", "CONFIRM_FIRST")),
                None)
     if top:
-        why = "; ".join(top["rationale"][:2]) if top.get("rationale") else ""
         act_word = top["action"].replace("_", " ").title()
+        mkt_txt = (f"{top['verdict']} ({top['score']})" if top["score"] is not None
+                   else top["verdict"])
         L += ["", f"## ◎ Start here: **{_clean(top['keyword'])}** — "
               f"{_ACTION_ICON.get(top['action'], '')} {act_word}",
-              f"_{top['action_reason']}. Market signal {top['verdict']} "
-              f"({top['score']}) · {top['evidence']}._", ""]
+              f"_{top['action_reason']}. Market signal {mkt_txt} · "
+              f"{top['evidence']}._", ""]
         if top["route"] == "build":
             L.append(f"**▶ [Build the full Launch Kit](/launch-kit?q="
                      f"{_uq(top['keyword'])})** — verdict, competitor edge, listing, "
@@ -1832,12 +1852,25 @@ def inbox(mode=None):
         else:
             L.append(f"**▶ [Confirm it first](/should-sell?q={_uq(top['keyword'])})** "
                      "before committing to a build.")
-    L += ["", "_**Layered ranking:** risk / product-fit gate → market signal "
-          "(demand · competition · conversion · momentum, an explainable model of "
-          "real market data + our chosen weights) → final action. Conversion is one "
-          "of the strongest buyer-quality signals after query match, not the only "
-          "one. Trademark / policy / broad-seed terms are gated before scoring; "
-          "human review still required before building._"]
+    # "Next 20 to investigate": the most promising WATCH rows (momentum x
+    # conversion sub-rank) so a 1,000-row honest WATCH pool stays actionable.
+    next20 = [r for r in rows if r["action"] == "WATCH"][:20]
+    if next20:
+        L += ["", "## \U0001F50E Next 20 to investigate (top WATCH by "
+              "momentum × conversion)", ""]
+        line = " · ".join(
+            f"[{_clean(r['keyword'])}](/should-sell?q={_uq(r['keyword'])})"
+            for r in next20)
+        L += [line, ""]
+    L += ["", "_**Layered ranking:** risk / product-fit gate → Etsy proof → market "
+          "signal (demand · competition · conversion · momentum, an explainable "
+          "model of real market data + our chosen weights) → final action. "
+          "Conversion is one of the strongest buyer-quality signals after query "
+          "match, not the only one. **Long-tail rule:** short-tail keywords "
+          "(≤ 2 words) never show Build now — they're saturated, price-war "
+          "territory; expand to a 3–5 word buyer-intent angle first (only real "
+          "Etsy sales proof overrides this). Trademark / policy / broad-seed "
+          "terms are gated before scoring; human review still required._"]
     return "\n".join(L)
 
 

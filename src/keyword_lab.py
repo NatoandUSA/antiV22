@@ -66,7 +66,9 @@ def generate(keyword=None, limit=14):
 
     def add(kw, angle):
         kw = re.sub(r"\s+", " ", kw).strip().lower()
-        if kw and kw not in seen and len(kw.split()) >= 2:
+        # long-tail only: 3+ words convert better with less competition (owner's
+        # selling experience + eRank/seller consensus) - never emit short-tails.
+        if kw and kw not in seen and len(kw.split()) >= 3:
             seen.add(kw)
             cands.append({"keyword": kw, "angle": angle})
 

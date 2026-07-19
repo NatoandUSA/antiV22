@@ -15,15 +15,18 @@
 
 ## 0. Sơ đồ tổng quan — đọc cái này trước
 
-Trang chủ giờ là một **đường ống 5 bước**. Đi từ trái sang phải:
+Trang chủ giờ là một **bảng 9 bước**. Đi từ trái sang phải:
 
 ```
-①CAPTURE → ②FIND WINNERS → ③BUILD → ④LAUNCH → ⑤LEARN
- (thả CSV)   (Winner Finder)  (Launch Kit)  (đăng tay)  (ghi đơn → học)
+① FEED → ② RANK → ③ PATTERN MINER → ④ KEYWORD LAB → ⑤ RE-RANK
+                                                        │
+⑨ LEARN ← ⑧ ADS ← ⑦ PHOTO ← ⑥ BUILD ←───────────────────┘
 ```
 
-Ý tưởng lõi: **tìm keyword có "cầu cao × ít cạnh tranh", rồi launch trước khi Etsy bão hoà.**
-"Cầu cao × ít cạnh tranh" cũng là chỗ **Etsy Ads rẻ nhất** và **lên top dễ nhất**.
+Ý tưởng lõi: **Inbox xếp hạng NHIỀU LỚP** — Cổng rủi ro (L0) → Bằng chứng bán thật trên
+Etsy (L1) → Điểm thị trường (L2) → **Hành động cuối** (Build/Confirm/Review/Watch/Skip/
+Blocked). Niche **đang bán thật** đứng trên niche chỉ đẹp trên giấy; keyword rủi ro/quá
+rộng **không bao giờ** hiện "Build".
 
 ---
 
@@ -62,18 +65,27 @@ Sau khi thả, tool tự chuyển bạn tới đúng trang. Dòng **"Last import
 
 ---
 
-## 4. ② FIND WINNERS — Winner Finder (`/winners`)
+## 4. ② RANK — Opportunity Inbox (`/inbox`) — xếp hạng NHIỀU LỚP
 
-Trang này lấy **import mới nhất** và xếp hạng theo góc **cầu cao × ít cạnh tranh**.
+Trang này lấy dữ liệu keyword YTuong thật và đưa **từng keyword qua các lớp**, rồi hiện
+**Hành động cuối** (Final Action), không phải một con số trần.
 
-**Đọc bảng:**
+**Đọc bảng (trái → phải):**
 
-- Cột **Winner** = điểm sweet-spot (trung bình nhân Demand × Competition-health). Cao = tốt CẢ HAI mặt.
-- **Demand** (thanh dài = cầu cao) · **Saturation** (thanh ngắn = ít cạnh tranh, tốt).
-- **✔N** sau keyword = **shop đã bán N đơn** niche này (vòng học nâng điểm — xem mục 8).
-- **Verdict:** GO ≥ 80 · CONDITIONAL ≥ 65 · WATCH ≥ 50 · SKIP. Thiếu tín hiệu lõi → chỉ tối đa **WATCH**.
-- Cuối trang: **Sharpest pick** → bấm **Build the full Launch Kit**.
-- Bấm **+ Cross-check Google Trends** để xác nhận cầu ngoài Etsy cho top 12.
+- **Etsy proof:** 🏆 PROVEN / 🟢 SELLING nếu có export Alura/EverBee (đơn bán thật) —
+  hàng có bằng chứng bán thật xếp lên đầu. Trống = chưa có export.
+- **Product-fit:** loại từ khoá (POD/Embroidery/Theme-needs-product/Broad seed/Policy…).
+- **Final action:** 🚀 Build now · 🔍 Confirm first · 🚩 Review · 🟡 Watch · ⛔ Skip · 🚫 Blocked.
+- **Market signal:** GO ≥ 80 · CONDITIONAL 65–79 · WATCH 50–64 · SKIP < 50 — **mô hình
+  giải thích được** (demand · competition · conversion · momentum, dữ liệu thật + trọng số
+  ta chọn). Đây là **một lớp**, không phải toàn bộ quyết định.
+- Cột **Do**: đúng nút cho hành động — Build → Launch Kit; Confirm/Pattern → Pattern Miner;
+  Review → xem lại; Watch → kiểm tra.
+- **Cổng chạy TRƯỚC điểm:** trademark → Blocked; tên shop → Skip; theme/seed rộng → chặn
+  ở Confirm; policy → Review. Nên keyword rủi ro/rộng **không bao giờ** ra "Build".
+
+> 💡 **Bật Etsy proof:** thả CSV **Product Research của Alura/EverBee** (đơn bán + doanh
+> thu + tuổi listing) → chọn nguồn *"Alura/EverBee products"*. Inbox hiện tier PROVEN/SELLING.
 
 **Nếu bảng trống:** file bạn thả không có cột keyword + competition (ví dụ file listings). Dùng đúng lane
 (Etsy Spy) hoặc thả file YTrends keyword.

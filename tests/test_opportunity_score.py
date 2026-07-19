@@ -46,7 +46,11 @@ def test_missing_component_does_not_zero_the_score():
     assert s["sub_scores"]["market_potential"] is not None
     assert s["sub_scores"]["market_potential"] > 50
     assert s["sub_scores"]["opportunity_signal"] is None  # honest null
-    assert s["verdict"] == "WATCH"                        # core (O) missing
+    # V30.1: core = Market + Competition only. A missing O renormalises away and
+    # must NOT cap the verdict at WATCH (external-review consensus fix).
+    assert s["core_complete"] is True
+    assert s["verdict"] in ("GO", "CONDITIONAL", "WATCH")
+    assert s["overall_score"] is not None
 
 
 def test_competition_level_strings_map():

@@ -412,7 +412,32 @@ def build_app(password, secret):
                 return f"{s // 3600}h ago"
             return f"{s // 86400}d ago"
 
-        if _imp_info:
+        # Prefer the structured import diagnostics (lane + files + rows, flags an
+        # empty parse loudly); fall back to the ytrends-only info.
+        _li = None
+        try:
+            import json as _json
+            import time as _time
+            _lip = Path("data/imports/last_import.json")
+            if _lip.is_file():
+                _li = _json.loads(_lip.read_text(encoding="utf-8"))
+                _li["age_seconds"] = max(0, int(_time.time() - _li.get("ts", 0)))
+        except Exception:  # noqa: BLE001
+            _li = None
+        if _li:
+            if _li.get("empty"):
+                _hd = ", ".join(_li.get("headers", [])[:6]) or "no headers found"
+                _implabel_html = ('<div class="plmeta">⚠️ <b>Last import parsed 0 '
+                                  f'rows</b> (lane: {_h_esc(str(_li.get("lane")))}) — '
+                                  f'columns seen: {_h_esc(_hd)}. Check the file type '
+                                  'or pick the source manually.</div>')
+            else:
+                _implabel_html = ('<div class="plmeta">Last import: '
+                                  f'<b>{_li.get("rows")} rows</b> from '
+                                  f'{_li.get("files")} file(s) → '
+                                  f'<b>{_h_esc(str(_li.get("lane")))}</b> lane · '
+                                  f'{_ago(_li.get("age_seconds"))}</div>')
+        elif _imp_info:
             _v = _imp_info.get("view") or ""
             _implabel_html = ('<div class="plmeta">Last import: '
                               f'<b>{_imp_info["rows"]} rows</b> · '
@@ -447,6 +472,7 @@ def build_app(password, secret):
             '<option value="supplier">Supplier — Alibaba/AliExpress/1688</option>'
             '<option value="pinterest">Pinterest — pins &amp; saves</option>'
             '<option value="etsy">Etsy listings / spy — competitor intel</option>'
+            '<option value="proof">Alura / EverBee products — real sales proof</option>'
             '<option value="amazon">Amazon Xray — reference</option>'
             '</select>'
             '<label class="pldz" id="pldz">'
@@ -492,6 +518,67 @@ def build_app(password, secret):
             '})();</script>')
         pipeline_html = _plcss + _plrail
 
+        # --- Opportunity action queue: pull the actionable rows straight from the
+        # Inbox so the home says WHAT TO DO NOW, not just "here are tools" (V29 CF005).
+        _oppq = ""
+        try:
+            from urllib.parse import quote_plus as _uq
+            from src import opportunity_inbox as _oi
+            _idata = _oi.build_inbox(active if active in ("pod", "embroidery") else None,
+                                     limit=6)
+            _ic = _idata["counts"]
+            _qcss = (
+                '<style>'
+                '.oppq{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:2px 0 10px}'
+                '.oppq .qc{border:1px solid var(--line);border-radius:11px;padding:11px 13px;'
+                'background:var(--surface);text-decoration:none;display:block}'
+                '.oppq .qc:hover{border-color:var(--accent)}'
+                '.oppq .qn{font-size:22px;font-weight:800;letter-spacing:-.5px}'
+                '.oppq .ql{font-size:11.5px;color:var(--ink-soft);font-weight:600;margin-top:2px}'
+                '.oppq .qc.go .qn{color:var(--ok)}.oppq .qc.warn .qn{color:#c07a00}'
+                '.oppq .qc.bad .qn{color:#c0392b}'
+                '.opprows{border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:6px}'
+                '.opprow{display:flex;align-items:center;gap:10px;padding:9px 13px;'
+                'border-top:1px solid var(--line);font-size:13px;text-decoration:none;color:var(--ink)}'
+                '.opprow:first-child{border-top:0}.opprow:hover{background:var(--accent-bg)}'
+                '.opprow .ok{flex:1;font-weight:600}.opprow .oa{font-size:11px;font-weight:700;'
+                'padding:2px 8px;border-radius:20px;background:var(--accent-bg);color:var(--accent);white-space:nowrap}'
+                '.opprow .om{font-size:11px;color:var(--ink-faint);white-space:nowrap}'
+                '</style>')
+            _act_label = {"BUILD_NOW": "Build now", "CONFIRM_FIRST": "Confirm first",
+                          "REVIEW": "Review", "WATCH": "Watch", "SKIP": "Skip",
+                          "BLOCKED": "Blocked"}
+            _act_href = {"build": "/launch-kit", "pattern": "/pattern-miner",
+                         "review": "/should-sell", "analyze": "/should-sell",
+                         "watch": "/should-sell", "skip": "/inbox", "blocked": "/inbox"}
+            _rowhtml = ""
+            for _r in _idata["rows"][:5]:
+                _href = _act_href.get(_r.get("route"), "/inbox")
+                _rowhtml += (
+                    f'<a class="opprow" href="{_href}?q={_uq(_r["keyword"])}">'
+                    f'<span class="ok">{_h_esc(_r["keyword"])}</span>'
+                    f'<span class="om">{_h_esc(_r.get("fit_label") or "")}</span>'
+                    f'<span class="oa">{_act_label.get(_r["action"], _r["action"])}</span></a>')
+            _oppq = (
+                _qcss + '<h2 class="grouph">🎯 Today\'s opportunities — act on these</h2>'
+                '<div class="oppq">'
+                f'<a class="qc go" href="/inbox?mode={active}"><div class="qn">{_ic["build"]}</div>'
+                '<div class="ql">🚀 Build now</div></a>'
+                f'<a class="qc" href="/pattern-miner?mode={active}"><div class="qn">{_ic["confirm"]}</div>'
+                '<div class="ql">🔍 Confirm / Pattern Miner</div></a>'
+                f'<a class="qc warn" href="/inbox?mode={active}"><div class="qn">{_ic["review"] + _ic["watch"]}</div>'
+                '<div class="ql">🚩 Review / watch</div></a>'
+                f'<a class="qc bad" href="/inbox?mode={active}"><div class="qn">{_ic["blocked"]}</div>'
+                '<div class="ql">🚫 Blocked (trademark)</div></a>'
+                '</div>'
+                + (f'<div class="opprows">{_rowhtml}</div>' if _rowhtml else '')
+                + f'<p class="note" style="margin:0 0 4px">Straight from the '
+                f'<a href="/inbox?mode={active}">Opportunity Inbox</a> — '
+                f'{_ic["total"]} keywords ranked through the risk gate → market '
+                'signal → final action.</p>')
+        except (SystemExit, Exception):  # noqa: BLE001 - never break the home
+            _oppq = ""
+
         # --- Instant Product Command Center: one keyword -> full workspace ---
         tools = (
             '<h2 class="grouph">⚡ Instant Product Command Center</h2>'
@@ -526,7 +613,7 @@ def build_app(password, secret):
             '<button formaction="/edge">Beat competitors</button>'
             '<button class="primary" formaction="/launch-kit">🚀 Launch Kit</button>'
             '</div></details></form>'
-            + pipeline_html +
+            + pipeline_html + _oppq +
             # --- DAILY: the team loop. The pipeline rail above is the hero; the
             # everyday team surfaces stay here, the ~40 others under Advanced. ---
             '<h2 class="grouph">🎯 Daily — the team loop</h2>'
@@ -634,7 +721,8 @@ def build_app(password, secret):
         # task that needs research is one click away, but the default is action.)
         focus = ""
         _mu = current_user()
-        if _mu:
+        try:                        # never let the task/research desk 500 the home
+         if _mu:
             from src import tasks as _tk, research as rs
             mine = _tk.my_open(_mu["user_id"])
             od = sum(1 for t in mine if _tk.is_overdue(t))
@@ -675,6 +763,8 @@ def build_app(password, secret):
             focus = (f'<section class="focus"><h2 class="grouph">{title}</h2>'
                      f'<div class="tkstats">{tilehtml}</div>'
                      f'<div class="tkactions">{actbtns}</div></section>')
+        except (SystemExit, Exception):  # noqa: BLE001 - one bad panel can't break home
+            focus = ""
         _deg = _data_degraded()
         deg_banner = ('<div class="notice warn">⚠️ <b>DATA DEGRADED:</b> '
                       f'{_h_esc(_deg)}</div>' if _deg else "")
@@ -1763,12 +1853,32 @@ def build_app(password, secret):
                 blob = " ".join(str(x).lower() for x in (h or []))
                 return any(k in blob for k in ("search volume", "competing products",
                                                "asin", "cerebro", "title density"))
+
+            def _looks_product(h):
+                # Alura Product Research / EverBee Product Analytics export: per-listing
+                # rows with a title + real revenue + sales + an age or reviews column,
+                # and NO keyword column. Requiring age/reviews keeps a plain Etsy Spy
+                # listings export (title/price/shop, no age) in the Pattern-Miner lane
+                # instead of hijacking it here.
+                cells = [str(x).lower() for x in (h or [])]
+                blob = " ".join(cells)
+                has_title = any(k in c for c in cells
+                                for k in ("title", "product", "listing", "item"))
+                has_rev = "revenue" in blob
+                has_sales = any(k in blob for k in ("sales", "sold", "orders"))
+                has_age_or_reviews = ("age" in blob or "review" in blob
+                                      or "rating" in blob)
+                has_kw = any("keyword" in c or "phrase" in c for c in cells)
+                return (has_title and has_rev and has_sales
+                        and has_age_or_reviews and not has_kw)
             # Supplier & Pinterest exports go to the reverse-signal lanes and are
             # stored SEPARATELY so the Etsy Winner Finder never scores them as Etsy
             # keywords. Amazon Xray is a keyword table -> the Etsy lane, but stamped
             # "amazon-xray" so it's shown as a reference. Auto-detect from columns.
             if kind == "auto":
-                if st.looks_like_supplier(hdrs):
+                if _looks_product(hdrs):
+                    kind = "proof"                     # Alura/EverBee product export
+                elif st.looks_like_supplier(hdrs):
                     kind = "supplier"
                 elif st.looks_like_pinterest(hdrs):
                     kind = "pinterest"
@@ -1782,7 +1892,21 @@ def build_app(password, secret):
                     kind = "keywords"
             _trend_dest = {"supplier": "/supplier-trends",
                            "pinterest": "/pinterest-trends", "etsy": "/etsy-spy"}
-            if kind in _trend_dest:
+            if kind == "proof":
+                # Etsy Proof lane: real per-listing sales -> ranks the Inbox proof tier.
+                # Also feed the SAME listings to the Etsy Spy lane so the Pattern Miner
+                # can mine their titles - one drop powers both stages.
+                from src import etsy_proof as ep
+                mode_p = m if m in ("pod", "embroidery") else None
+                nsaved = ep.save_export(hdrs, payload.get("rows") or [], mode_p,
+                                        source="product-export")
+                try:
+                    st.save_payload(payload, source="etsy")
+                except Exception:  # noqa: BLE001
+                    pass
+                dest = f"/inbox{modeq}"
+                act = f"etsy-proof upload({n_files}): {nsaved} listings"
+            elif kind in _trend_dest:
                 st.save_payload(payload, source=kind)
                 dest = f"{_trend_dest[kind]}{modeq}"
                 act = f"{kind} upload({n_files}): {len(payload.get('rows') or [])} rows"
@@ -1800,6 +1924,22 @@ def build_app(password, secret):
             return _tool_error("Import file", exc)
         try:
             activity.log("ytrends_import", module="ytx_import", action=act)
+        except Exception:  # noqa: BLE001
+            pass
+        # Import diagnostics (review request): a structured record of what was
+        # detected + where it went, surfaced on the home capture bar so a
+        # mis-detected or empty import is never silent.
+        try:
+            import json as _json
+            import time as _time
+            Path("data/imports").mkdir(parents=True, exist_ok=True)
+            n_rows = len(payload.get("rows") or [])
+            Path("data/imports/last_import.json").write_text(_json.dumps({
+                "ts": _time.time(), "lane": kind, "files": n_files,
+                "rows": n_rows, "filenames": [u[0] for u in uploads][:5],
+                "headers": [str(h) for h in (hdrs or [])][:15],
+                "empty": n_rows == 0,
+            }), encoding="utf-8")
         except Exception:  # noqa: BLE001
             pass
         return redirect(dest)
@@ -3276,18 +3416,18 @@ def run_server(args):
 CSS = """
 :root{--paper:#FBFAF6;--surface:#FFF;--ink:#221C13;--ink-soft:#6E6455;
 --ink-faint:#9A8E7B;--line:#E7DFD0;--line-strong:#D8CDB8;--accent:#A8480A;
---accent-bg:#FBEFE1;--ok:#1E6B54;--stop:#99271F;
+--accent-bg:#FBEFE1;--ok:#1E6B54;--stop:#99271F;--row:#F6F0E6;
 --shadow:0 1px 2px rgba(34,28,19,.05),0 6px 20px -12px rgba(34,28,19,.18);
 --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,sans-serif;
 --mono:ui-monospace,"SF Mono",Menlo,Monaco,"Cascadia Mono",monospace;}
 @media(prefers-color-scheme:dark){:root{--paper:#15110B;--surface:#1E180F;
 --ink:#F1E9DA;--ink-soft:#AA9D88;--ink-faint:#7C7060;--line:#322818;
 --line-strong:#43371F;--accent:#EA8B44;--accent-bg:#2A1D0E;--ok:#58B491;
---stop:#E68A80;--shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -14px rgba(0,0,0,.6);}}
+--stop:#E68A80;--row:#231B10;--shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -14px rgba(0,0,0,.6);}}
 *{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);
 font-family:var(--sans);line-height:1.5;-webkit-font-smoothing:antialiased}
 a{color:inherit;text-decoration:none}
-.wrap{max-width:760px;margin:0 auto;padding:34px 22px 72px}
+.wrap{max-width:880px;margin:0 auto;padding:34px 22px 72px}
 header{border-bottom:2px solid var(--ink);padding-bottom:16px;margin-bottom:22px;
 display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .brand .kicker{font-family:var(--mono);font-size:.68rem;letter-spacing:.15em;
@@ -3615,9 +3755,19 @@ padding:1px 5px;border-radius:4px}
 .md pre{position:relative;background:var(--paper);border:1px solid var(--line-strong);
 border-radius:9px;padding:13px 15px;margin:1em 0;overflow-x:auto;font-size:.82rem;line-height:1.55}
 .md pre code{background:none;padding:0}
-.md table{border-collapse:collapse;width:100%;font-size:.85rem;margin:1em 0}
-.md th,.md td{border:1px solid var(--line);padding:6px 10px;text-align:left}
-.md th{background:var(--accent-bg)}
+.md table{border-collapse:separate;border-spacing:0;width:100%;font-size:.85rem;
+margin:1.1em 0;display:block;overflow-x:auto;-webkit-overflow-scrolling:touch;
+border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}
+.md th,.md td{padding:9px 12px;text-align:left;white-space:nowrap;
+border-bottom:1px solid var(--line)}
+.md th{background:var(--accent-bg);font-family:var(--mono);font-size:.7rem;
+letter-spacing:.04em;text-transform:uppercase;color:var(--ink-soft);font-weight:700;
+position:sticky;top:0}
+.md td{font-variant-numeric:tabular-nums}
+.md tbody tr:nth-child(even){background:var(--row)}
+.md tbody tr:hover{background:var(--accent-bg)}
+.md tbody tr:last-child td{border-bottom:0}
+.md td strong{font-variant-numeric:tabular-nums}
 .md blockquote{border-left:4px solid var(--line-strong);margin:1em 0;padding:.2em 1em;
 color:var(--ink-soft)}
 .copy{position:absolute;top:7px;right:7px;font-family:var(--mono);font-size:.64rem;
