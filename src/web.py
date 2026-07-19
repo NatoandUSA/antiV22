@@ -1776,14 +1776,28 @@ def build_app(password, secret):
 
     # ---- YTrends Exporter extension ingest (token-gated, CORS, no session) ----
     ALLOWED_IMPORT_ORIGINS = {"https://trends.ytuong.ai", "https://ytuong.me",
-                              "https://heyetsy.com", "https://www.etsy.com"}
+                              "https://heyetsy.com", "https://www.etsy.com",
+                              "https://www.pinterest.com", "https://www.amazon.com",
+                              "https://www.alibaba.com"}
+    # regional subdomains (vn.pinterest.com, m.alibaba.com...) share the capture UX
+    ALLOWED_IMPORT_SUFFIXES = (".pinterest.com", ".alibaba.com", ".amazon.com")
+
+    def _origin_ok(origin):
+        if origin in ALLOWED_IMPORT_ORIGINS:
+            return True
+        try:
+            host = origin.split("://", 1)[1]
+        except IndexError:
+            return False
+        return origin.startswith("https://") and \
+            any(host.endswith(sfx) for sfx in ALLOWED_IMPORT_SUFFIXES)
 
     def _json_resp(obj, code=200):
         import json as _j
         return Response(_j.dumps(obj), status=code, mimetype="application/json")
 
     def _cors(resp, origin):
-        allow = origin if origin in ALLOWED_IMPORT_ORIGINS else "https://trends.ytuong.ai"
+        allow = origin if _origin_ok(origin) else "https://trends.ytuong.ai"
         resp.headers["Access-Control-Allow-Origin"] = allow
         resp.headers["Vary"] = "Origin"
         resp.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
@@ -1810,8 +1824,27 @@ def build_app(password, secret):
         if payload is None:
             return _cors(_json_resp({"ok": False, "error": "invalid JSON body"}, 400), origin)
         try:
+            # Route by COLUMNS with the same lane precedence as /import-file, so a
+            # Pinterest / Alibaba / ytuong-Hot / Etsy-search capture from the
+            # extension lands in its proper lane instead of the keyword ingester.
             from src import ytx_import
-            summary = ytx_import.ingest(payload)
+            from src import supplier_trend as _st
+            hdrs = payload.get("headers") or []
+            n_rows = len(payload.get("rows") or [])
+            lane = None
+            if _st.looks_like_supplier(hdrs):
+                lane = "supplier"
+            elif _st.looks_like_pinterest(hdrs):
+                lane = "pinterest"
+            elif (not _st.has_keyword_col(hdrs)
+                  and _st.looks_like_etsy_listings(hdrs)):
+                lane = "etsy"
+            if lane:
+                _st.save_payload(payload, source=lane)
+                summary = {"type": lane, "view": str(payload.get("view") or lane),
+                           "rows_received": n_rows}
+            else:
+                summary = ytx_import.ingest(payload)
         except ValueError as exc:
             return _cors(_json_resp({"ok": False, "error": str(exc)}, 400), origin)
         except Exception:  # noqa: BLE001

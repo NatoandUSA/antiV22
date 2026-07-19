@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "YTrends + Etsy + Pinterest Exporter (for 22etsy-agent)",
-  "version": "1.3.0",
-  "description": "One-click CSV export of YTrends tables, Etsy search listings (with HeyEtsy overlay analytics), AND Pinterest pins (title, description, saves, image, outbound link, pinner, board) - plus optional push to your local 22etsy-agent. Reads only what's on your screen; no automation.",
+  "name": "22Etsy Exporter - YTrends / Etsy / Pinterest / Amazon / Alibaba",
+  "version": "2.0.0",
+  "description": "One-click CSV/JSON export of the data on your screen - YTrends tables, ytuong.me Hot listings, Etsy search (with HeyEtsy overlay), Pinterest pins, Amazon search results, Alibaba search results - plus optional push to your 22etsy-agent. Read-only; no automation, no login access.",
   "icons": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" },
   "permissions": ["storage", "downloads"],
   "host_permissions": [
@@ -11,10 +11,13 @@
     "https://heyetsy.com/*",
     "https://www.etsy.com/*",
     "https://www.pinterest.com/*",
-    "https://*.pinterest.com/*"
+    "https://*.pinterest.com/*",
+    "https://www.amazon.com/*",
+    "https://www.alibaba.com/*",
+    "https://*.alibaba.com/*"
   ],
   "action": {
-    "default_title": "YTrends Exporter settings",
+    "default_title": "22Etsy Exporter settings",
     "default_popup": "popup.html",
     "default_icon": { "16": "icons/icon16.png", "48": "icons/icon48.png" }
   },
@@ -26,7 +29,10 @@
         "https://heyetsy.com/*",
         "https://www.etsy.com/*",
         "https://www.pinterest.com/*",
-        "https://*.pinterest.com/*"
+        "https://*.pinterest.com/*",
+        "https://www.amazon.com/*",
+        "https://www.alibaba.com/*",
+        "https://*.alibaba.com/*"
       ],
       "js": ["content.js"],
       "css": ["content.css"],
