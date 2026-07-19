@@ -217,6 +217,20 @@ KDATA_FIELDS = ["keyword", "etsy_listings", "seller_count", "views_24h",
 def write_keyword_data(store, path="keyword_data.csv"):
     from datetime import date
     today = str(date.today())
+    # collected_at = FIRST-SEEN date. The old behaviour re-stamped EVERY row
+    # with today's date on every rewrite, destroying the growth history the
+    # owner needs ("how fast is the keyword base updated?"). Preserve the
+    # existing date per keyword; only genuinely NEW keywords get today.
+    first_seen = {}
+    try:
+        with open(path, encoding="utf-8-sig") as f:
+            for r in csv.DictReader(f):
+                k = (r.get("keyword") or "").strip().lower()
+                d = (r.get("collected_at") or "").strip()
+                if k and d:
+                    first_seen[k] = d
+    except OSError:
+        pass
     rows = sorted(store.values(), key=lambda r: r["score"], reverse=True)
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=KDATA_FIELDS)
@@ -233,8 +247,14 @@ def write_keyword_data(store, path="keyword_data.csv"):
                 "conversion_rate": round(_num(r["conv"]), 4),
                 "momentum": round(r["score"], 2),
                 "tm_risk": "",
-                "source": "mcp:" + r["source"],
-                "collected_at": today,
+                # keep the TRUE channel: only bare MCP view names get the mcp:
+                # prefix. ext:*/keyword-lab/*-lead rows keep their identity so
+                # the growth history can say WHERE keywords came from.
+                "source": (r["source"] if (":" in (r["source"] or "")
+                                           or (r["source"] or "") == "keyword-lab"
+                                           or (r["source"] or "").endswith("-lead"))
+                           else "mcp:" + (r["source"] or "")),
+                "collected_at": first_seen.get(r["tag"].strip().lower()) or today,
             })
     return len(rows)
 
@@ -316,6 +336,13 @@ def harvest(append=True, cap_pod=140, cap_emb=90, log=lambda s: None):
         except Exception:
             pass
 
+    if append and store:
+        try:   # growth ledger: the MCP pull is a channel like any other
+            from src.import_ledger import record as _lrec
+            _lrec(user="mcp-auto", channel="mcp", view="harvest",
+                  rows=len(store), kw_new=len(new))
+        except Exception:  # noqa: BLE001
+            pass
     return {"scanned": len(store), "wrote_data": wrote_data,
             "new_total": len(new),
             "new_emb": sum(1 for r in new if matches_mode(r["tag"], "embroidery")),

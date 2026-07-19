@@ -1,0 +1,42 @@
+{
+  "manifest_version": 3,
+  "name": "22Etsy Exporter - YTrends / Etsy / Pinterest / Amazon / Alibaba",
+  "version": "2.2.0",
+  "description": "One-click CSV/JSON export of the data on your screen - YTrends tables, ytuong.me Hot listings, Etsy search (with HeyEtsy overlay), Pinterest pins, Amazon search results, Alibaba search results - plus optional push to your 22etsy-agent. Read-only; no automation, no login access.",
+  "icons": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" },
+  "permissions": ["storage", "downloads"],
+  "host_permissions": [
+    "https://trends.ytuong.ai/*",
+    "https://ytuong.me/*",
+    "https://heyetsy.com/*",
+    "https://www.etsy.com/*",
+    "https://www.pinterest.com/*",
+    "https://*.pinterest.com/*",
+    "https://www.amazon.com/*",
+    "https://www.alibaba.com/*",
+    "https://*.alibaba.com/*"
+  ],
+  "action": {
+    "default_title": "22Etsy Exporter settings",
+    "default_popup": "popup.html",
+    "default_icon": { "16": "icons/icon16.png", "48": "icons/icon48.png" }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://trends.ytuong.ai/*",
+        "https://ytuong.me/*",
+        "https://heyetsy.com/*",
+        "https://www.etsy.com/*",
+        "https://www.pinterest.com/*",
+        "https://*.pinterest.com/*",
+        "https://www.amazon.com/*",
+        "https://www.alibaba.com/*",
+        "https://*.alibaba.com/*"
+      ],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}

@@ -118,6 +118,7 @@ def _merge_keywords(view, rows, idx, path="keyword_data.csv"):
                     revenue=parse_number(r.get("avg_revenue")),
                     views=parse_number(r.get("views_24h")))
     added = 0
+    before = set(store)                 # keywords already in the master
     for row in rows:
         kw = (_cell(row, idx["keyword"]) or "").strip()
         if not kw:
@@ -133,8 +134,9 @@ def _merge_keywords(view, rows, idx, path="keyword_data.csv"):
             views=parse_number(_cell(row, idx["views"])),
             comp=(_cell(row, idx["comp"]) or None))
         added += 1
+    new_kws = len(set(store) - before)  # genuinely NEW (not dupes/updates)
     harvest.write_keyword_data(store, path)
-    return added
+    return added, new_kws
 
 
 def _write_csv(path, headers, rows):
@@ -166,7 +168,9 @@ def ingest(payload):
         return out
     if idx["keyword"] is not None:
         out["type"] = "keywords"
-        out["keyword_rows_merged"] = _merge_keywords(view, rows, idx)
+        merged, new_kws = _merge_keywords(view, rows, idx)
+        out["keyword_rows_merged"] = merged
+        out["keywords_new"] = new_kws   # NEW keywords (dupes excluded)
     elif idx["category"] is not None:
         out["type"] = "categories"
         out["files"].append(_write_csv(CATEGORY_CSV, headers, rows))

@@ -399,13 +399,15 @@
   function onSend() {
     const data = currentData();
     if (!data) { flash("No data found on this page.", false); return; }
-    chrome.storage.local.get({ agentUrl: "", agentToken: "" }, (cfg) => {
+    chrome.storage.local.get({ agentUrl: "", agentToken: "", operator: "" }, (cfg) => {
       const url = (cfg.agentUrl || "").trim();
       if (!url) { flash("Set your agent URL in the extension popup first.", false); return; }
       flash("Sending to agent...", null);
       const headers = { "Content-Type": "application/json" };
       if ((cfg.agentToken || "").trim()) headers["X-Import-Token"] = cfg.agentToken.trim();
-      fetch(url, { method: "POST", headers, body: JSON.stringify(payload(data)) })
+      const body = payload(data);
+      if ((cfg.operator || "").trim()) body.operator = cfg.operator.trim();
+      fetch(url, { method: "POST", headers, body: JSON.stringify(body) })
         .then((r) => {
           if (!r.ok) throw new Error("HTTP " + r.status);
           flash(`Sent ${data.rows.length} rows to agent (${sourceTag()}).`, true);

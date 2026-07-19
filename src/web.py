@@ -449,6 +449,20 @@ def build_app(password, secret):
                               + (f' · {_h_esc(_v)}' if _v else '') + '</div>')
         else:
             _implabel_html = '<div class="plmeta">No imports yet — drop your first file.</div>'
+        # Keyword-base growth: how fast the base updates + where it comes from
+        try:
+            from src import import_ledger as _ilg
+            _g = _ilg.stats()
+            _chan = " · ".join(
+                f"{_h_esc(k)} <b>{v}</b>" for k, v in
+                sorted(_g["by_channel_total"].items(), key=lambda kv: -kv[1]))
+            _implabel_html += (
+                '<div class="plmeta">\U0001F4C8 Keyword base: '
+                f'<b>{_g["total"]}</b> total · <b>+{_g["today"]}</b> today · '
+                f'<b>+{_g["last7"]}</b> last 7 days &nbsp;|&nbsp; {_chan} '
+                f'&nbsp;·&nbsp; <a href="/kw-history">who added what →</a></div>')
+        except Exception:  # noqa: BLE001
+            pass
         if _has_imp:
             _nt, _nx, _nh, _nl = ("Import ready",
                 "You have fresh imports — open the Opportunity Inbox: every file "
@@ -1716,6 +1730,62 @@ def build_app(password, secret):
         except (SystemExit, Exception) as exc:  # noqa: BLE001
             return _tool_error("Opportunity Inbox", exc)
 
+    @app.route("/kw-history")
+    @login_required
+    def kw_history():
+        """Keyword-base growth + attribution: daily adds by channel, per-person
+        totals (from the import ledger), and the recent import events."""
+        import html as _h
+        from src import import_ledger as il
+        g = il.stats(days=14)
+        chan_cols = sorted({c for d in g["daily"] for c in d["by_channel"]})
+        chead = "".join(f"<th>{_h.escape(c)}</th>" for c in chan_cols)
+        drows = ""
+        for d in g["daily"]:
+            cells = "".join(f"<td>{d['by_channel'].get(c, '') or ''}</td>"
+                            for c in chan_cols)
+            drows += (f"<tr><td><b>{_h.escape(d['date'])}</b></td>"
+                      f"<td><b>+{d['added']}</b></td>{cells}</tr>")
+        if not drows:
+            drows = ('<tr><td colspan="9">No dated additions yet — dates start '
+                     'recording correctly from this deploy.</td></tr>')
+        urows = "".join(
+            f"<tr><td><b>{_h.escape(str(u['user']))}</b></td><td>+{u['today']}</td>"
+            f"<td>+{u['last7']}</td><td><b>+{u['total']}</b></td>"
+            f"<td>{u['rows']}</td><td>{u['events']}</td></tr>"
+            for u in g["by_user"]) or (
+            '<tr><td colspan="6">No import events recorded yet. Staff names '
+            'appear here once they set "Your name" in the extension popup, or '
+            'when they drop files while logged in.</td></tr>')
+        erows = "".join(
+            f"<tr><td>{_h.escape(str(e.get('date', '')))}</td>"
+            f"<td>{_h.escape(str(e.get('user', '')))}</td>"
+            f"<td>{_h.escape(str(e.get('channel', '')))}</td>"
+            f"<td>{_h.escape(str(e.get('view', ''))[:40])}</td>"
+            f"<td>{e.get('rows', 0)}</td><td><b>+{e.get('kw_new', 0)}</b></td></tr>"
+            for e in g["recent_events"]) or '<tr><td colspan="6">—</td></tr>'
+        content = (
+            '<article class="md"><h1>\U0001F4C8 Keyword base — growth &amp; '
+            'who added what</h1>'
+            f'<p><b>{g["total"]}</b> keywords total · <b>+{g["today"]}</b> today '
+            f'· <b>+{g["last7"]}</b> in the last 7 days.</p>'
+            '<h2>Daily additions (last 14 days, by channel)</h2>'
+            f'<table><tr><th>Date</th><th>New keywords</th>{chead}</tr>{drows}</table>'
+            '<h2>By person</h2>'
+            '<p class="note">Counted from the import ledger: extension sends '
+            '(with the staff name set in the popup), homepage file drops '
+            '(logged-in user), Keyword Lab adds, and the MCP auto-pull.</p>'
+            '<table><tr><th>Who</th><th>Today</th><th>7 days</th><th>Total new '
+            'kws</th><th>Rows imported</th><th>Imports</th></tr>'
+            f'{urows}</table>'
+            '<h2>Recent import events</h2>'
+            '<table><tr><th>Date</th><th>Who</th><th>Channel</th><th>View</th>'
+            f'<th>Rows</th><th>New kws</th></tr>{erows}</table>'
+            f'<p class="note">{_h.escape(g["note"])}</p></article>')
+        return page("Keyword base history", _bar()
+                    + _stage_nav("feed", "", request.args.get("mode") or "")
+                    + content)
+
     _STAGES_NAV = [("feed", "\U0001F4E5 Feed", "/imports"),
                    ("rank", "\U0001F3C6 Rank", "/inbox"),
                    ("pattern", "\U0001F52C Pattern", "/pattern-miner"),
@@ -1833,6 +1903,16 @@ def build_app(password, secret):
             added, enriched = kl.save_candidates(kws, mode)
             activity.log("keyword_lab_add", module="keyword_lab",
                          action=f"added {added} (enriched {enriched})")
+            try:
+                from src import import_ledger as _il
+                _u = current_user()
+                _il.record(user=(_u or {}).get("display_name")
+                           or (_u or {}).get("email"),
+                           channel="keyword-lab",
+                           view=(request.form.get("q") or "")[:60],
+                           rows=len(kws), kw_new=added)
+            except Exception:  # noqa: BLE001
+                pass
         except Exception as exc:  # noqa: BLE001
             return _tool_error("Keyword Lab", exc)
         # land on the RE-RANKED inbox FOCUSED on the niche just expanded, so the
@@ -1977,6 +2057,18 @@ def build_app(password, secret):
                                 f'{summary["rows_received"]} rows')
         except Exception:  # noqa: BLE001
             pass
+        # WHO/HOW-MANY ledger: extension sends an optional `operator` (staff
+        # name from the popup); without it the event is honestly 'extension'.
+        try:
+            from src import import_ledger as _il
+            _op = str(payload.get("operator") or "").strip()[:60]
+            _il.record(user=_op or "extension (no name set)",
+                       channel="extension", view=summary.get("view", ""),
+                       lanes={summary.get("type", "?"): summary.get("rows_received", 0)},
+                       files=1, rows=summary.get("rows_received", 0),
+                       kw_new=summary.get("keywords_new", 0))
+        except Exception:  # noqa: BLE001
+            pass
         return _cors(_json_resp({"ok": True, **summary}), origin)
 
     @app.route("/import-file", methods=["POST"])
@@ -2029,6 +2121,7 @@ def build_app(password, secret):
             lanes = {}
             headers_seen = []
             parsed_any = False
+            kw_new_total = 0
             for fn, raw in uploads:
                 try:
                     p1, _n1 = ytx_import.parse_uploads([(fn, raw)])
@@ -2069,7 +2162,8 @@ def build_app(password, secret):
                     if kf == "amazon":
                         p1["view"] = "amazon-xray"
                     try:
-                        ytx_import.ingest(p1)
+                        _s1 = ytx_import.ingest(p1)
+                        kw_new_total += int(_s1.get("keywords_new") or 0)
                     except ValueError:
                         kf = "unreadable"
                 lanes[kf] = lanes.get(kf, 0) + nrows
@@ -2110,6 +2204,16 @@ def build_app(password, secret):
                 "headers": [str(h) for h in (headers_seen or [])][:15],
                 "empty": total_rows == 0,
             }), encoding="utf-8")
+        except Exception:  # noqa: BLE001
+            pass
+        # WHO/HOW-MANY ledger: file drops are session-authed, so we know the user
+        try:
+            from src import import_ledger as _il
+            _u = current_user()
+            _il.record(user=(_u or {}).get("display_name") or (_u or {}).get("email"),
+                       channel="file-drop", view=act, lanes=lanes,
+                       files=len(uploads), rows=sum(lanes.values()),
+                       kw_new=kw_new_total)
         except Exception:  # noqa: BLE001
             pass
         return redirect(dest)
