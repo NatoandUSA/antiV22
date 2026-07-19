@@ -60,16 +60,17 @@ def _get(path, params):
         time.sleep(wait)
 
     resp = None
-    for attempt in range(4):
+    # (connect, read) timeout + 2 tries: fail fast when the API is unreachable
+    # so web pages degrade to honest-nulls instead of freezing for minutes.
+    for attempt in range(2):
         try:
             resp = requests.get(f"{BASE_URL}{path}", params=params,
-                                headers=HEADERS, timeout=30)
+                                headers=HEADERS, timeout=(4, 15))
         except requests.RequestException as exc:
-            if attempt == 3:
-                raise SystemExit(f"YTrends network error after 4 tries: {exc}")
-            wait = 2 ** attempt * 5
-            print(f"  network error ({exc}); retry in {wait}s...")
-            time.sleep(wait)
+            if attempt == 1:
+                raise SystemExit(f"YTrends network error after 2 tries: {exc}")
+            print("  network error; retry in 3s...")
+            time.sleep(3)
             continue
         if resp.status_code == 429 or resp.status_code >= 500:
             if attempt == 3:

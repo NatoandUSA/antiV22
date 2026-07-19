@@ -69,6 +69,11 @@ def generate(keyword=None, limit=14):
     candidates = [{keyword, angle}] - fresh long-tails to push back into the Inbox."""
     pat = pm.mine(keyword)
     seed = pat.get("seed_words") or []
+    # A THIN pattern (fewer than 3 matched listings) is noise, not signal — one
+    # stray listing must never steer the expansion into the wrong niche. Fall
+    # back to the typed keyword itself as the subject/product source.
+    if keyword and (pat.get("matched") or 0) < 3:
+        seed = []
     subject = _subject(seed, pat.get("keyword") or keyword)
     product = _product(seed, pat.get("keyword") or keyword)
     cands, seen = [], set()

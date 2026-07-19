@@ -1771,16 +1771,48 @@ def _inbox_do(r):
     return "~~skip~~"
 
 
-def inbox(mode=None):
+def _inbox_row(i, r):
+    """One ranked table row (shared by the FOCUS table and the full list)."""
+    kw = _clean(r["keyword"])
+    a_icon = _ACTION_ICON.get(r["action"], "")
+    action = f"{a_icon} {r['action'].replace('_', ' ').title()}"
+    mkt = (f"{_MKT_ICON.get(r['verdict'], '')} {r['verdict']} "
+           f"({r['score']})" if r["score"] is not None else
+           f"{_MKT_ICON.get(r['verdict'], '')} {r['verdict']}")
+    fit = r.get("fit_label") or "—"
+    pr = r.get("proof")
+    tier = r.get("proof_tier", 9)
+    if pr and tier == 0:
+        proof_cell = f"\U0001F3C6 {pr['evidence']}"
+    elif pr and tier == 1:
+        proof_cell = f"\U0001F4AA {pr['evidence']}"   # strong seller / fuzzy-proven
+    elif pr and tier == 2:
+        proof_cell = f"\U0001F7E2 {pr['evidence']}"
+    else:
+        proof_cell = "—"
+    comp = int(r["comp"]) if r["comp"] is not None else "—"
+    conv = f"{r['conv']*100:.1f}%" if r["conv"] is not None else "—"
+    mom = int(r["momentum"]) if r["momentum"] is not None else "—"
+    return (f"| {i} | {kw} | {proof_cell} | {fit} | {action} | {mkt} | {comp} "
+            f"| {conv} | {mom} | {_inbox_do(r)} |")
+
+
+_INBOX_HDR = ["| # | Keyword | Etsy proof | Product-fit | Final action | Market | Comp. | Conv. | Mom. | Do |",
+              "|---|---|---|---|---|---|---|---|---|---|"]
+
+
+def inbox(mode=None, q=""):
     """Opportunity Inbox — your real keyword data through the LAYERED ranking engine.
 
     Each keyword passes a risk / product-fit GATE, then the composite Market-Signal
     score, and ends on a FINAL ACTION (Build now / Confirm first / Review / Watch /
     Skip / Blocked). The market score is real market data + our chosen weights (an
     explainable model, not the whole decision) — the gate keeps broad seeds, themes
-    without a product, shop names, and policy/trademark terms out of 'Build'."""
+    without a product, shop names, and policy/trademark terms out of 'Build'.
+    Pass q to FOCUS: the rows related to that keyword rank first."""
     from src import opportunity_inbox as oi
-    data = oi.build_inbox(mode)
+    q = (q or "").strip()
+    data = oi.build_inbox(mode, q=q or None)
     rows = data["rows"]
     c = data["counts"]
     label = MODE_LABEL.get(mode, mode) if mode else "all modes"
@@ -1801,36 +1833,49 @@ def inbox(mode=None):
           f"⛔ **{c['skip']}** skip · \U0001F6AB **{c['blocked']}** blocked. "
           "Sorted by **Etsy proof → final action → market signal** (the layered "
           "engine). Real sales rank above a good-looking market score._", ""]
+    # honest provenance: exactly which data sources fed THIS ranking
+    src = data.get("sources") or {}
+    if src:
+        lane_bit = ""
+        if src.get("pinterest_leads") or src.get("supplier_leads"):
+            lane_bit = (f" · \U0001F4CC **{src.get('pinterest_leads', 0)}** Pinterest "
+                        f"leads + \U0001F3ED **{src.get('supplier_leads', 0)}** supplier "
+                        f"leads ({src.get('lane_new', 0)} entered the rank as new "
+                        "candidates)")
+        L += [f"_\U0001F4E1 Data in this rank: **{src.get('master_rows', 0)}** master "
+              f"keyword rows (YTrends MCP + extension imports + "
+              f"**{src.get('keyword_lab', 0)}** from Keyword Lab) · "
+              f"**{src.get('proof_listings', 0)}** real-sales proof listings "
+              f"(Alura/EverBee exports + your Etsy captures){lane_bit}._", ""]
+    # ------- FOCUS: the typed keyword drives the view (keyword-aware inbox) ---
+    if data.get("focus_q"):
+        fr = data.get("focus") or []
+        fq = _clean(data["focus_q"])
+        uq = _uq(data["focus_q"])
+        L += [f"## \U0001F3AF Focus: “{fq}” — {len(fr)} related keyword(s) in the rank", ""]
+        if fr:
+            L += list(_INBOX_HDR)
+            for i, r in enumerate(fr, 1):
+                L.append(_inbox_row(i, r))
+            L += ["", f"**Next step for this niche:** "
+                  f"[\U0001F52C Mine the winning pattern](/pattern-miner?q={uq}) · "
+                  f"[\U0001F4A1 Generate new keywords](/keyword-lab?q={uq}) · "
+                  f"[\U0001F680 Build the Launch Kit](/launch-kit?q={uq})", ""]
+        else:
+            L += [f"> No ranked keyword matches “{fq}” yet. "
+                  f"**[\U0001F52C Run the Pattern Miner](/pattern-miner?q={uq})** on "
+                  "your captures, then **[\U0001F4A1 Keyword Lab]"
+                  f"(/keyword-lab?q={uq})** → “Add to Inbox” to bring this niche "
+                  "into the rank with real long-tail candidates.", ""]
+        L += ["---", "", "### Full ranking (all keywords)", ""]
     if not data.get("has_proof"):
         L += ["> \U0001F4A1 _No Etsy Proof export loaded yet. Drop an **Alura / "
               "EverBee product-research CSV** (real sold + revenue + listing age) to "
               "switch on the proof tier that ranks *already-selling* niches on top._",
               ""]
-    L += ["| # | Keyword | Etsy proof | Product-fit | Final action | Market | Comp. | Conv. | Mom. | Do |",
-          "|---|---|---|---|---|---|---|---|---|---|"]
+    L += list(_INBOX_HDR)
     for i, r in enumerate(rows, 1):
-        kw = _clean(r["keyword"])
-        a_icon = _ACTION_ICON.get(r["action"], "")
-        action = f"{a_icon} {r['action'].replace('_', ' ').title()}"
-        mkt = (f"{_MKT_ICON.get(r['verdict'], '')} {r['verdict']} "
-               f"({r['score']})" if r["score"] is not None else
-               f"{_MKT_ICON.get(r['verdict'], '')} {r['verdict']}")
-        fit = r.get("fit_label") or "—"
-        pr = r.get("proof")
-        tier = r.get("proof_tier", 9)
-        if pr and tier == 0:
-            proof_cell = f"\U0001F3C6 {pr['evidence']}"
-        elif pr and tier == 1:
-            proof_cell = f"\U0001F4AA {pr['evidence']}"   # strong seller / fuzzy-proven
-        elif pr and tier == 2:
-            proof_cell = f"\U0001F7E2 {pr['evidence']}"
-        else:
-            proof_cell = "—"
-        comp = int(r["comp"]) if r["comp"] is not None else "—"
-        conv = f"{r['conv']*100:.1f}%" if r["conv"] is not None else "—"
-        mom = int(r["momentum"]) if r["momentum"] is not None else "—"
-        L.append(f"| {i} | {kw} | {proof_cell} | {fit} | {action} | {mkt} | {comp} "
-                 f"| {conv} | {mom} | {_inbox_do(r)} |")
+        L.append(_inbox_row(i, r))
     top = next((r for r in rows if r["action"] in ("BUILD_NOW", "CONFIRM_FIRST")),
                None)
     if top:

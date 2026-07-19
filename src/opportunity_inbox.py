@@ -14,6 +14,7 @@ listing — so we rank the keywords, and the Spy listings feed the Pattern Miner
 (competitor intelligence) separately.
 """
 import csv
+import re
 from pathlib import Path
 
 from src import opportunity_score as osc
@@ -121,6 +122,8 @@ _CACHE = {}
 
 _PROOF_LATEST = Path("data/imports/etsy_proof/latest.json")
 _CAPTURE_DIR = Path("data/imports/etsy_spy")
+_PIN_DIR = Path("data/imports/pinterest")
+_SUP_DIR = Path("data/imports/supplier")
 
 
 def _data_stamp():
@@ -129,26 +132,61 @@ def _data_stamp():
             return Path(p).stat().st_mtime
         except OSError:
             return 0.0
-    try:  # newest capture file also feeds the proof layer now
-        cap = max((f.stat().st_mtime for f in _CAPTURE_DIR.glob("*.json")),
-                  default=0.0)
-    except OSError:
-        cap = 0.0
-    return (mt(MASTER), mt(MASTER_ALT), mt(_PROOF_LATEST), cap)
+
+    def newest(d):
+        try:  # newest file in a capture lane (proof / pinterest / supplier)
+            return max((f.stat().st_mtime for f in Path(d).glob("*.json")),
+                       default=0.0)
+        except OSError:
+            return 0.0
+    return (mt(MASTER), mt(MASTER_ALT), mt(_PROOF_LATEST),
+            newest(_CAPTURE_DIR), newest(_PIN_DIR), newest(_SUP_DIR))
 
 
-def build_inbox(mode=None, limit=80):
-    """Cached wrapper: recompute only when the underlying data files change."""
+def _tokens(text):
+    """Singularized token set for fuzzy keyword matching (shirt==shirts)."""
+    try:
+        from src.supplier_trend import _singular
+    except Exception:  # noqa: BLE001
+        def _singular(w):
+            return w
+    return {_singular(t) for t in re.findall(r"[a-z0-9]+", (text or "").lower())
+            if len(t) > 1}
+
+
+def focus_rows(rows, q):
+    """Rows related to the typed keyword q, in engine-rank order (biggest token
+    overlap first). q='patchwork usa tee' matches 'personalized patchwork usa
+    shirt' etc. — the FOCUS view that makes the Inbox keyword-aware."""
+    toks = _tokens(q)
+    if not toks:
+        return []
+    need = min(len(toks), 2)            # 1-word q -> 1 shared; else >= 2 shared
+    out = []
+    for r in rows:
+        shared = len(toks & _tokens(r["keyword"]))
+        if shared >= need:
+            out.append((shared, r))
+    out.sort(key=lambda t: -t[0])       # stable: keeps engine order within ties
+    return [r for _, r in out]
+
+
+def build_inbox(mode=None, limit=80, q=None):
+    """Cached wrapper: recompute only when the underlying data files change.
+    Pass q to also get `focus`: the rows related to that keyword (full-list
+    search, not just the visible slice)."""
     stamp = (mode,) + _data_stamp()
-    hit = _CACHE.get(stamp)
-    if hit is not None:
-        return {"counts": hit["counts"], "rows": hit["rows"][:limit],
-                "has_proof": hit["has_proof"]}
-    full = _build_inbox(mode, limit=100000)
-    _CACHE.clear()                      # only ever keep the newest stamp
-    _CACHE[stamp] = full
-    return {"counts": full["counts"], "rows": full["rows"][:limit],
-            "has_proof": full["has_proof"]}
+    full = _CACHE.get(stamp)
+    if full is None:
+        full = _build_inbox(mode, limit=100000)
+        _CACHE.clear()                  # only ever keep the newest stamp
+        _CACHE[stamp] = full
+    res = {"counts": full["counts"], "rows": full["rows"][:limit],
+           "has_proof": full["has_proof"], "sources": full.get("sources", {})}
+    if q:
+        res["focus"] = focus_rows(full["rows"], q)[:30]
+        res["focus_q"] = q
+    return res
 
 
 def _build_inbox(mode=None, limit=80):
@@ -217,6 +255,69 @@ def _build_inbox(mode=None, limit=80):
                                   cur["score"] or 0):
             best[k] = rec
 
+    # --- CAPTURE LANES FEED THE RANK TOO (owner: "data must be USED, not just
+    # shown"): titles from the Pinterest + supplier lanes are reduced to
+    # launchable keywords (supplier_trend.extract_keyword) and enter the SAME
+    # layered engine as honest-null candidates — no market numbers invented, so
+    # they rank as WATCH/CONFIRM until YTrends data or Etsy proof backs them,
+    # and a lane keyword that matches your Etsy captures lights the proof tier.
+    lane_counts = {"pinterest": 0, "supplier": 0}
+    lane_new = 0
+    try:
+        from src import supplier_trend as st
+        for _lane in ("pinterest", "supplier"):
+            try:
+                res = st.analyze_latest(mode, limit=40, source=_lane)
+            except Exception:  # noqa: BLE001
+                continue
+            for lead in (res.get("leads") or []):
+                kw = (lead.get("keyword") or "").strip().lower()
+                if not kw:
+                    continue
+                lane_counts[_lane] += 1
+                cur = best.get(kw)
+                if cur is not None:     # already ranked from the master — tag it
+                    if f"{_lane}-lead" not in (cur.get("also_from") or []):
+                        cur.setdefault("also_from", []).append(f"{_lane}-lead")
+                    continue
+                try:
+                    s = osc.score({"tag": kw, "source": f"{_lane}-lead"},
+                                  keyword=kw, mode=mode)
+                except Exception:  # noqa: BLE001
+                    continue
+                proof = None
+                if proof_map:
+                    try:
+                        from src import etsy_proof as ep
+                        proof = ep.proof_for(kw, proof_map)
+                    except Exception:  # noqa: BLE001
+                        proof = None
+                try:
+                    act = re_eng.decide(kw, s["verdict"], mode=mode, proof=proof)
+                except Exception:  # noqa: BLE001
+                    continue
+                nsup = lead.get("supplier_count") or lead.get("n")
+                best[kw] = {
+                    "keyword": kw, "verdict": s["verdict"],
+                    "score": s["overall_score"], "sub_scores": s["sub_scores"],
+                    "rationale": s["rationale"], "ip_risk": s.get("ip_risk"),
+                    "action": act["action"], "action_reason": act["reason"],
+                    "route": act["route"], "fit_status": act["fit_status"],
+                    "fit_label": act["fit_label"], "priority": act["priority"],
+                    "proof_tier": act.get("proof_tier", 9),
+                    "proof": act.get("proof"),
+                    "comp": None, "views": None, "rev": None, "conv": None,
+                    "momentum": None,
+                    "evidence": (f"{_lane} lead"
+                                 + (f" · {int(nsup)} products" if nsup else "")
+                                 + " · no market data yet"),
+                    "tier": _TIER.get(s["verdict"], 9),
+                    "watch_rank": 0.0, "source": f"{_lane}-lead",
+                }
+                lane_new += 1
+    except Exception:  # noqa: BLE001 — lanes must never break the inbox
+        pass
+
     # sort: Etsy-proof group first, then final action, then (for WATCH rows) the
     # momentum x conversion sub-rank, then market score (spec order + review fix)
     rows = sorted(best.values(),
@@ -234,4 +335,15 @@ def _build_inbox(mode=None, limit=80):
         "skip": sum(1 for r in rows if r["action"] == "SKIP"),
         "blocked": sum(1 for r in rows if r["action"] == "BLOCKED"),
     }
-    return {"counts": counts, "rows": rows[:limit], "has_proof": bool(proof_map)}
+    # honest provenance: exactly which sources fed THIS ranking
+    sources = {
+        "master_rows": len(raw),
+        "keyword_lab": sum(1 for r in raw
+                           if (r.get("source") or "").strip() == "keyword-lab"),
+        "proof_listings": len(proof_map),
+        "pinterest_leads": lane_counts["pinterest"],
+        "supplier_leads": lane_counts["supplier"],
+        "lane_new": lane_new,
+    }
+    return {"counts": counts, "rows": rows[:limit], "has_proof": bool(proof_map),
+            "sources": sources}

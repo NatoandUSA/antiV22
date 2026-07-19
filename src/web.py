@@ -1475,7 +1475,8 @@ def build_app(password, secret):
                       f'{_h.escape(r.get("day3_reason",""))}</p>'
                       f'<p><b>Day 7 → {_h.escape(a7)}:</b> '
                       f'{_h.escape(r.get("day7_reason") or r.get("rec_reason",""))}</p></div>')
-        bar = _bar()
+        bar = _bar() + _stage_nav("learn", (request.args.get("q") or "").strip()[:80],
+                                  request.args.get("mode") or "")
         return page("Sales feedback", bar + '<article class="md"><h1>Sales feedback '
                     'loop</h1><p>After you MANUALLY publish, log the listing\'s real '
                     'numbers to get a Day-3/7 <b>KEEP / CHANGE / KILL / SCALE</b> '
@@ -1590,16 +1591,25 @@ def build_app(password, secret):
         mode = m if m in ("pod", "embroidery") else None
         return q, mode
 
-    def _kw_mode_tool(fn, title):
+    def _kw_mode_tool(fn, title, path=None, stage=None, button="Run →"):
         q, mode = _kw_mode()
+        m = request.args.get("mode") or request.args.get("supplier_type") or ""
+        # the workflow strip + an on-page keyword box: every stage page is
+        # self-serve, and the next step is one click with the same keyword
+        head = ""
+        if stage:
+            head += _stage_nav(stage, q, m)
+        if path:
+            head += _stage_kwbar(path, q, button)
         if not q:
-            bar = _bar()
-            return page(title, bar + f'<article class="md"><h1>{title}</h1>'
-                        '<p class="empty">Type a keyword in the search box on the '
-                        '<a href="/">home page</a>, then pick this tool.</p></article>')
+            return page(title, _bar() + head + f'<article class="md"><h1>{title}'
+                        '</h1><p class="empty">Type a keyword in the box above '
+                        '(or click a step in the strip — it carries your keyword).'
+                        '</p></article>')
         from src import interactive
         try:
-            return _render_tool(f"{title}: {q}", fn(interactive, q, mode))
+            return _render_tool(f"{title}: {q}", fn(interactive, q, mode),
+                                switch=head)
         except (SystemExit, Exception) as exc:  # noqa: BLE001
             return _tool_error(title, exc)
 
@@ -1607,24 +1617,29 @@ def build_app(password, secret):
     @login_required
     def photo_brief():
         return _kw_mode_tool(lambda iv, q, m: iv.photo_prompts(q, m),
-                             "Photo prompt set")
+                             "Photo prompt set", path="/photo-brief",
+                             stage="images", button="\U0001F4F8 Generate prompts")
 
     @app.route("/ads-plan")
     @login_required
     def ads_plan():
         return _kw_mode_tool(lambda iv, q, m: iv.ads_plan(q, m),
-                             "Etsy Ads starter plan")
+                             "Etsy Ads starter plan", path="/ads-plan",
+                             stage="ads", button="\U0001F4E3 Build ads plan")
 
     @app.route("/edge")
     @login_required
     def edge():
         return _kw_mode_tool(lambda iv, q, m: iv.edge_finder(q, m),
-                             "Beat the competition")
+                             "Beat the competition", path="/edge",
+                             button="\U0001F94A Find the edge")
 
     @app.route("/launch-kit")
     @login_required
     def launch_kit():
-        return _kw_mode_tool(lambda iv, q, m: iv.launch_kit(q, m), "Launch Kit")
+        return _kw_mode_tool(lambda iv, q, m: iv.launch_kit(q, m), "Launch Kit",
+                             path="/launch-kit", stage="build",
+                             button="\U0001F680 Build Launch Kit")
 
     @app.route("/trending")
     @login_required
@@ -1692,10 +1707,46 @@ def build_app(password, secret):
         from src import interactive
         m = request.args.get("mode")
         mode = m if m in ("pod", "embroidery") else None
+        q = (request.args.get("q") or "").strip()[:80]
+        bar = (_stage_nav("rank", q, m or "")
+               + _stage_kwbar("/inbox", q, "\U0001F3C6 Rank / focus keyword"))
         try:
-            return _render_tool("Opportunity Inbox", interactive.inbox(mode))
+            return _render_tool("Opportunity Inbox",
+                                interactive.inbox(mode, q), switch=bar)
         except (SystemExit, Exception) as exc:  # noqa: BLE001
             return _tool_error("Opportunity Inbox", exc)
+
+    _STAGES_NAV = [("feed", "\U0001F4E5 Feed", "/imports"),
+                   ("rank", "\U0001F3C6 Rank", "/inbox"),
+                   ("pattern", "\U0001F52C Pattern", "/pattern-miner"),
+                   ("lab", "\U0001F4A1 Keywords", "/keyword-lab"),
+                   ("rerank", "\U0001F3AF Re-rank", "/inbox"),
+                   ("build", "\U0001F4DD Build", "/launch-kit"),
+                   ("images", "\U0001F5BC️ Images", "/photo-brief"),
+                   ("ads", "\U0001F4E3 Ads", "/ads-plan"),
+                   ("learn", "\U0001F4C9 Learn", "/feedback")]
+
+    def _stage_nav(current, q="", mode=""):
+        """The workflow strip ON every stage page: every stage one click away,
+        carrying the SAME keyword + mode — never round-trip to the home page."""
+        from urllib.parse import quote_plus as _qp
+        qs = []
+        if q:
+            qs.append("q=" + _qp(q))
+        if mode in ("pod", "embroidery", "both"):
+            qs.append("mode=" + _qp(mode))
+        tail = ("?" + "&".join(qs)) if qs else ""
+        items = "".join(
+            f'<a class="stgn{" on" if key == current or (current in ("rank", "rerank") and key in ("rank", "rerank")) else ""}"'
+            f' href="{href}{tail}">{i + 1} {label}</a>'
+            for i, (key, label, href) in enumerate(_STAGES_NAV))
+        return ('<style>.stgnav{display:flex;gap:4px;flex-wrap:wrap;margin:0 0 10px}'
+                '.stgn{font-size:11px;font-weight:700;padding:4px 10px;'
+                'border:1px solid var(--line);border-radius:20px;text-decoration:none;'
+                'color:var(--ink-soft);background:var(--surface);white-space:nowrap}'
+                '.stgn:hover{border-color:var(--accent);color:var(--accent)}'
+                '.stgn.on{background:var(--accent);border-color:var(--accent);color:#fff}'
+                '</style><nav class="stgnav">' + items + "</nav>")
 
     def _stage_kwbar(action, q, button, next_href=None, next_label=None):
         """A keyword box ON the stage page itself (no round-trip to the home) +
@@ -1718,9 +1769,10 @@ def build_app(password, secret):
         m = request.args.get("mode")
         mode = m if m in ("pod", "embroidery") else None
         q = (request.args.get("q") or "").strip()[:80]
-        bar = _stage_kwbar("/pattern-miner", q, "\U0001F52C Mine pattern",
-                           f"/keyword-lab?q={_uq2(q)}" if q else "/keyword-lab",
-                           "Next: \U0001F4A1 Keyword Lab →")
+        bar = (_stage_nav("pattern", q, m or "")
+               + _stage_kwbar("/pattern-miner", q, "\U0001F52C Mine pattern",
+                              f"/keyword-lab?q={_uq2(q)}" if q else "/keyword-lab",
+                              "Next: \U0001F4A1 Keyword Lab →"))
         try:
             return _render_tool("Pattern Miner",
                                 interactive.pattern_miner(q, mode), switch=bar)
@@ -1734,7 +1786,8 @@ def build_app(password, secret):
         m = request.args.get("mode")
         mode = m if m in ("pod", "embroidery") else None
         q = (request.args.get("q") or "").strip()[:80]
-        bar = _stage_kwbar("/keyword-lab", q, "\U0001F4A1 Generate keywords")
+        bar = (_stage_nav("lab", q, m or "")
+               + _stage_kwbar("/keyword-lab", q, "\U0001F4A1 Generate keywords"))
         # "Add all to Inbox" form: the save that makes RE-RANK real - candidates
         # are appended to keyword_data.csv (best-effort MCP enrich) and the Inbox
         # re-ranks them through the full layered engine.
@@ -1750,6 +1803,7 @@ def build_app(password, secret):
                     'style="margin:10px 0 4px">'
                     f'<input type="hidden" name="_csrf" value="{_csrf()}">'
                     f'<input type="hidden" name="mode" value="{m or ""}">'
+                    f'<input type="hidden" name="q" value="{_h.escape(q, quote=True)}">'
                     f'<textarea name="kws" hidden>{_h.escape(kws)}</textarea>'
                     '<button class="pullbtn primary" type="submit">➕ Add '
                     f'{len(g["candidates"])} keywords to the Inbox & re-rank '
@@ -1781,8 +1835,17 @@ def build_app(password, secret):
                          action=f"added {added} (enriched {enriched})")
         except Exception as exc:  # noqa: BLE001
             return _tool_error("Keyword Lab", exc)
-        modeq = f"?mode={m}" if mode else ""
-        return redirect(f"/inbox{modeq}")
+        # land on the RE-RANKED inbox FOCUSED on the niche just expanded, so the
+        # new candidates are immediately visible (no hunting in 1,000 rows)
+        from urllib.parse import quote_plus as _uq3
+        qkw = (request.form.get("q") or "").strip()[:80]
+        parts = []
+        if qkw:
+            parts.append("q=" + _uq3(qkw))
+        if mode:
+            parts.append(f"mode={m}")
+        tail = ("?" + "&".join(parts)) if parts else ""
+        return redirect(f"/inbox{tail}")
 
     @app.route("/winners")
     @login_required
@@ -2692,6 +2755,8 @@ def build_app(password, secret):
                       'URL automatically. Please enter the product keyword/title '
                       'manually below, then import.</div>')
         return page("YTuong Import Center", _bar()
+                    + _stage_nav("feed", (request.args.get("q") or "").strip()[:80],
+                                 request.args.get("mode") or "")
                     + '<article class="md"><h1>📥 YTuong Import Center</h1>'
                     '<p class="tklead">YTuong &amp; HeyEtsy do the market research. '
                     'Import a finding here and the dashboard turns it into an '

@@ -130,16 +130,19 @@ def _post(method, params, notify=False):
     _throttle_slot()
 
     resp = None
-    for attempt in range(4):
+    # (connect, read) timeout + 2 tries: an unreachable MCP fails a call in
+    # ~12s instead of freezing a page for minutes (audited: 4 tries x 45s +
+    # exponential backoff stacked to 3.5 min PER CALL on pages that make many).
+    for attempt in range(2):
         try:
             resp = requests.post(MCP_URL, headers=_headers(), json=body,
-                                 timeout=45)
+                                 timeout=(4, 15))
         except requests.RequestException as exc:
-            if attempt == 3:
+            if attempt == 1:
                 raise SystemExit(
-                    f"YTrends MCP network error after 4 tries: {exc}\n"
+                    f"YTrends MCP network error after 2 tries: {exc}\n"
                     f"Is {MCP_URL} reachable from this machine?")
-            time.sleep(2 ** attempt * 4)
+            time.sleep(2)
             continue
         if resp.status_code in (429,) or resp.status_code >= 500:
             if attempt == 3:
