@@ -135,7 +135,9 @@ def _col(headers, *needles, exclude=()):
 
 def _map(headers):
     return {
-        "title": _col(headers, "title", "product", "name", "description"),
+        # "listing" = YTrends Spy's title column (LISTING); exclude listing_id
+        "title": _col(headers, "title", "product", "name", "description",
+                      "listing", exclude=("id",)),
         # Pinterest "saves"/"repins" are the same kind of traction signal as
         # supplier "sold", so they feed the same slot.
         "sold": _col(headers, "sold", "orders", "save", "repin", "sale"),
@@ -283,9 +285,12 @@ def looks_like_etsy_listings(headers):
     blob = _hdr_blob(headers)
     if has_keyword_col(headers):
         return False
-    has_title = "title" in blob
+    # title-ish: "title", or a bare "listing" TEXT column (YTrends Spy calls its
+    # title column LISTING) - a listing_id column alone doesn't count
+    _noid = blob.replace("listing_id", "").replace("listing id", "")
+    has_title = "title" in blob or "listing" in _noid
     signals = ("he_sold", "he_views", "he_tags", "sold", "listing_id", "listing id",
-               "shop", "favorite", "revenue")
+               "shop", "favorite", "revenue", "conversion")
     return has_title and any(s in blob for s in signals)
 
 

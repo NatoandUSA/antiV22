@@ -1890,21 +1890,29 @@ def pattern_miner(kw="", mode=None):
     r = pm.mine(kw or None)
     L = ["# \U0001F52C Pattern Miner — how the winners win", ""]
     if not r["have"]:
-        L += ["> **No Etsy listings to mine yet.** Drop an **Etsy Spy / listings** "
-              "CSV on the home page (title, price, shop, star-seller, ad, free-ship) "
-              "or paste a keyword you've already scraped. The miner reads 5–10+ "
-              "winning listings and extracts the pattern.",
-              "",
-              "_Honest note: Etsy Spy exports carry title / price / shop / star-seller "
-              "/ ad / free-ship — not per-listing sold, reviews, or tags, so the miner "
-              "mines what's present and says what's missing._"]
+        if kw and r.get("scanned"):
+            L += [f"> **No captured listings match “{_clean(kw)}”** "
+                  f"(scanned {r['scanned']} listings from your recent captures). "
+                  "Capture an **Etsy search for this keyword** with the extension "
+                  "(Send to agent), then mine again — the miner only analyses "
+                  "listings that actually belong to the niche you asked about."]
+        else:
+            L += ["> **No Etsy listings to mine yet.** Capture an Etsy search / "
+                  "YTrends Spy / ytuong-Hot page with the extension, or drop the "
+                  "CSV/JSON on the home page — then mine."]
         return "\n".join(L)
     st = r["structure"]
     sig = r["signals"]
-    L += [f"_Mined **{r['n']} listings** across **{r['n_shops']} shops** for "
-          f"**{_clean(r['keyword'] or kw)}**. This is the shared pattern of the "
-          "listings currently ranking — copy what they all do, then beat them on the "
-          "gaps below._", ""]
+    if r.get("query"):
+        scope = (f"_Mined the **{r['matched']} listings matching "
+                 f"“{_clean(r['query'])}”** (of {r['scanned']} captured, "
+                 f"across **{r['n_shops']} shops**).")
+    else:
+        scope = (f"_Mined **{r['n']} listings** across **{r['n_shops']} shops** "
+                 "from your recent captures (no keyword given — type one above to "
+                 "focus a niche).")
+    L += [scope + " This is the shared pattern of the listings currently ranking "
+          "— copy what they all do, then beat them on the gaps below._", ""]
     # winning vocabulary
     L += ["## \U0001F3F7 Winning title words (share of listings using each)"]
     for w, pct in r["top_words"][:10]:

@@ -53,45 +53,86 @@ def _flag(v):
 
 
 # --------------------------- load the listing batch ------------------------
-def _from_import():
-    """(keyword_hint, [listings]) from the latest Etsy Spy import, or (None, [])."""
-    try:
-        from src import supplier_trend as st
-        payload = st.load_latest("etsy")
-    except Exception:  # noqa: BLE001
-        payload = None
-    if not payload:
-        return None, []
-    H = [str(h).lower() for h in (payload.get("headers") or [])]
+_IMPORT_DIR = Path("data/imports/etsy_spy")
+_MAX_FILES = 12
 
-    def col(*names, exclude=()):
-        for i, h in enumerate(H):
-            if any(n in h for n in names) and not any(x in h for x in exclude):
-                return i
-        return None
-    ti = col("title", "product", "name")
-    if ti is None:
-        return None, []
-    pi = col("price", exclude=("was", "compare"))
-    shi = col("shop", "seller", exclude=("id",))
-    sti = col("star")
-    adi = col("ad", "promoted", exclude=("add",))
-    fsi = col("free", "ship")
-    si = col("search", "query", "keyword")
-    out = []
+
+def _query_tokens(q):
+    return [st._singular(w) for w in re.findall(r"[a-z0-9]+", (q or "").lower())
+            if len(w) > 1 and w not in _STOP]
+
+
+def _title_matches(title, qtoks):
+    """A listing belongs to the queried niche when it shares >=2 query tokens
+    (>=1 for a single-token query) - singularised, stopwords dropped."""
+    if not qtoks:
+        return True
+    tt = set(_tokens(title))
+    hits = sum(1 for t in qtoks if t in tt)
+    return hits >= min(2, len(qtoks))
+
+
+def _from_import(keyword=None):
+    """(keyword_hint, [listings], matched, scanned): listings gathered across the
+    RECENT capture files (not just the newest), de-duped, and - when a keyword is
+    given - FILTERED to the listings that actually belong to that niche. This is
+    what makes the miner answer 'how do the winners of THIS keyword win' instead
+    of 'whatever the last capture happened to contain'."""
+    d = _IMPORT_DIR
+    if not d.is_dir():
+        return None, [], 0, 0
+    files = sorted(d.glob("*.json"), key=lambda p: p.stat().st_mtime,
+                   reverse=True)[:_MAX_FILES]
+    import json as _json
+    all_rows, seen = [], set()
     hint = None
-    for row in (payload.get("rows") or []):
-        def c(i):
-            return row[i] if (i is not None and i < len(row)) else None
-        title = str(c(ti) or "").strip()
-        if not title:
+    for f in files:
+        try:
+            payload = _json.loads(f.read_text(encoding="utf-8")) or {}
+        except Exception:  # noqa: BLE001
             continue
-        if hint is None and si is not None:
-            hint = str(c(si) or "").strip() or None
-        out.append({"title": title, "price": _num(c(pi)), "shop": c(shi),
-                    "star": _flag(c(sti)), "ad": _flag(c(adi)),
-                    "freeship": _flag(c(fsi))})
-    return hint, out
+        H = [str(h).lower() for h in (payload.get("headers") or [])]
+
+        def col(*names, exclude=()):
+            for i, h in enumerate(H):
+                if any(n in h for n in names) and not any(x in h for x in exclude):
+                    return i
+            return None
+        ti = col("title", "product", "name")
+        if ti is None:
+            ti = col("listing", exclude=("id",))   # YTrends Spy title col = LISTING
+        if ti is None:
+            continue
+        pi = col("price", exclude=("was", "compare"))
+        shi = col("shop", "seller", exclude=("id",))
+        sti = col("star")
+        adi = col("ad", "promoted", exclude=("add",))
+        fsi = col("free", "ship")
+        si = col("search", "query", "keyword")
+        ui = col("url", "link")
+        for row in (payload.get("rows") or []):
+            def c(i):
+                return row[i] if (i is not None and i < len(row)) else None
+            title = str(c(ti) or "").strip()
+            if not title:
+                continue
+            key = str(c(ui) or title.lower())
+            if key in seen:
+                continue
+            seen.add(key)
+            if hint is None and si is not None:
+                hint = str(c(si) or "").strip() or None
+            all_rows.append({"title": title, "price": _num(c(pi)),
+                             "shop": c(shi), "star": _flag(c(sti)),
+                             "ad": _flag(c(adi)), "freeship": _flag(c(fsi))})
+    scanned = len(all_rows)
+    if keyword:
+        qtoks = _query_tokens(keyword)
+        matched_rows = [r for r in all_rows if _title_matches(r["title"], qtoks)]
+        if matched_rows:
+            return keyword, matched_rows, len(matched_rows), scanned
+        return keyword, [], 0, scanned      # honest: nothing matches this keyword
+    return hint, all_rows, scanned, scanned
 
 
 def _from_master(keyword=None):
@@ -126,11 +167,13 @@ def _from_master(keyword=None):
 
 
 def load_batch(keyword=None):
-    """Best listings batch for a keyword: prefer a fresh Spy import, else the CSV."""
-    hint, batch = _from_import()
+    """(kw, batch, matched, scanned) for a keyword: captures first (filtered to
+    the keyword's niche when one is given), master CSV fallback."""
+    hint, batch, matched, scanned = _from_import(keyword)
     if batch:
-        return (keyword or hint), batch
-    return _from_master(keyword)
+        return (keyword or hint), batch, matched, scanned
+    kw2, batch2 = _from_master(keyword)
+    return kw2, batch2, len(batch2), len(batch2)
 
 
 # --------------------------- the mining ------------------------------------
@@ -164,9 +207,10 @@ def _price_band(prices):
 def mine(keyword=None):
     """Mine the winning pattern for a keyword. Returns a structured dict (always,
     even for an empty batch, so the view can explain what's missing)."""
-    kw, batch = load_batch(keyword)
+    kw, batch, matched, scanned = load_batch(keyword)
     n = len(batch)
-    res = {"keyword": kw, "n": n, "n_shops": 0, "top_words": [], "leading": [],
+    res = {"keyword": kw, "query": keyword, "n": n, "matched": matched,
+           "scanned": scanned, "n_shops": 0, "top_words": [], "leading": [],
            "phrases": [], "structure": {}, "price": None, "signals": {},
            "gaps": [], "seed_words": [], "have": False}
     if not n:

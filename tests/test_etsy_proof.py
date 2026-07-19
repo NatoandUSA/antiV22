@@ -1,4 +1,6 @@
 """Etsy Proof lane (L1): parsing, aggregation, verdicts, fuzzy-match guard."""
+from pathlib import Path
+
 from src import etsy_proof as ep
 
 HDR_FULL = ["Title", "Shop", "Price", "Age", "Reviews", "Sales", "Revenue"]
@@ -6,8 +8,15 @@ HDR_NOSHOP = ["Title", "Price", "Age", "Reviews", "Sales", "Revenue"]
 
 
 def _proof(hdr, data):
+    """Build proof from ONLY this fixture: the capture lane (data/imports/
+    etsy_spy) also feeds build_proof now, so isolate it during the test."""
     ep.save_export(hdr, data, None, "test")
-    return ep.build_proof()
+    saved = ep.CAPTURE_DIR
+    ep.CAPTURE_DIR = Path("data/imports/_no_such_dir_for_tests")
+    try:
+        return ep.build_proof()
+    finally:
+        ep.CAPTURE_DIR = saved
 
 
 def test_num_parsing_handles_currency_k_and_locked():

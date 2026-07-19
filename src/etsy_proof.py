@@ -162,6 +162,69 @@ def _latest_rows():
         return []
 
 
+# --------- proof from FREE captures (extension -> data/imports/etsy_spy) -----
+# Etsy-search captures (HeyEtsy overlay he_sold / he_revenue), ytuong.me Hot
+# cards (sold_24h) and YTrends Spy tables (SOLD 24H + CONVERSION + AGE (DAYS))
+# all carry REAL per-listing sales evidence - so they light the proof tier too,
+# not just the paid Alura/EverBee export. Sold figures here are RECENT sales
+# (24h / overlay window), labelled as such; age comes from AGE (DAYS) when the
+# capture has it (the young-winner signal).
+CAPTURE_DIR = Path("data/imports/etsy_spy")
+_CAPTURE_MAX_FILES = 12
+
+
+def _capture_rows(mode=None):
+    d = CAPTURE_DIR
+    if not d.is_dir():
+        return []
+    files = sorted(d.glob("*.json"), key=lambda p: p.stat().st_mtime,
+                   reverse=True)[:_CAPTURE_MAX_FILES]
+    seen = {}
+    for f in files:
+        try:
+            payload = json.loads(f.read_text(encoding="utf-8")) or {}
+        except Exception:  # noqa: BLE001
+            continue
+        H = [str(h).lower() for h in (payload.get("headers") or [])]
+        ti = _ci(H, "title", "product", "name")
+        if ti is None:
+            ti = _ci(H, "listing", exclude=("id",))
+        if ti is None:
+            continue
+        shi = _ci(H, "shop", "seller", exclude=("id",))
+        # sold: overlay lifetime-ish (he_sold) or recent 24h (sold_24h / SOLD 24H)
+        si = _ci(H, "he_sold")
+        s24 = _ci(H, "sold_24h", "sold 24h")
+        ri = _ci(H, "he_revenue", "revenue", exclude=("id",))
+        agi = _ci(H, "age (days)", "age_days")
+        ui = _ci(H, "url", "link")
+        idi = _ci(H, "listing_id", "listing id")
+        for row in (payload.get("rows") or []):
+            def c(i):
+                return row[i] if (i is not None and i < len(row)) else None
+            title = str(c(ti) or "").strip()
+            if not title:
+                continue
+            kw = st.extract_keyword(title, mode).get("keyword")
+            if not kw:
+                continue
+            sold = _num(c(si))
+            if sold in (None, 0):
+                sold = _num(c(s24))
+            age_days = _num(c(agi))
+            key = str(c(idi) or c(ui) or title.lower())
+            rec = {
+                "keyword": kw, "title": title, "shop": (str(c(shi) or "")).strip(),
+                "sold": sold, "revenue": _num(c(ri)), "price": None,
+                "age_months": (age_days / 30.0) if age_days else None,
+                "reviews": None,
+            }
+            old = seen.get(key)
+            if old is None or (rec["sold"] or 0) > (old["sold"] or 0):
+                seen[key] = rec
+    return list(seen.values())
+
+
 def _canon(kw):
     return " ".join(sorted(set(
         st._singular(w) for w in re.findall(r"[a-z0-9]+", (kw or "").lower())
@@ -181,7 +244,7 @@ def build_proof(mode=None):
 
     proof = {keyword, sold, revenue, shops, listings, young, score, verdict,
     evidence}. Empty dict when no export is present (engine then uses market signal)."""
-    rows = _latest_rows()
+    rows = _latest_rows() + _capture_rows(mode)
     if not rows:
         return {}
     agg = {}

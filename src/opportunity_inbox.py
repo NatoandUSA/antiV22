@@ -120,6 +120,7 @@ _CACHE = {}
 
 
 _PROOF_LATEST = Path("data/imports/etsy_proof/latest.json")
+_CAPTURE_DIR = Path("data/imports/etsy_spy")
 
 
 def _data_stamp():
@@ -128,7 +129,12 @@ def _data_stamp():
             return Path(p).stat().st_mtime
         except OSError:
             return 0.0
-    return (mt(MASTER), mt(MASTER_ALT), mt(_PROOF_LATEST))
+    try:  # newest capture file also feeds the proof layer now
+        cap = max((f.stat().st_mtime for f in _CAPTURE_DIR.glob("*.json")),
+                  default=0.0)
+    except OSError:
+        cap = 0.0
+    return (mt(MASTER), mt(MASTER_ALT), mt(_PROOF_LATEST), cap)
 
 
 def build_inbox(mode=None, limit=80):

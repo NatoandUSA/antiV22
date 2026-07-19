@@ -359,7 +359,8 @@ def build_app(password, secret):
             '.plstep{border:1px solid var(--line);border-radius:12px;padding:11px 8px;'
             'position:relative;display:flex;flex-direction:column;align-items:center;'
             'text-align:center;background:var(--surface);text-decoration:none;transition:.15s}'
-            'a.plstep:hover{border-color:var(--accent);transform:translateY(-1px)}'
+            'a.plstep:hover,button.plstep:hover{border-color:var(--accent);transform:translateY(-1px)}'
+            'button.plstep{font-family:inherit;width:100%;cursor:pointer;margin:0}'
             '.plstep::after{content:"\\2192";position:absolute;right:-7px;top:22px;'
             'color:var(--line-strong);font-size:13px;z-index:1}'
             '.plstep:last-child::after{display:none}'
@@ -368,7 +369,10 @@ def build_app(password, secret):
             'font-size:11px;font-weight:800;color:#fff;margin-bottom:5px;background:var(--accent)}'
             '.plstep.plfin .n{background:var(--ok)}'
             '.plstep .ic{font-size:17px;line-height:1;margin-bottom:3px}'
-            '.plstep h3{margin:0;font-size:11.5px;color:var(--ink);font-weight:700;line-height:1.2}'
+            '.plstep h3,.plstep .t{margin:0;font-size:11.5px;color:var(--ink);'
+            'font-weight:700;line-height:1.2;display:block}'
+            '.plsteph{font-size:11px;font-weight:700;letter-spacing:.05em;'
+            'text-transform:uppercase;color:var(--ink-soft);margin:12px 0 7px}'
             '.plstep .sc{font-size:10px;color:var(--ink-soft);margin-top:2px}'
             '.plnudge{display:flex;align-items:center;gap:12px;margin:14px 0 8px;'
             'background:var(--accent-bg);border:1px solid var(--line);border-radius:12px;padding:11px 14px}'
@@ -458,8 +462,8 @@ def build_app(password, secret):
                     f'<span class="x">{_nx}</span>'
                     f'<a class="pullbtn primary" href="{_nh}">{_nl}</a></div>')
         _plrail = (
-            '<h2 class="grouph">🧭 Your workflow — feed → rank → pattern miner → '
-            'keyword lab → build → images → ads → learn</h2>'
+            '<h2 class="grouph">📥 Feed the machine — drop captures from the '
+            'extension (YTrends / Etsy / Pinterest / supplier / Alura)</h2>'
             + _plnudge +
             # ① Capture drop — a compact full-width bar (the quick entry point)
             '<form class="pldrop plcapbar" method="post" action="/import-file" '
@@ -481,27 +485,6 @@ def build_app(password, secret):
             '<span class="plfn" id="plfn"></span></label>'
             '<button class="capbtn" type="submit">Import → rank</button></form>'
             + _implabel_html +
-            # The 9-stage board — each step links straight to its tool
-            '<div class="plpipe">'
-            f'<a class="plstep" href="/imports"><div class="n">1</div>'
-            '<span class="ic">📥</span><h3>Feed</h3><span class="sc">MCP + CSV</span></a>'
-            f'<a class="plstep hot" href="/inbox?mode={active}"><div class="n">2</div>'
-            '<span class="ic">🏆</span><h3>Rank</h3><span class="sc">Opportunity Inbox</span></a>'
-            f'<a class="plstep" href="/pattern-miner?mode={active}"><div class="n">3</div>'
-            '<span class="ic">🔬</span><h3>Pattern Miner</h3><span class="sc">learn winners</span></a>'
-            f'<a class="plstep" href="/keyword-lab?mode={active}"><div class="n">4</div>'
-            '<span class="ic">💡</span><h3>Keyword Lab</h3><span class="sc">new keywords</span></a>'
-            f'<a class="plstep" href="/inbox?mode={active}"><div class="n">5</div>'
-            '<span class="ic">🎯</span><h3>Re-rank</h3><span class="sc">back to inbox</span></a>'
-            f'<a class="plstep" href="/launch-kit?mode={active}"><div class="n">6</div>'
-            '<span class="ic">📝</span><h3>Build</h3><span class="sc">Launch Kit</span></a>'
-            f'<a class="plstep" href="/photo-brief?mode={active}"><div class="n">7</div>'
-            '<span class="ic">🖼️</span><h3>Images</h3><span class="sc">all prompts</span></a>'
-            f'<a class="plstep" href="/ads-plan?mode={active}"><div class="n">8</div>'
-            '<span class="ic">📣</span><h3>Ads</h3><span class="sc">launch plan</span></a>'
-            '<a class="plstep plfin" href="/feedback"><div class="n">9</div>'
-            '<span class="ic">📉</span><h3>Learn</h3><span class="sc">log a sale</span></a>'
-            '</div>'
             # drag-drop + auto-submit: drop or choose a file and it goes straight in
             '<script>(function(){'
             'var dz=document.getElementById("pldz"),fi=document.getElementById("plfile"),'
@@ -579,104 +562,78 @@ def build_app(password, secret):
         except (SystemExit, Exception):  # noqa: BLE001 - never break the home
             _oppq = ""
 
-        # --- Instant Product Command Center: one keyword -> full workspace ---
+        # --- Instant Product Command Center: one keyword -> the WHOLE pipeline.
+        # The 9-stage workflow board lives INSIDE the form as submit buttons, so
+        # the typed keyword + product mode travel with EVERY step click — no
+        # going back to the homepage between steps (owner directive).
+        _mchk = {"embroidery": "", "pod": "", "both": ""}
+        _mchk[active if active in ("pod", "embroidery") else "both"] = " checked"
+        _stages = [
+            ("1", "\U0001F4E5", "Feed", "Import Center", "/imports", ""),
+            ("2", "\U0001F3C6", "Rank", "Opportunity Inbox", "/inbox", " hot"),
+            ("3", "\U0001F52C", "Pattern", "Pattern Miner", "/pattern-miner", ""),
+            ("4", "\U0001F4A1", "Keywords", "Keyword Lab", "/keyword-lab", ""),
+            ("5", "\U0001F3AF", "Re-rank", "Inbox again", "/inbox", ""),
+            ("6", "\U0001F4DD", "Build", "Launch Kit", "/launch-kit", ""),
+            ("7", "\U0001F5BC\uFE0F", "Images", "Photo prompts", "/photo-brief", ""),
+            ("8", "\U0001F4E3", "Ads", "Ads plan", "/ads-plan", ""),
+            ("9", "\U0001F4C9", "Learn", "Sales feedback", "/feedback", " plfin"),
+        ]
+        _plboard = '<div class="plpipe">' + "".join(
+            f'<button class="plstep{c}" type="submit" formaction="{h}">'
+            f'<span class="n">{n}</span><span class="ic">{i}</span>'
+            f'<span class="t">{t}</span><span class="sc">{s}</span></button>'
+            for n, i, t, s, h, c in _stages) + '</div>'
         tools = (
             '<h2 class="grouph">⚡ Instant Product Command Center</h2>'
-            '<p class="lead">Type one keyword and build the whole opportunity — '
-            '<b>verdict, scores, listing, design & action plan</b> — on one page. '
-            'No waiting on the operator.</p>'
+            '<p class="lead">Type <b>one keyword once</b>, then click any step on '
+            'the workflow board — the keyword and product mode travel with every '
+            'click, so you never come back here between steps. Or hit '
+            '<b>Build full workspace</b> for everything on one page.</p>'
             '<form class="cmdbar" method="get" action="/run">'
             '<div class="modetoggle"><span>Product mode</span>'
-            '<label><input type="radio" name="supplier_type" value="embroidery" checked>'
+            f'<label><input type="radio" name="mode" value="embroidery"{_mchk["embroidery"]}>'
             ' Embroidery</label>'
-            '<label><input type="radio" name="supplier_type" value="pod">'
+            f'<label><input type="radio" name="mode" value="pod"{_mchk["pod"]}>'
             ' Print on Demand</label>'
-            '<label><input type="radio" name="supplier_type" value="both">'
+            f'<label><input type="radio" name="mode" value="both"{_mchk["both"]}>'
             ' Both</label></div>'
             '<div class="kwrow">'
             '<input name="q" aria-label="keyword" '
-            'placeholder="Main keyword, e.g. monogram tote bag">'
+            'placeholder="Main keyword, e.g. patchwork usa tee">'
             '<button class="primary" type="submit">Build full workspace →</button>'
             '</div>'
-            '<details class="cmdmore"><summary>＋ Quick single-step tools</summary>'
-            '<p class="note">Jump straight to one tool instead of the full workspace. '
-            '<b>Tip:</b> product type, niche, occasion, style &amp; personalization are '
-            '<b>AI-filled from the live data inside the workspace</b> (the "📝 Run '
-            'inputs" panel) — edit them there, no need to guess up front.</p>'
+            '<div class="plsteph">🧭 Your workflow — feed → rank → pattern → '
+            'keywords → re-rank → build → images → ads → learn</div>'
+            + _plboard +
+            '<details class="cmdmore"><summary>＋ More single-step tools</summary>'
             '<div class="cmdbtns">'
-            '<button formaction="/analyze" name="do" value="analyze">Analyze only</button>'
-            '<button formaction="/analyze" name="do" value="expand">Expand keywords</button>'
             '<button formaction="/should-sell">Should I sell?</button>'
+            '<button formaction="/analyze" name="do" value="analyze">Analyze only</button>'
             '<button formaction="/draft-listing">Draft listing</button>'
-            '<button formaction="/photo-brief">Photo prompts</button>'
-            '<button formaction="/ads-plan">Ads plan</button>'
             '<button formaction="/edge">Beat competitors</button>'
-            '<button class="primary" formaction="/launch-kit">🚀 Launch Kit</button>'
             '</div></details></form>'
             + pipeline_html + _oppq +
-            # --- DAILY: the team loop. The pipeline rail above is the hero; the
-            # everyday team surfaces stay here, the ~40 others under Advanced. ---
-            '<h2 class="grouph">🎯 Daily — the team loop</h2>'
-            '<p class="note" style="margin:-4px 0 10px">Research on '
-            '<b>YTuong / HeyEtsy</b>, then work the loop here: confirm → assign → '
-            'supplier check → draft → manager review → manual publish.</p>'
+            # --- TOOLS: the default-visible shelf. Exactly what staff need to
+            # read alongside the pipeline — trend feeds, ranked views, execution
+            # helpers. Everything else lives under Advanced (owner directive:
+            # "what staff need to read only, not a bunch of reports"). ---
+            '<h2 class="grouph">🧰 Tools — trend feeds &amp; execution helpers</h2>'
             '<div class="toolgrid">'
-            '<a class="toolcard" href="/confirm"><b>✅ Confirm &amp; Assign</b>'
-            '<span>Start here: confirm a YTuong niche → hand it to staff (Embroidery)</span></a>'
-            '<a class="toolcard" href="/shortlist"><b>🎯 Shortlist</b>'
-            '<span>Top opportunities ranked → GO/CONDITIONAL → one-click Confirm</span></a>'
-            '<a class="toolcard" href="/imports"><b>📥 YTuong Import Center</b>'
-            '<span>Import a YTuong/Etsy URL or keyword → candidate + product-fit</span></a>'
-            '<a class="toolcard" href="/research-queue"><b>🧭 Research Queue</b>'
-            '<span>Every idea from spark → review → manual publish</span></a>'
-            '<a class="toolcard" href="/suppliers"><b>🏭 Suppliers</b>'
-            '<span>Catalogs + ShineOn/Embroidery CSV — the supplier-check step</span></a>'
-            '<a class="toolcard" href="/team/calendar"><b>📅 Team Calendar</b>'
-            '<span>Tasks by due date: today / week / month / overdue</span></a>'
-            '<a class="toolcard" href="/team"><b>👥 Team</b>'
-            '<span>My Tasks, assign work, review queue, feedback</span></a>'
-            '</div>'
-            # --- ADVANCED: powerful research/library/analytics surfaces, used
-            # occasionally, tucked behind one click so the home stays calm. ---
-            '<details class="archive advtools"><summary>🧰 Advanced tools — '
-            'research, library &amp; analytics (open when you need them)</summary>'
-            '<h2 class="grouph">🔍 Research &amp; discovery</h2>'
-            '<div class="toolgrid">'
-            f'<a class="toolcard" href="/winners?mode={active}"><b>🏆 Winner Finder</b>'
-            '<span>High-demand × low-competition sweet spot — the fastest pick, ranked</span></a>'
-            f'<a class="toolcard" href="/launch-kit?mode={active}"><b>🚀 Launch Kit</b>'
-            '<span>One winner → verdict, edge, listing, photos & ads on one page</span></a>'
             f'<a class="toolcard" href="/supplier-trends?mode={active}"><b>🏭 Supplier Trend Finder</b>'
             '<span>Reverse signal: Alibaba/AliExpress/1688 heat → keyword demand leads</span></a>'
             f'<a class="toolcard" href="/pinterest-trends?mode={active}"><b>📌 Pinterest Trend Finder</b>'
             '<span>Leading signal: pin saves → rising keyword demand leads</span></a>'
-            f'<a class="toolcard" href="/daily-brief?mode={active}"><b>🌅 Daily brief</b>'
-            '<span>Today\'s scored build-list (Opportunity Score) — read first</span></a>'
-            f'<a class="toolcard" href="/score-import?mode={active}"><b>🎯 Score latest import</b>'
-            '<span>Rank your last YTrends extension import by Opportunity Score</span></a>'
             f'<a class="toolcard" href="/trending?mode={active}"><b>📈 Trending now'
             f'</b><span>Rising keywords in {active_label} (YTuong data)</span></a>'
             f'<a class="toolcard" href="/opportunities?mode={active}"><b>💎 '
             'Opportunities</b><span>Low-competition sweet spots</span></a>'
-            f'<a class="toolcard" href="/spy?mode={active}"><b>🕵️ Spy + Reverse Engine</b>'
-            '<span>Decode each competitor\'s playbook + how to beat them</span></a>'
-            f'<a class="toolcard" href="/calendar?mode={active}"><b>📅 Seasonal calendar</b>'
-            '<span>Upcoming holidays + launch-by dates + keywords</span></a>'
             f'<a class="toolcard" href="/gems?mode={active}"><b>💠 Hidden gems</b>'
             '<span>High-conversion, low-competition niches (full table)</span></a>'
             f'<a class="toolcard" href="/newest?mode={active}"><b>🆕 Newest winners</b>'
             '<span>Brand-new listings already outselling their niche</span></a>'
-            '<a class="toolcard" href="/categories"><b>🗂️ Category intel</b>'
-            '<span>Underserved whole categories (demand vs supply)</span></a>'
-            '<a class="toolcard" href="/research"><b>🔬 Saved research</b>'
-            '<span>Past keyword lookups</span></a>'
-            '<a class="toolcard" href="/shops"><b>🏪 Saved shops</b>'
-            '<span>Auto-pull new shops already selling (&lt; 1yr, high CR)</span></a>'
-            '<a class="toolcard" href="/listings"><b>📌 Saved listings</b>'
-            '<span>Auto-pull young winners (&lt; 3mo, high CR/views/favs)</span></a>'
-            '</div>'
-            '<h2 class="grouph">🚀 Execute &amp; improve</h2>'
-            '<div class="toolgrid">'
+            f'<a class="toolcard" href="/calendar?mode={active}"><b>📅 Seasonal calendar</b>'
+            '<span>Upcoming holidays + launch-by dates + keywords</span></a>'
             f'<a class="toolcard" href="/photo-brief?mode={active}"><b>📸 Photo prompt set</b>'
             '<span>Every listing image + a ready AI prompt (real-photo honesty rule)</span></a>'
             f'<a class="toolcard" href="/ads-plan?mode={active}"><b>📣 Etsy Ads plan</b>'
@@ -685,6 +642,30 @@ def build_app(password, secret):
             '<span>Measured gaps in the ranking listings, biggest weakness first</span></a>'
             '<a class="toolcard" href="/grade"><b>📋 Listing Analyzer</b>'
             '<span>SEO / Trust / Image scores + publish gate</span></a>'
+            '</div>'
+            # --- ADVANCED: everything else — research library, team surfaces,
+            # analytics — one click away so the home stays calm. ---
+            '<details class="archive advtools"><summary>🗂️ Advanced — research '
+            'library, team &amp; analytics (open when you need them)</summary>'
+            '<div class="toolgrid">'
+            f'<a class="toolcard" href="/winners?mode={active}"><b>🏆 Winner Finder</b>'
+            '<span>High-demand × low-competition sweet spot — the fastest pick, ranked</span></a>'
+            f'<a class="toolcard" href="/launch-kit?mode={active}"><b>🚀 Launch Kit</b>'
+            '<span>One winner → verdict, edge, listing, photos & ads on one page</span></a>'
+            f'<a class="toolcard" href="/daily-brief?mode={active}"><b>🌅 Daily brief</b>'
+            '<span>Today\'s scored build-list (Opportunity Score) — read first</span></a>'
+            f'<a class="toolcard" href="/score-import?mode={active}"><b>🎯 Score latest import</b>'
+            '<span>Rank your last YTrends extension import by Opportunity Score</span></a>'
+            f'<a class="toolcard" href="/spy?mode={active}"><b>🕵️ Spy + Reverse Engine</b>'
+            '<span>Decode each competitor\'s playbook + how to beat them</span></a>'
+            '<a class="toolcard" href="/categories"><b>🗂️ Category intel</b>'
+            '<span>Underserved whole categories (demand vs supply)</span></a>'
+            '<a class="toolcard" href="/research"><b>🔬 Saved research</b>'
+            '<span>Past keyword lookups</span></a>'
+            '<a class="toolcard" href="/shops"><b>🏪 Saved shops</b>'
+            '<span>Auto-pull new shops already selling (&lt; 1yr, high CR)</span></a>'
+            '<a class="toolcard" href="/listings"><b>📌 Saved listings</b>'
+            '<span>Auto-pull young winners (&lt; 3mo, high CR/views/favs)</span></a>'
             '<a class="toolcard" href="/feedback"><b>📉 Sales feedback</b>'
             '<span>Post-launch: keep / change / kill / scale</span></a>'
             + _alerts_card()
@@ -694,6 +675,18 @@ def build_app(password, secret):
             '<span>Trends over time: rising / falling / stable</span></a>'
             '<a class="toolcard" href="/profit"><b>💰 Profit Center</b>'
             '<span>Real P&amp;L per product / supplier / mode</span></a>'
+            '<a class="toolcard" href="/confirm"><b>✅ Confirm &amp; Assign</b>'
+            '<span>Confirm a niche → hand it to staff</span></a>'
+            '<a class="toolcard" href="/shortlist"><b>🎯 Shortlist</b>'
+            '<span>Top opportunities ranked → GO/CONDITIONAL → one-click Confirm</span></a>'
+            '<a class="toolcard" href="/research-queue"><b>🧭 Research Queue</b>'
+            '<span>Every idea from spark → review → manual publish</span></a>'
+            '<a class="toolcard" href="/suppliers"><b>🏭 Suppliers</b>'
+            '<span>Catalogs + ShineOn/Embroidery CSV — the supplier-check step</span></a>'
+            '<a class="toolcard" href="/team/calendar"><b>📅 Team Calendar</b>'
+            '<span>Tasks by due date: today / week / month / overdue</span></a>'
+            '<a class="toolcard" href="/team"><b>👥 Team</b>'
+            '<span>My Tasks, assign work, review queue, feedback</span></a>'
             '</div></details>'
             # --- Guides: always one click away ---
             '<h2 class="grouph">📖 Guides</h2>'
@@ -1704,15 +1697,33 @@ def build_app(password, secret):
         except (SystemExit, Exception) as exc:  # noqa: BLE001
             return _tool_error("Opportunity Inbox", exc)
 
+    def _stage_kwbar(action, q, button, next_href=None, next_label=None):
+        """A keyword box ON the stage page itself (no round-trip to the home) +
+        a next-step button that carries the same keyword down the pipeline."""
+        import html as _h
+        qe = _h.escape(q or "", quote=True)
+        nxt = (f'<a class="pullbtn" style="white-space:nowrap" href="{next_href}">'
+               f'{next_label}</a>' if next_href else "")
+        return (f'<form class="toolbar" method="get" action="{action}">'
+                f'<input name="q" value="{qe}" placeholder="Keyword, e.g. '
+                f'patchwork usa tee">'
+                f'<button class="primary" type="submit">{button}</button>'
+                f'{nxt}</form>')
+
     @app.route("/pattern-miner")
     @login_required
     def pattern_miner():
         from src import interactive
+        from urllib.parse import quote_plus as _uq2
         m = request.args.get("mode")
         mode = m if m in ("pod", "embroidery") else None
         q = (request.args.get("q") or "").strip()[:80]
+        bar = _stage_kwbar("/pattern-miner", q, "\U0001F52C Mine pattern",
+                           f"/keyword-lab?q={_uq2(q)}" if q else "/keyword-lab",
+                           "Next: \U0001F4A1 Keyword Lab →")
         try:
-            return _render_tool("Pattern Miner", interactive.pattern_miner(q, mode))
+            return _render_tool("Pattern Miner",
+                                interactive.pattern_miner(q, mode), switch=bar)
         except (SystemExit, Exception) as exc:  # noqa: BLE001
             return _tool_error("Pattern Miner", exc)
 
@@ -1723,10 +1734,55 @@ def build_app(password, secret):
         m = request.args.get("mode")
         mode = m if m in ("pod", "embroidery") else None
         q = (request.args.get("q") or "").strip()[:80]
+        bar = _stage_kwbar("/keyword-lab", q, "\U0001F4A1 Generate keywords")
+        # "Add all to Inbox" form: the save that makes RE-RANK real - candidates
+        # are appended to keyword_data.csv (best-effort MCP enrich) and the Inbox
+        # re-ranks them through the full layered engine.
+        addform = ""
         try:
-            return _render_tool("Keyword Lab", interactive.keyword_lab(q, mode))
+            from src import keyword_lab as kl
+            g = kl.generate(q or None)
+            if g["candidates"]:
+                import html as _h
+                kws = "\n".join(c["keyword"] for c in g["candidates"])
+                addform = (
+                    '<form method="post" action="/keyword-lab/add" '
+                    'style="margin:10px 0 4px">'
+                    f'<input type="hidden" name="_csrf" value="{_csrf()}">'
+                    f'<input type="hidden" name="mode" value="{m or ""}">'
+                    f'<textarea name="kws" hidden>{_h.escape(kws)}</textarea>'
+                    '<button class="pullbtn primary" type="submit">➕ Add '
+                    f'{len(g["candidates"])} keywords to the Inbox & re-rank '
+                    '→</button> <span style="font-size:.78rem;color:'
+                    'var(--ink-soft)">saves into keyword_data.csv · enriched from '
+                    'the live MCP when reachable · then ranked by the layered '
+                    'engine</span></form>')
+        except (SystemExit, Exception):  # noqa: BLE001
+            addform = ""
+        try:
+            return _render_tool("Keyword Lab",
+                                interactive.keyword_lab(q, mode),
+                                switch=bar + addform)
         except (SystemExit, Exception) as exc:  # noqa: BLE001
             return _tool_error("Keyword Lab", exc)
+
+    @app.route("/keyword-lab/add", methods=["POST"])
+    @login_required
+    def keyword_lab_add():
+        _check_csrf()
+        from src import keyword_lab as kl
+        m = request.form.get("mode")
+        mode = m if m in ("pod", "embroidery") else None
+        kws = [k.strip() for k in (request.form.get("kws") or "").splitlines()
+               if k.strip()][:20]
+        try:
+            added, enriched = kl.save_candidates(kws, mode)
+            activity.log("keyword_lab_add", module="keyword_lab",
+                         action=f"added {added} (enriched {enriched})")
+        except Exception as exc:  # noqa: BLE001
+            return _tool_error("Keyword Lab", exc)
+        modeq = f"?mode={m}" if mode else ""
+        return redirect(f"/inbox{modeq}")
 
     @app.route("/winners")
     @login_required
@@ -1878,9 +1934,7 @@ def build_app(password, secret):
         try:
             from src import ytx_import
             from src import supplier_trend as st
-            payload, n_files = ytx_import.parse_uploads(uploads)
-            kind = (request.form.get("kind") or "auto").lower()
-            hdrs = payload.get("headers")
+            kind_req = (request.form.get("kind") or "auto").lower()
 
             def _looks_amazon(h):
                 blob = " ".join(str(x).lower() for x in (h or []))
@@ -1904,74 +1958,94 @@ def build_app(password, secret):
                 has_kw = any("keyword" in c or "phrase" in c for c in cells)
                 return (has_title and has_rev and has_sales
                         and has_age_or_reviews and not has_kw)
-            # Supplier & Pinterest exports go to the reverse-signal lanes and are
-            # stored SEPARATELY so the Etsy Winner Finder never scores them as Etsy
-            # keywords. Amazon Xray is a keyword table -> the Etsy lane, but stamped
-            # "amazon-xray" so it's shown as a reference. Auto-detect from columns.
-            if kind == "auto":
-                if _looks_product(hdrs):
-                    kind = "proof"                     # Alura/EverBee product export
-                elif st.looks_like_supplier(hdrs):
-                    kind = "supplier"
-                elif st.looks_like_pinterest(hdrs):
-                    kind = "pinterest"
-                elif _looks_amazon(hdrs):
-                    kind = "amazon"
-                elif st.has_keyword_col(hdrs):
-                    kind = "keywords"                 # YTrends/Amazon keyword table
-                elif st.looks_like_etsy_listings(hdrs):
-                    kind = "etsy"                      # Etsy listings/spy -> keyword leads
-                else:
-                    kind = "keywords"
-            _trend_dest = {"supplier": "/supplier-trends",
-                           "pinterest": "/pinterest-trends", "etsy": "/etsy-spy"}
-            if kind == "proof":
-                # Etsy Proof lane: real per-listing sales -> ranks the Inbox proof tier.
-                # Also feed the SAME listings to the Etsy Spy lane so the Pattern Miner
-                # can mine their titles - one drop powers both stages.
-                from src import etsy_proof as ep
-                mode_p = m if m in ("pod", "embroidery") else None
-                nsaved = ep.save_export(hdrs, payload.get("rows") or [], mode_p,
-                                        source="product-export")
+            # PER-FILE routing (fix: a multi-drop used to be MERGED first and then
+            # routed to ONE lane, so a mixed drop - Etsy search + Pinterest +
+            # YTrends Spy - all landed in whichever lane the merged header union
+            # happened to look like. Now each file is detected and routed alone.)
+            mode_p = m if m in ("pod", "embroidery") else None
+            lanes = {}
+            headers_seen = []
+            parsed_any = False
+            for fn, raw in uploads:
                 try:
-                    st.save_payload(payload, source="etsy")
-                except Exception:  # noqa: BLE001
-                    pass
+                    p1, _n1 = ytx_import.parse_uploads([(fn, raw)])
+                except ValueError:
+                    lanes["unreadable"] = lanes.get("unreadable", 0)
+                    continue
+                parsed_any = True
+                hf = p1.get("headers") or []
+                nrows = len(p1.get("rows") or [])
+                headers_seen = hf
+                kf = kind_req
+                if kf == "auto":
+                    if _looks_product(hf):
+                        kf = "proof"               # Alura/EverBee product export
+                    elif st.looks_like_supplier(hf):
+                        kf = "supplier"
+                    elif st.looks_like_pinterest(hf):
+                        kf = "pinterest"
+                    elif _looks_amazon(hf):
+                        kf = "amazon"
+                    elif st.has_keyword_col(hf):
+                        kf = "keywords"            # YTrends keyword table
+                    elif st.looks_like_etsy_listings(hf):
+                        kf = "etsy"                # listings/spy -> Pattern Miner + proof
+                    else:
+                        kf = "keywords"
+                if kf == "proof":
+                    from src import etsy_proof as ep
+                    ep.save_export(hf, p1.get("rows") or [], mode_p,
+                                   source="product-export")
+                    try:
+                        st.save_payload(p1, source="etsy")
+                    except Exception:  # noqa: BLE001
+                        pass
+                elif kf in ("supplier", "pinterest", "etsy"):
+                    st.save_payload(p1, source=kf)
+                else:
+                    if kf == "amazon":
+                        p1["view"] = "amazon-xray"
+                    try:
+                        ytx_import.ingest(p1)
+                    except ValueError:
+                        kf = "unreadable"
+                lanes[kf] = lanes.get(kf, 0) + nrows
+            if not parsed_any:
+                raise ValueError("no usable files - pick .csv/.json exports")
+            # destination: ranking lanes go to the Inbox; single-lane drops go to
+            # their own page
+            if any(k in lanes for k in ("proof", "keywords", "etsy", "amazon")):
                 dest = f"/inbox{modeq}"
-                act = f"etsy-proof upload({n_files}): {nsaved} listings"
-            elif kind in _trend_dest:
-                st.save_payload(payload, source=kind)
-                dest = f"{_trend_dest[kind]}{modeq}"
-                act = f"{kind} upload({n_files}): {len(payload.get('rows') or [])} rows"
+            elif "supplier" in lanes:
+                dest = f"/supplier-trends{modeq}"
+            elif "pinterest" in lanes:
+                dest = f"/pinterest-trends{modeq}"
             else:
-                if kind == "amazon":
-                    payload["view"] = "amazon-xray"   # flag as reference in the view
-                summary = ytx_import.ingest(payload)
-                dest = f"/winners{modeq}"
-                act = (f'upload({n_files} file(s)):{summary.get("view")} '
-                       f'{summary.get("rows_received", 0)} rows')
+                dest = f"/inbox{modeq}"
+            act = " · ".join(f"{k}:{v}" for k, v in lanes.items())
         except ValueError as exc:
             return _tool_error("Import file", exc)
         except Exception as exc:  # noqa: BLE001
             app.logger.exception("import_file failed")
             return _tool_error("Import file", exc)
         try:
-            activity.log("ytrends_import", module="ytx_import", action=act)
+            activity.log("ytrends_import", module="ytx_import",
+                         action=f"upload {act}")
         except Exception:  # noqa: BLE001
             pass
-        # Import diagnostics (review request): a structured record of what was
-        # detected + where it went, surfaced on the home capture bar so a
+        # Import diagnostics: per-lane record shown on the home capture bar so a
         # mis-detected or empty import is never silent.
         try:
             import json as _json
             import time as _time
             Path("data/imports").mkdir(parents=True, exist_ok=True)
-            n_rows = len(payload.get("rows") or [])
+            total_rows = sum(lanes.values())
             Path("data/imports/last_import.json").write_text(_json.dumps({
-                "ts": _time.time(), "lane": kind, "files": n_files,
-                "rows": n_rows, "filenames": [u[0] for u in uploads][:5],
-                "headers": [str(h) for h in (hdrs or [])][:15],
-                "empty": n_rows == 0,
+                "ts": _time.time(), "lane": act, "files": len(uploads),
+                "rows": total_rows, "lanes": lanes,
+                "filenames": [u[0] for u in uploads][:6],
+                "headers": [str(h) for h in (headers_seen or [])][:15],
+                "empty": total_rows == 0,
             }), encoding="utf-8")
         except Exception:  # noqa: BLE001
             pass

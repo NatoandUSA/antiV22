@@ -363,10 +363,7 @@
   }
 
   function download(text, name, mime) {
-    // BOM only for CSV (Excel needs it); NEVER for JSON (breaks strict parsers)
-    const isJson = (mime || "").includes("json");
-    const blob = new Blob([isJson ? text : "﻿" + text],
-      { type: mime || "text/csv;charset=utf-8" });
+    const blob = new Blob(["﻿" + text], { type: mime || "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url; a.download = name;
