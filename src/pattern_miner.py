@@ -110,6 +110,9 @@ def _from_import(keyword=None):
         fsi = col("free", "ship")
         si = col("search", "query", "keyword")
         ui = col("url", "link")
+        tgi = col("he_tags")
+        if tgi is None:
+            tgi = col("tags", exclude=("categor",))
         for row in (payload.get("rows") or []):
             def c(i):
                 return row[i] if (i is not None and i < len(row)) else None
@@ -124,7 +127,8 @@ def _from_import(keyword=None):
                 hint = str(c(si) or "").strip() or None
             all_rows.append({"title": title, "price": _num(c(pi)),
                              "shop": c(shi), "star": _flag(c(sti)),
-                             "ad": _flag(c(adi)), "freeship": _flag(c(fsi))})
+                             "ad": _flag(c(adi)), "freeship": _flag(c(fsi)),
+                             "tags": str(c(tgi) or "").strip()})
     scanned = len(all_rows)
     if keyword:
         qtoks = _query_tokens(keyword)
@@ -212,13 +216,23 @@ def mine(keyword=None):
     res = {"keyword": kw, "query": keyword, "n": n, "matched": matched,
            "scanned": scanned, "n_shops": 0, "top_words": [], "leading": [],
            "phrases": [], "structure": {}, "price": None, "signals": {},
-           "gaps": [], "seed_words": [], "have": False}
+           "gaps": [], "seed_words": [], "top_tags": [], "have": False}
     if not n:
         return res
     res["have"] = True
     titles = [b["title"] for b in batch]
     shops = {(b["shop"] or "").strip().lower() for b in batch if b.get("shop")}
     res["n_shops"] = len(shops)
+
+    # 0. competitor TAGS (HeyEtsy overlay capture, v2.3 extension): the winners'
+    # actual Etsy tags are keyword gold - aggregate across matched listings.
+    tagc = Counter()
+    for b in batch:
+        for t in re.split(r"[;|,]", b.get("tags") or ""):
+            t = re.sub(r"\s+", " ", t).strip().lower()
+            if 2 < len(t) <= 30:
+                tagc[t] += 1
+    res["top_tags"] = tagc.most_common(15)
 
     # 1. word frequency (share of listings that use each word)
     docword = [set(_tokens(t)) for t in titles]

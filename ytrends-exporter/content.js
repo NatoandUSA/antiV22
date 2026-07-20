@@ -246,16 +246,23 @@
       if (!byId[id]) byId[id] = a;
       if (a.getAttribute("title") && !byId[id].getAttribute("title")) byId[id] = a;
     }
+    // FULL HeyEtsy overlay capture (v2.3): lifetime sold + revenue + created/age
+    // + views + favorites + conversion + tags + categories - EverBee-grade proof
+    // for free. Anchored on the overlay's own label text so numbers never mix.
     const headers = ["listing_id", "title", "shop", "price", "price_num",
       "price_was", "reviews", "star_seller", "ad", "bestseller", "free_shipping",
-      "he_sold", "he_views", "he_fav_pct", "he_favorites", "he_created",
-      "he_revenue_usd", "he_discount_pct", "he_tags", "url"];
+      "sold_24h", "views_24h", "he_sold", "he_views_avg", "he_views",
+      "he_fav_pct", "he_favorites", "he_created", "age_days", "he_updated",
+      "he_revenue_usd", "conversion_pct", "country", "shop_daily_sold",
+      "he_discount_pct", "he_tags", "he_categories", "url"];
+    const AGE = { day: 1, week: 7, month: 30, year: 365 };
     const rows = [];
     for (const id in byId) {
       const a = byId[id];
       const scope = a.closest("li") || a.closest("div.v2-listing-card") ||
         a.parentElement || a;
-      const h3 = document.getElementById("listing-title-" + id);
+      const h3 = document.getElementById("listing-title-" + id) ||
+        document.getElementById("ad-listing-title-" + id);
       const title = clean(a.getAttribute("title") || (h3 ? h3.textContent : ""));
       if (!title) continue;
       const url = (a.href || "").split("?")[0];
@@ -272,30 +279,60 @@
         const s1 = scope.querySelector('.clickable-shop-name,[data-seller-name-container] span[aria-hidden="true"]');
         if (s1) shop = clean(s1.textContent);
       }
+      if (!shop) {
+        const s2 = clean(scope.textContent).match(/By\s+([A-Za-z0-9][\w.-]{2,30})/);
+        if (s2) shop = s2[1];
+      }
       const txt = clean(scope.textContent).toLowerCase();
       const rev = clean(scope.textContent).match(/\(([\d,]+)\)/);
-      const T = clean(scope.textContent);
+      // prefer the structured HeyEtsy panel for THIS listing id
+      const panel = document.querySelector('[data-heyetsy-listing-id="' + id + '"]');
+      const T = clean(((panel || scope).textContent) || "");
       const g = (re) => { const m = T.match(re); return m ? m[1].replace(/,/g, "") : ""; };
-      const he_sold = g(/([\d,]+)\+?\s*Sold/i);
-      const he_views = g(/([\d,]+)\+?\s*Views/i);
-      const favM = T.match(/Favorites?\s*([\d.]+)%\s*([\d,]+)/i) ||
-                   T.match(/([\d.]+)%\s*Favorites?/i);
-      const he_fav_pct = favM ? favM[1] : "";
-      const he_favorites = (favM && favM[2]) ? favM[2].replace(/,/g, "") : "";
-      const he_created = g(/Created\s*([0-9]{1,2}\/[0-9]{1,2}\/[0-9]{4})/i);
-      const he_revenue = g(/([\d.]+\s*[KM]?)\s*USD/i);
-      const he_off = g(/(\d+)%\s*off/i);
-      let he_tags = "";
-      const tagBlock = T.match(/Tags\s*(?:Copy\s*)?(?:Suggestions\s*)?(.+?)(?:Categories|$)/i);
-      if (tagBlock) he_tags = clean(tagBlock[1]).slice(0, 300);
+      const sold24 = g(/Sold in the Last 24 Hours\D*?([\d,]+)\+?\s*Sold/i);
+      const views24 = g(/Views in the Last 24 Hours\D*?([\d,]+)\+?\s*Views/i);
+      let soldTotal = g(/Estimated Total Sales\D*?([\d,]+)\+?\s*Sold/i);
+      const heRevenue = g(/Estimated Revenue\D*?([\d.,]+\s*[KM]?)\s*USD/i)
+        || g(/([\d.,]+\s*[KM]?)\s*USD/i);
+      const viewsAvg = g(/([\d,]+)\s*\(Avg\)/i);
+      const viewsTotal = g(/Total views of the listing\.?\s*([\d,]+)/i);
+      const favPct = g(/favorites per 100 views\.?\s*([\d.]+)\s*%/i)
+        || g(/([\d.]+)%\s*Favorites?/i);
+      const favTotal = g(/Total number of favorites[^0-9]*([\d,]+)/i);
+      const created = g(/Created[^0-9]*?(\d{1,2}\/\d{1,2}\/\d{4})/i);
+      let ageDays = "";
+      const ageM = T.match(/Created[^(]*\((\d+)\s*(day|week|month|year)s?\)/i);
+      if (ageM) ageDays = String(parseInt(ageM[1], 10) * (AGE[ageM[2].toLowerCase()] || 30));
+      const updM = T.match(/(?:sold, renewed, or updated\.?|Updated)\s*((?:\d+\s*(?:minute|hour|day|week|month|year)s?\s*ago)|just now)/i);
+      const updated = updM ? updM[1] : "";
+      const convPct = g(/conversion rate of the listing\.?\s*~?\s*(-?[\d.]+)\s*%/i);
+      const ctyM = T.match(/Seller'?s country:\s*([A-Za-z][A-Za-z ,]{1,40})/i);
+      const country = ctyM ? clean(ctyM[1]) : "";
+      const shopDaily = g(/Recent daily sales of the shop'?s items\.?\D*?([\d,]+)\+?\s*Sold/i);
+      const heOff = g(/(\d+)%\s*off/i);
+      let tags = "", cats = "";
+      if (panel) {
+        tags = Array.from(panel.querySelectorAll('a[href*="search?q="]'))
+          .map((t) => clean(t.textContent)).filter(Boolean).join("; ");
+        const cm = T.match(/Categories\s*(?:Copy\s*)?([A-Za-z].*)$/i);
+        if (cm) cats = clean(cm[1]).slice(0, 160);
+      }
+      if (!tags) {
+        const tb = T.match(/Tags\s*(?:Copy\s*)?(?:Suggestions\s*)?(.+?)(?:Categories|$)/i);
+        if (tb) tags = clean(tb[1]).slice(0, 400);
+      }
+      // overlay off -> keep the old loose fallback so plain Etsy still works
+      if (!soldTotal && !sold24) soldTotal = g(/([\d,]+)\+?\s*Sold/i);
       rows.push([id, title, shop, prices[0] || "", num(prices[0] || ""),
         prices[1] || "", rev ? rev[1] : "",
         scope.querySelector("[data-star-seller-badge]") ? "1" : "0",
         /ad from shop|ad by/.test(txt) ? "1" : "0",
         /bestseller/.test(txt) ? "1" : "0",
         /free shipping|free delivery/.test(txt) ? "1" : "0",
-        he_sold, he_views, he_fav_pct, he_favorites, he_created, he_revenue,
-        he_off, he_tags, url]);
+        sold24, views24, soldTotal, viewsAvg, viewsTotal,
+        favPct, favTotal, created, ageDays, updated,
+        heRevenue, convPct, country, shopDaily,
+        heOff, tags, cats, url]);
     }
     return { headers, rows };
   }

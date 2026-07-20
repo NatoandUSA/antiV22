@@ -1992,6 +1992,14 @@ def pattern_miner(kw="", mode=None):
     if r["phrases"]:
         L += ["", "**Repeated phrases:** "
               + ", ".join(f"“{p}” ×{c}" for p, c in r["phrases"][:6])]
+    # competitor TAGS (from the HeyEtsy overlay capture) - their actual Etsy
+    # tags, ranked by how many of the winning listings use each
+    if r.get("top_tags"):
+        L += ["", "## \U0001F3F7 Competitor tags (their real Etsy tags, "
+              "most-used first)",
+              ", ".join(f"**{t}** ×{c}" for t, c in r["top_tags"][:12]),
+              "", "_Copy the ones that fit your product into your own 13 tags; "
+              "the Keyword Lab also folds these into its candidates._"]
     # structure + price + signals
     L += ["", "## \U0001F9F1 Winning structure",
           f"- Personalization in title: **{st['personalization']}%**  ·  "

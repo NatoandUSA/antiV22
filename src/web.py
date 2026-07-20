@@ -653,6 +653,8 @@ def build_app(password, secret):
             # "what staff need to read only, not a bunch of reports"). ---
             '<h2 class="grouph">🧰 Tools — trend feeds &amp; execution helpers</h2>'
             '<div class="toolgrid">'
+            f'<a class="toolcard" href="/winners?mode={active}"><b>🏆 Winner Finder</b>'
+            '<span>High-demand × low-competition sweet spot — the fastest pick, ranked</span></a>'
             f'<a class="toolcard" href="/supplier-trends?mode={active}"><b>🏭 Supplier Trend Finder</b>'
             '<span>Reverse signal: Alibaba/AliExpress/1688 heat → keyword demand leads</span></a>'
             f'<a class="toolcard" href="/pinterest-trends?mode={active}"><b>📌 Pinterest Trend Finder</b>'
@@ -681,8 +683,6 @@ def build_app(password, secret):
             '<details class="archive advtools"><summary>🗂️ Advanced — research '
             'library, team &amp; analytics (open when you need them)</summary>'
             '<div class="toolgrid">'
-            f'<a class="toolcard" href="/winners?mode={active}"><b>🏆 Winner Finder</b>'
-            '<span>High-demand × low-competition sweet spot — the fastest pick, ranked</span></a>'
             f'<a class="toolcard" href="/launch-kit?mode={active}"><b>🚀 Launch Kit</b>'
             '<span>One winner → verdict, edge, listing, photos & ads on one page</span></a>'
             f'<a class="toolcard" href="/daily-brief?mode={active}"><b>🌅 Daily brief</b>'

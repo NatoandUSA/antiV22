@@ -97,6 +97,11 @@ def generate(keyword=None, limit=14):
     for a in adj:
         add(f"personalized {a} embroidered {product}", f"adjacent buyer: {a}")
 
+    # (a2) competitor TAGS from the capture (HeyEtsy overlay): the winners'
+    # actual Etsy tags, 3+ words only - real buyer language, not guesses
+    for t, n_uses in (pat.get("top_tags") or [])[:10]:
+        add(t, f"competitor tag ({n_uses} winning listings use it)")
+
     # (b) recombine the mined pattern into fresh long-tails
     if subject:
         for m in _MODIFIERS:
