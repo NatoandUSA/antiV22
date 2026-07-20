@@ -105,8 +105,11 @@ def _merge_keywords(view, rows, idx, path="keyword_data.csv"):
     from src import harvest
     store = {}
     p = Path(path)
+    # utf-8-sig (audit fix): if Excel ever re-saves the master with a BOM, plain
+    # utf-8 turns the first header into '﻿keyword', every existing row's
+    # keyword reads as None, and the "merge" silently WIPES the whole base.
     if p.is_file():                       # load existing so we MERGE, never wipe
-        with p.open(encoding="utf-8") as fh:
+        with p.open(encoding="utf-8-sig") as fh:
             for r in csv.DictReader(fh):
                 harvest._add(
                     store, r.get("keyword"), parse_number(r.get("momentum")) or 0,

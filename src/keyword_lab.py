@@ -115,7 +115,7 @@ def generate(keyword=None, limit=14):
 # --------- close the loop: SAVE candidates into the master so the Inbox -----
 # actually re-ranks them (before this, "re-rank" changed nothing because the
 # generated keywords were never persisted anywhere).
-def save_candidates(kws, mode=None, enrich=True, limit=14):
+def save_candidates(kws, mode=None, enrich=True, limit=14, source="keyword-lab"):
     """Append new keywords to keyword_data.csv (the master the Inbox ranks),
     tagged source=keyword-lab. Best-effort: fills market fields from the live
     YTrends MCP per keyword (skipped silently when the MCP is unreachable -
@@ -186,7 +186,7 @@ def save_candidates(kws, mode=None, enrich=True, limit=14):
             "conversion_rate": d.get("avg_conversion_rate", ""),
             "momentum": d.get("momentum_score", ""),
             "tm_risk": "",
-            "source": "keyword-lab",
+            "source": source,
             "collected_at": _date.today().isoformat(),
         }
         new_rows.append([vals.get(str(h).strip().lower(), "") for h in headers])

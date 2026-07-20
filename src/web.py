@@ -459,8 +459,27 @@ def build_app(password, secret):
             _implabel_html += (
                 '<div class="plmeta">\U0001F4C8 Keyword base: '
                 f'<b>{_g["total"]}</b> total · <b>+{_g["today"]}</b> today · '
-                f'<b>+{_g["last7"]}</b> last 7 days &nbsp;|&nbsp; {_chan} '
+                f'<b>+{_g["last7"]}</b> 7d · <b>+{_g.get("last30", 0)}</b> 30d '
+                f'&nbsp;|&nbsp; {_chan} '
                 f'&nbsp;·&nbsp; <a href="/kw-history">who added what →</a></div>')
+        except Exception:  # noqa: BLE001
+            pass
+        # Pipeline Health strip (V32): build + freshness self-evident on the home
+        try:
+            from src import pipeline_status as _ps
+            _s = _ps.snapshot(active if active in ("pod", "embroidery") else None)
+            _c0 = _s.get("counts", {})
+            _wtxt = (f' · <b style="color:#c0392b">⚠ {len(_s["warnings"])} '
+                     'warning(s)</b>' if _s.get("warnings") else " · ✓ healthy")
+            _implabel_html += (
+                '<div class="plmeta">\U0001FA7A '
+                f'<b>V{_h_esc(_s["version"])}</b> build '
+                f'<b>{_h_esc(_s["git_sha"])}</b> · started {_h_esc(_s["started_ago"] or "?")} '
+                f'· master {_h_esc(_s["age"]["master"] or "never")} '
+                f'· captures {_h_esc(_s["age"]["captures"] or "never")} '
+                f'· \U0001F5C4 {_c0.get("archived", 0)} archived '
+                f'· \U0001F50C {_c0.get("needs_enrichment", 0)} to enrich'
+                f'{_wtxt} · <a href="/status">full status →</a></div>')
         except Exception:  # noqa: BLE001
             pass
         if _has_imp:
@@ -1614,7 +1633,7 @@ def build_app(password, secret):
         if stage:
             head += _stage_nav(stage, q, m)
         if path:
-            head += _stage_kwbar(path, q, button)
+            head += _stage_kwbar(path, q, button, mode=m)
         if not q:
             return page(title, _bar() + head + f'<article class="md"><h1>{title}'
                         '</h1><p class="empty">Type a keyword in the box above '
@@ -1721,14 +1740,114 @@ def build_app(password, secret):
         from src import interactive
         m = request.args.get("mode")
         mode = m if m in ("pod", "embroidery") else None
-        q = (request.args.get("q") or "").strip()[:80]
+        # sanitize like _kw_mode does (audit fix: raw q reached the markdown
+        # renderer, so [x](javascript:...) injected a live link - XSS)
+        raw = (request.args.get("q") or "").strip()[:80]
+        q = "".join(c for c in raw if c.isalnum() or c in " '&-.").strip()
+        show_all = request.args.get("show") == "all"
         bar = (_stage_nav("rank", q, m or "")
-               + _stage_kwbar("/inbox", q, "\U0001F3C6 Rank / focus keyword"))
+               + _stage_kwbar("/inbox", q, "\U0001F3C6 Rank / focus keyword",
+                              mode=m or ""))
+        # Needs-Enrichment queue (V32): one-click MCP enrich for lane leads
+        try:
+            from src import opportunity_inbox as _oi2
+            _ne = _oi2.build_inbox(mode, limit=1)["counts"].get(
+                "needs_enrichment", 0)
+            if _ne:
+                bar += (f'<form method="post" action="/enrich-leads" '
+                        'style="margin:0 0 10px">'
+                        f'<input type="hidden" name="_csrf" value="{_csrf()}">'
+                        f'<input type="hidden" name="mode" value="{m or ""}">'
+                        '<button class="pullbtn primary" type="submit">'
+                        f'\U0001F50C Enrich {min(_ne, 12)} capture-lane leads via '
+                        'MCP → re-rank</button> <span style="font-size:.78rem;'
+                        'color:var(--ink-soft)">fills market data for '
+                        'Pinterest/supplier leads · honest-nulls until data '
+                        'arrives</span></form>')
+        except Exception:  # noqa: BLE001
+            pass
         try:
             return _render_tool("Opportunity Inbox",
-                                interactive.inbox(mode, q), switch=bar)
+                                interactive.inbox(mode, q,
+                                                  show_archived=show_all),
+                                switch=bar)
         except (SystemExit, Exception) as exc:  # noqa: BLE001
             return _tool_error("Opportunity Inbox", exc)
+
+    @app.route("/enrich-leads", methods=["POST"])
+    @login_required
+    def enrich_leads():
+        _check_csrf()
+        m = request.form.get("mode")
+        mode = m if m in ("pod", "embroidery") else None
+        from src import opportunity_inbox as oi
+        from src import keyword_lab as kl
+        leads = oi.lead_keywords(mode, limit=12)
+        if not leads:
+            return redirect(f"/inbox{'?mode=' + m if mode else ''}")
+        try:
+            added, enriched = kl.save_candidates(
+                leads, mode, enrich=True, limit=12, source="lane-enrich")
+            activity.log("enrich_leads", module="opportunity_inbox",
+                         action=f"enriched {enriched}/{added} lane leads")
+            try:
+                from src import import_ledger as _il
+                _u = current_user()
+                _il.record(user=(_u or {}).get("display_name")
+                           or (_u or {}).get("email"),
+                           channel="lane-enrich", view="needs-enrichment queue",
+                           rows=len(leads), kw_new=added)
+            except Exception:  # noqa: BLE001
+                pass
+        except Exception as exc:  # noqa: BLE001
+            return _tool_error("Enrich leads", exc)
+        return redirect(f"/inbox{'?mode=' + m if mode else ''}")
+
+    @app.route("/status")
+    @login_required
+    def pipeline_status_page():
+        import html as _h
+        from src import pipeline_status as ps
+        s = ps.snapshot()
+        c = s.get("counts", {})
+        src = s.get("sources", {})
+        lanes = "".join(
+            f"<tr><td><b>{_h.escape(name)}</b></td><td>{v['files']}</td>"
+            f"<td>{_h.escape(ps._age(v['newest']) or '—')}</td></tr>"
+            for name, v in s["lanes"].items())
+        li = s.get("last_import") or {}
+        warns = "".join(f'<div class="notice warn">⚠ {_h.escape(w)}</div>'
+                        for w in s.get("warnings", []))
+        content = (
+            '<article class="md"><h1>\U0001FA7A Pipeline Health</h1>'
+            f'<p><b>V{_h.escape(s["version"])}</b> · build '
+            f'<code>{_h.escape(s["git_sha"])}</code> · service started '
+            f'{_h.escape(s["started_ago"] or "?")} — if this SHA does not match '
+            'your latest <code>git push</code>, the VPS is running a STALE '
+            'build.</p>' + warns +
+            '<h2>Data freshness</h2><table>'
+            f'<tr><th>Master keyword CSV</th><td>{src.get("master_rows", "?")} rows'
+            f'</td><td>{_h.escape(s["age"]["master"] or "never")}</td></tr>'
+            f'<tr><th>Proof (Alura + captures)</th><td>'
+            f'{src.get("proof_listings", 0)} listings</td>'
+            f'<td>{_h.escape(s["age"]["proof"] or "never")}</td></tr>'
+            f'<tr><th>Your sales learning file</th><td>—</td>'
+            f'<td>{_h.escape(s["age"]["learning"] or "never")}</td></tr></table>'
+            '<h2>Capture lanes</h2><table><tr><th>Lane</th><th>Files</th>'
+            f'<th>Newest</th></tr>{lanes}</table>'
+            '<h2>Ranking right now</h2>'
+            f'<p>{c.get("total", "?")} active keywords — \U0001F3C6 '
+            f'{c.get("proven", 0)} proven · \U0001F7E2 {c.get("selling", 0)} '
+            f'selling · \U0001F680 {c.get("build", 0)} build · '
+            f'\U0001F5C4 {c.get("archived", 0)} archived (stale WATCH) · '
+            f'\U0001F50C {c.get("needs_enrichment", 0)} need enrichment.</p>'
+            '<h2>Last file import</h2>'
+            + (f'<p>{li.get("rows", 0)} rows from {li.get("files", 0)} file(s) '
+               f'→ lanes: {_h.escape(str(li.get("lanes", {})))}</p>'
+               if li else '<p class="empty">No file imports yet.</p>')
+            + '<p class="note">Keyword growth &amp; who added what: '
+            '<a href="/kw-history">/kw-history</a>.</p></article>')
+        return page("Pipeline Health", _bar() + content)
 
     @app.route("/kw-history")
     @login_required
@@ -1751,7 +1870,8 @@ def build_app(password, secret):
                      'recording correctly from this deploy.</td></tr>')
         urows = "".join(
             f"<tr><td><b>{_h.escape(str(u['user']))}</b></td><td>+{u['today']}</td>"
-            f"<td>+{u['last7']}</td><td><b>+{u['total']}</b></td>"
+            f"<td>+{u['last7']}</td><td>+{u.get('last30', 0)}</td>"
+            f"<td><b>+{u['total']}</b></td>"
             f"<td>{u['rows']}</td><td>{u['events']}</td></tr>"
             for u in g["by_user"]) or (
             '<tr><td colspan="6">No import events recorded yet. Staff names '
@@ -1768,15 +1888,16 @@ def build_app(password, secret):
             '<article class="md"><h1>\U0001F4C8 Keyword base — growth &amp; '
             'who added what</h1>'
             f'<p><b>{g["total"]}</b> keywords total · <b>+{g["today"]}</b> today '
-            f'· <b>+{g["last7"]}</b> in the last 7 days.</p>'
+            f'· <b>+{g["last7"]}</b> last 7 days · '
+            f'<b>+{g.get("last30", 0)}</b> last 30 days.</p>'
             '<h2>Daily additions (last 14 days, by channel)</h2>'
             f'<table><tr><th>Date</th><th>New keywords</th>{chead}</tr>{drows}</table>'
             '<h2>By person</h2>'
             '<p class="note">Counted from the import ledger: extension sends '
             '(with the staff name set in the popup), homepage file drops '
             '(logged-in user), Keyword Lab adds, and the MCP auto-pull.</p>'
-            '<table><tr><th>Who</th><th>Today</th><th>7 days</th><th>Total new '
-            'kws</th><th>Rows imported</th><th>Imports</th></tr>'
+            '<table><tr><th>Who</th><th>Today</th><th>7 days</th><th>30 days</th>'
+            '<th>Total new kws</th><th>Rows imported</th><th>Imports</th></tr>'
             f'{urows}</table>'
             '<h2>Recent import events</h2>'
             '<table><tr><th>Date</th><th>Who</th><th>Channel</th><th>View</th>'
@@ -1818,14 +1939,19 @@ def build_app(password, secret):
                 '.stgn.on{background:var(--accent);border-color:var(--accent);color:#fff}'
                 '</style><nav class="stgnav">' + items + "</nav>")
 
-    def _stage_kwbar(action, q, button, next_href=None, next_label=None):
+    def _stage_kwbar(action, q, button, next_href=None, next_label=None, mode=""):
         """A keyword box ON the stage page itself (no round-trip to the home) +
-        a next-step button that carries the same keyword down the pipeline."""
+        a next-step button that carries the same keyword down the pipeline.
+        Carries the POD/Embroidery mode too (audit fix: submitting the box used
+        to silently reset the mode filter to 'all')."""
         import html as _h
         qe = _h.escape(q or "", quote=True)
+        mfield = (f'<input type="hidden" name="mode" '
+                  f'value="{_h.escape(mode, quote=True)}">'
+                  if mode in ("pod", "embroidery", "both") else "")
         nxt = (f'<a class="pullbtn" style="white-space:nowrap" href="{next_href}">'
                f'{next_label}</a>' if next_href else "")
-        return (f'<form class="toolbar" method="get" action="{action}">'
+        return (f'<form class="toolbar" method="get" action="{action}">{mfield}'
                 f'<input name="q" value="{qe}" placeholder="Keyword, e.g. '
                 f'patchwork usa tee">'
                 f'<button class="primary" type="submit">{button}</button>'
@@ -1838,11 +1964,12 @@ def build_app(password, secret):
         from urllib.parse import quote_plus as _uq2
         m = request.args.get("mode")
         mode = m if m in ("pod", "embroidery") else None
-        q = (request.args.get("q") or "").strip()[:80]
+        raw = (request.args.get("q") or "").strip()[:80]
+        q = "".join(c for c in raw if c.isalnum() or c in " '&-.").strip()
         bar = (_stage_nav("pattern", q, m or "")
                + _stage_kwbar("/pattern-miner", q, "\U0001F52C Mine pattern",
                               f"/keyword-lab?q={_uq2(q)}" if q else "/keyword-lab",
-                              "Next: \U0001F4A1 Keyword Lab →"))
+                              "Next: \U0001F4A1 Keyword Lab →", mode=m or ""))
         try:
             return _render_tool("Pattern Miner",
                                 interactive.pattern_miner(q, mode), switch=bar)
@@ -1855,9 +1982,11 @@ def build_app(password, secret):
         from src import interactive
         m = request.args.get("mode")
         mode = m if m in ("pod", "embroidery") else None
-        q = (request.args.get("q") or "").strip()[:80]
+        raw = (request.args.get("q") or "").strip()[:80]
+        q = "".join(c for c in raw if c.isalnum() or c in " '&-.").strip()
         bar = (_stage_nav("lab", q, m or "")
-               + _stage_kwbar("/keyword-lab", q, "\U0001F4A1 Generate keywords"))
+               + _stage_kwbar("/keyword-lab", q, "\U0001F4A1 Generate keywords",
+                              mode=m or ""))
         # "Add all to Inbox" form: the save that makes RE-RANK real - candidates
         # are appended to keyword_data.csv (best-effort MCP enrich) and the Inbox
         # re-ranks them through the full layered engine.

@@ -37,6 +37,14 @@ def _strong_sold():
     return float(_cfg("strong_seller_sold"))
 
 
+def _proven_sold24():
+    return float(_cfg("proven_sold_24h"))
+
+
+def _strong_sold24():
+    return float(_cfg("strong_seller_sold_24h"))
+
+
 def _min_shops():
     return int(_cfg("proven_min_shops"))
 
@@ -209,14 +217,20 @@ def _capture_rows(mode=None):
             if not kw:
                 continue
             sold = _num(c(si))
+            recent = False                     # True = the figure is a 24h count
             if sold in (None, 0):
-                sold = _num(c(s24))
+                s2 = _num(c(s24))
+                if s2 is not None:
+                    sold, recent = s2, True
             age_days = _num(c(agi))
             key = str(c(idi) or c(ui) or title.lower())
             rec = {
                 "keyword": kw, "title": title, "shop": (str(c(shi) or "")).strip(),
-                "sold": sold, "revenue": _num(c(ri)), "price": None,
-                "age_months": (age_days / 30.0) if age_days else None,
+                "sold": sold, "recent": recent, "revenue": _num(c(ri)),
+                "price": None,
+                # audit fix: age 0 days (listed TODAY) is real data, not missing -
+                # `if age_days` dropped the strongest young-winner signal
+                "age_months": (age_days / 30.0) if age_days is not None else None,
                 "reviews": None,
             }
             old = seen.get(key)
@@ -232,11 +246,20 @@ def _canon(kw):
 
 
 def _pct(vals):
+    """Midrank percentile (audit fix): ties get the tie's MIDDLE rank, not its
+    maximum - so an all-zero column scores 50 everywhere instead of handing
+    every zero-sales row a perfect 100."""
     s = sorted(v for v in vals if v is not None)
     if not s:
         return lambda x: None
-    return lambda x: (100.0 * sum(1 for v in s if v <= x) / len(s)
-                      if x is not None else None)
+
+    def f(x):
+        if x is None:
+            return None
+        less = sum(1 for v in s if v < x)
+        eq = sum(1 for v in s if v == x)
+        return 100.0 * (less + 0.5 * eq) / len(s)
+    return f
 
 
 def build_proof(mode=None):
@@ -244,7 +267,19 @@ def build_proof(mode=None):
 
     proof = {keyword, sold, revenue, shops, listings, young, score, verdict,
     evidence}. Empty dict when no export is present (engine then uses market signal)."""
-    rows = _latest_rows() + _capture_rows(mode)
+    # Cross-SOURCE dedup (audit fix): the same listing present in BOTH the
+    # Alura/EverBee export and an extension capture used to be summed twice -
+    # 30 sold became 60 and crossed the PROVEN bar on one listing's evidence.
+    # Key on normalized title + shop; first source wins (export loads first).
+    _seen_x = set()
+    rows = []
+    for r in _latest_rows() + _capture_rows(mode):
+        xk = (_canon(r.get("title") or r.get("keyword")),
+              (r.get("shop") or "").strip().lower())
+        if xk in _seen_x:
+            continue
+        _seen_x.add(xk)
+        rows.append(r)
     if not rows:
         return {}
     agg = {}
@@ -252,11 +287,17 @@ def build_proof(mode=None):
         c = _canon(r["keyword"])
         if not c:
             continue
-        a = agg.setdefault(c, {"keyword": r["keyword"], "sold": 0.0, "revenue": 0.0,
-                               "shops": set(), "listings": 0, "young": 0})
+        a = agg.setdefault(c, {"keyword": r["keyword"], "sold": 0.0, "sold24": 0.0,
+                               "revenue": 0.0, "shops": set(), "listings": 0,
+                               "young": 0})
         if len(r["keyword"]) < len(a["keyword"]):
             a["keyword"] = r["keyword"]
-        a["sold"] += r["sold"] or 0
+        # UNIT SPLIT (audit fix): 24-hour sold counts and lifetime sold counts
+        # are different units - never sum them into one figure judged by one bar.
+        if r.get("recent"):
+            a["sold24"] += r["sold"] or 0
+        else:
+            a["sold"] += r["sold"] or 0
         a["revenue"] += r["revenue"] or 0
         a["listings"] += 1
         if r["shop"]:
@@ -276,7 +317,7 @@ def build_proof(mode=None):
     # (inflated absolute scores, e.g. 95/100 on a two-column export).
     has_shop_data = any(r.get("shop") for r in rows)
     has_age_data = any(r.get("age_months") is not None for r in rows)
-    pr_sold = _pct([a["sold"] for a in recs])
+    pr_sold = _pct([a["sold"] + a["sold24"] for a in recs])
     pr_rev = _pct([a["revenue"] for a in recs])
     pr_spread = _pct([len(a["shops"]) for a in recs])
     pr_young = _pct([a["young"] for a in recs])
@@ -290,26 +331,31 @@ def build_proof(mode=None):
     for c, a in agg.items():
         shops = len(a["shops"])
         shops_known = shops > 0
-        comp = {"sold": pr_sold(a["sold"]) or 0,
+        comp = {"sold": pr_sold(a["sold"] + a["sold24"]) or 0,
                 "rev": pr_rev(a["revenue"]) or 0,
                 "spread": pr_spread(shops) or 0,
                 "young": pr_young(a["young"]) or 0}
         score = round(sum(comp[k] * w for k, w in weights) / wtot, 1)
-        if a["sold"] >= _proven_sold() and shops_known and shops >= _min_shops():
+        # Separate bars per unit: lifetime sold vs 24-hour sold. A niche moving
+        # 20+ units in a single day is proven demand even with zero lifetime data.
+        s_life, s_24 = a["sold"], a["sold24"]
+        spread_ok = shops_known and shops >= _min_shops()
+        if (s_life >= _proven_sold() or s_24 >= _proven_sold24()) and spread_ok:
             verdict = "PROVEN_WINNER"          # real sales AND spread across shops
-        elif a["sold"] >= _strong_sold() and shops_known and shops >= _min_shops():
+        elif (s_life >= _strong_sold() or s_24 >= _strong_sold24()) and spread_ok:
             verdict = "STRONG_SELLER"          # solid sales + spread, below PROVEN bar
-        elif a["sold"] > 0:
+        elif s_life + s_24 > 0:
             verdict = "SELLING"                # sells, but spread unknown/monopolised
         else:
             verdict = "LISTED"
         out[c] = {
-            "keyword": a["keyword"], "sold": a["sold"], "revenue": a["revenue"],
+            "keyword": a["keyword"], "sold": s_life, "sold_24h": s_24,
+            "revenue": a["revenue"],
             "shops": shops, "shops_known": shops_known, "listings": a["listings"],
             "young": a["young"], "score": score, "verdict": verdict,
             "young_winner": a["young"] >= 2,
-            "evidence": _evidence(a["sold"], a["revenue"], shops, shops_known,
-                                  a["listings"], a["young"]),
+            "evidence": _evidence(s_life, a["revenue"], shops, shops_known,
+                                  a["listings"], a["young"], sold24=s_24),
         }
     return out
 
@@ -323,10 +369,12 @@ def _short(n):
     return f"{n:.0f}"
 
 
-def _evidence(sold, revenue, shops, shops_known, listings, young):
+def _evidence(sold, revenue, shops, shops_known, listings, young, sold24=0):
     bits = []
     if sold:
         bits.append(f"{int(sold)} sold")
+    if sold24:
+        bits.append(f"{int(sold24)} sold/24h")
     if revenue:
         bits.append(f"${_short(revenue)}")
     if shops_known and shops:

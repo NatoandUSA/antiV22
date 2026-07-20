@@ -1801,7 +1801,7 @@ _INBOX_HDR = ["| # | Keyword | Etsy proof | Product-fit | Final action | Market 
               "|---|---|---|---|---|---|---|---|---|---|"]
 
 
-def inbox(mode=None, q=""):
+def inbox(mode=None, q="", show_archived=False):
     """Opportunity Inbox — your real keyword data through the LAYERED ranking engine.
 
     Each keyword passes a risk / product-fit GATE, then the composite Market-Signal
@@ -1812,7 +1812,7 @@ def inbox(mode=None, q=""):
     Pass q to FOCUS: the rows related to that keyword rank first."""
     from src import opportunity_inbox as oi
     q = (q or "").strip()
-    data = oi.build_inbox(mode, q=q or None)
+    data = oi.build_inbox(mode, q=q or None, show_archived=show_archived)
     rows = data["rows"]
     c = data["counts"]
     label = MODE_LABEL.get(mode, mode) if mode else "all modes"
@@ -1833,6 +1833,15 @@ def inbox(mode=None, q=""):
           f"⛔ **{c['skip']}** skip · \U0001F6AB **{c['blocked']}** blocked. "
           "Sorted by **Etsy proof → final action → market signal** (the layered "
           "engine). Real sales rank above a good-looking market score._", ""]
+    # lifecycle + enrichment queue lines (V32): stale rows out, leads visible
+    if c.get("archived"):
+        L += [f"_\U0001F5C4 **{c['archived']}** stale WATCH rows archived (no "
+              "proof + no data refresh in the expiry window) — they stay "
+              "searchable in Focus and via `?show=all`._", ""]
+    if c.get("needs_enrichment"):
+        L += [f"_\U0001F50C **{c['needs_enrichment']}** capture-lane leads still "
+              "have NO market data — use the **Enrich leads via MCP** button "
+              "above to fill them (honest-nulls until then)._", ""]
     # honest provenance: exactly which data sources fed THIS ranking
     src = data.get("sources") or {}
     if src:
@@ -1853,6 +1862,21 @@ def inbox(mode=None, q=""):
         fq = _clean(data["focus_q"])
         uq = _uq(data["focus_q"])
         L += [f"## \U0001F3AF Focus: “{fq}” — {len(fr)} related keyword(s) in the rank", ""]
+        # inline pattern snapshot (review consensus: the research loop should
+        # live on ONE page - rank, pattern and expand without stage-hopping)
+        try:
+            from src import pattern_miner as _pm
+            _pat = _pm.mine(data["focus_q"])
+            _mt, _sc = _pat.get("matched") or 0, _pat.get("scanned") or 0
+            if _mt:
+                _tw = ", ".join(f"{w} {p}%" for w, p in
+                                (_pat.get("top_words") or [])[:4])
+                _gap = (_pat.get("gaps") or [""])[0]
+                L += [f"_\U0001F52C Pattern snapshot: matched **{_mt}** of "
+                      f"{_sc} captured listings · top title words: {_tw}"
+                      + (f" · gap: {_gap}" if _gap else "") + "_", ""]
+        except Exception:  # noqa: BLE001 - snapshot must never break the inbox
+            pass
         if fr:
             L += list(_INBOX_HDR)
             for i, r in enumerate(fr, 1):

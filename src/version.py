@@ -1,2 +1,2 @@
-"""Single source of truth for the tool version. Use everywhere."""
-VERSION = "V28.1"
+"""App version - shown in the Pipeline Health badge and reports."""
+VERSION = "32"

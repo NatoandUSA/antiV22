@@ -139,7 +139,11 @@ def _data_stamp():
                        default=0.0)
         except OSError:
             return 0.0
+    # data/learning/winner.json feeds the private_boost score component -
+    # without it in the stamp, logging a sale never re-ranked anything until an
+    # unrelated file changed (audit fix).
     return (mt(MASTER), mt(MASTER_ALT), mt(_PROOF_LATEST),
+            mt("data/learning/winner.json"),
             newest(_CAPTURE_DIR), newest(_PIN_DIR), newest(_SUP_DIR))
 
 
@@ -171,22 +175,37 @@ def focus_rows(rows, q):
     return [r for _, r in out]
 
 
-def build_inbox(mode=None, limit=80, q=None):
+def build_inbox(mode=None, limit=80, q=None, show_archived=False):
     """Cached wrapper: recompute only when the underlying data files change.
     Pass q to also get `focus`: the rows related to that keyword (full-list
-    search, not just the visible slice)."""
+    search, not just the visible slice). show_archived=True includes the
+    stale-WATCH archive in the rows."""
     stamp = (mode,) + _data_stamp()
     full = _CACHE.get(stamp)
     if full is None:
         full = _build_inbox(mode, limit=100000)
         _CACHE.clear()                  # only ever keep the newest stamp
         _CACHE[stamp] = full
-    res = {"counts": full["counts"], "rows": full["rows"][:limit],
+    rows = full["rows"]
+    if show_archived:
+        rows = rows + full.get("archived", [])
+    res = {"counts": full["counts"], "rows": rows[:limit],
            "has_proof": full["has_proof"], "sources": full.get("sources", {})}
     if q:
-        res["focus"] = focus_rows(full["rows"], q)[:30]
+        # focus searches the FULL pool incl. archive - a typed keyword should
+        # always find its niche even if the rows aged out of the main list
+        res["focus"] = focus_rows(full["rows"] + full.get("archived", []), q)[:30]
         res["focus_q"] = q
     return res
+
+
+def lead_keywords(mode=None, limit=12):
+    """Lane-derived candidates still missing ALL market data - the
+    Needs-Enrichment queue (one-click MCP enrich fills them)."""
+    full = build_inbox(mode, limit=100000)
+    return [r["keyword"] for r in full["rows"]
+            if str(r.get("source", "")).endswith("-lead")
+            and r["comp"] is None and r["rev"] is None][:limit]
 
 
 def _build_inbox(mode=None, limit=80):
@@ -225,6 +244,19 @@ def _build_inbox(mode=None, limit=80):
             act = {"action": "WATCH", "reason": "", "route": "analyze",
                    "fit_status": "", "fit_label": "", "launchable": False,
                    "priority": 2, "proof_tier": 9, "proof": None}
+        ev = _evidence(comp, views, rev, cr, mom)
+        # seller concentration label (review item): same listing count, very
+        # different game when 3 shops hold it all vs. many small shops
+        sellers = _num(row.get("seller_count"))
+        if comp and sellers and sellers > 0:
+            ratio = comp / sellers
+            if ratio >= 3:
+                ev += f" · ⚠ {int(sellers)} sellers hold {int(comp)} listings"
+            else:
+                ev += f" · {int(sellers)} sellers"
+        # your OWN sales history lifting this keyword (learning loop, visible)
+        if (s["sub_scores"].get("private_boost") or 0) > 50:
+            ev += " · \U0001F4C8 boosted by your sales"
         rec = {
             "keyword": kw,
             "verdict": s["verdict"],          # L2 market-signal verdict
@@ -241,7 +273,9 @@ def _build_inbox(mode=None, limit=80):
             "proof_tier": act.get("proof_tier", 9),   # L1: 0 proven, 1 selling
             "proof": act.get("proof"),
             "comp": comp, "views": views, "rev": rev, "conv": cr, "momentum": mom,
-            "evidence": _evidence(comp, views, rev, cr, mom),
+            "evidence": ev,
+            "collected_at": (row.get("collected_at") or "").strip(),
+            "source": str(row.get("source") or "").strip(),
             "tier": _TIER.get(s["verdict"], 9),
         }
         # WATCH sub-rank (review consensus): momentum x conversion bubbles the most
@@ -324,6 +358,30 @@ def _build_inbox(mode=None, limit=80):
                   key=lambda r: (r["proof_tier"], -r["priority"],
                                  -(r["watch_rank"] if r["action"] == "WATCH" else 0),
                                  -(r["score"] or 0)))
+    # WATCH lifecycle (V32, review consensus): a WATCH row with no proof and no
+    # data refresh for watch_expire_days is ARCHIVED out of the main list -
+    # 900 stale rows must not bury the fresh signal. Undated rows (new lane
+    # leads) stay active; the archive stays reachable (?show=all) and the
+    # Focus search still covers it.
+    archived = []
+    try:
+        from datetime import date as _d, timedelta as _td
+        from src import engine_config as _ec
+        _exp = int(_ec.get("watch_expire_days") or 0)
+        if _exp > 0:
+            cutoff = (_d.today() - _td(days=_exp)).isoformat()
+            keep = []
+            for r in rows:
+                if (r["action"] == "WATCH" and r.get("proof_tier", 9) >= 9
+                        and r.get("collected_at")
+                        and r["collected_at"] < cutoff):
+                    r["stale"] = True
+                    archived.append(r)
+                else:
+                    keep.append(r)
+            rows = keep
+    except Exception:  # noqa: BLE001 - lifecycle must never break the inbox
+        archived = []
     counts = {
         "total": len(rows),
         "proven": sum(1 for r in rows if r["proof_tier"] == 0),
@@ -334,6 +392,10 @@ def _build_inbox(mode=None, limit=80):
         "watch": sum(1 for r in rows if r["action"] == "WATCH"),
         "skip": sum(1 for r in rows if r["action"] == "SKIP"),
         "blocked": sum(1 for r in rows if r["action"] == "BLOCKED"),
+        "archived": len(archived),
+        "needs_enrichment": sum(
+            1 for r in rows if str(r.get("source", "")).endswith("-lead")
+            and r["comp"] is None and r["rev"] is None),
     }
     # honest provenance: exactly which sources fed THIS ranking
     sources = {
@@ -346,4 +408,4 @@ def _build_inbox(mode=None, limit=80):
         "lane_new": lane_new,
     }
     return {"counts": counts, "rows": rows[:limit], "has_proof": bool(proof_map),
-            "sources": sources}
+            "sources": sources, "archived": archived}

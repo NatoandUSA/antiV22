@@ -73,7 +73,7 @@ def _channel_of(source):
         return "Extension / file drop"
     if s == "keyword-lab":
         return "Keyword Lab"
-    if s.endswith("-lead"):
+    if s.endswith("-lead") or s == "lane-enrich":
         return "Capture lanes"
     return "CSV / other"
 
@@ -86,6 +86,7 @@ def stats(days=14):
              recent_events:[...], note}."""
     today_s = date.today().isoformat()
     d7 = {(date.today() - timedelta(days=i)).isoformat() for i in range(7)}
+    d30 = {(date.today() - timedelta(days=i)).isoformat() for i in range(30)}
     window = [(date.today() - timedelta(days=i)).isoformat()
               for i in range(days)]
 
@@ -108,12 +109,13 @@ def stats(days=14):
         pass
     today_n = sum(daily.get(today_s, {}).values())
     last7_n = sum(sum(v.values()) for k, v in daily.items() if k in d7)
+    last30_n = sum(sum(v.values()) for k, v in daily.items() if k in d30)
     day_rows = [{"date": d, "added": sum(daily[d].values()),
                  "by_channel": dict(daily[d])} for d in window if d in daily]
 
     # ---- WHO, from the ledger (events since the ledger went live) ----
-    by_user = defaultdict(lambda: {"today": 0, "last7": 0, "total": 0,
-                                   "rows": 0, "events": 0})
+    by_user = defaultdict(lambda: {"today": 0, "last7": 0, "last30": 0,
+                                   "total": 0, "rows": 0, "events": 0})
     events = _events()
     for e in events:
         u = e.get("user") or "unknown"
@@ -125,6 +127,8 @@ def stats(days=14):
             by_user[u]["today"] += n
         if e.get("date") in d7:
             by_user[u]["last7"] += n
+        if e.get("date") in d30:
+            by_user[u]["last30"] += n
     users = [{"user": u, **v} for u, v in
              sorted(by_user.items(), key=lambda kv: -kv[1]["total"])]
 
@@ -132,6 +136,7 @@ def stats(days=14):
         "total": total,
         "today": today_n,
         "last7": last7_n,
+        "last30": last30_n,
         "daily": day_rows,
         "by_channel_total": dict(chan_total),
         "by_user": users,

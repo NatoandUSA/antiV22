@@ -99,12 +99,19 @@ def decide(keyword, market_verdict, mode=None, fit=None, proof=None):
     elif v == "PROVEN_WINNER":
         # medium-confidence fuzzy match: strong evidence but the keyword<->proof
         # link needs a human eye before it can promote to BUILD (review consensus).
+        # RAISE-only (audit fix): weaker actions come UP to CONFIRM_FIRST with the
+        # confirm-the-match reason; a merit-earned BUILD_NOW keeps its action AND
+        # its market reason (proof note appended) - no more 'Build now' rows
+        # captioned "confirm the match first".
         if _PRI[base["action"]] < _PRI[CONFIRM_FIRST]:
             base.update({"action": CONFIRM_FIRST, "route": "analyze",
-                         "priority": _PRI[CONFIRM_FIRST]})
+                         "priority": _PRI[CONFIRM_FIRST],
+                         "reason": (f"PROVEN evidence via fuzzy match (confidence "
+                                    f"{conf}) - confirm the match, then build ({ev})")})
+        else:
+            base["reason"] += (f" + possible Etsy proof via fuzzy match "
+                               f"(confidence {conf}, {ev}) - verify the match")
         base["proof_tier"] = 1
-        base["reason"] = (f"PROVEN evidence via fuzzy match (confidence {conf}) - "
-                          f"confirm the match, then build ({ev})")
     elif v == "STRONG_SELLER":
         if _PRI[base["action"]] < _PRI[CONFIRM_FIRST]:
             base.update({"action": CONFIRM_FIRST, "route": "analyze",
