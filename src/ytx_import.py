@@ -139,6 +139,30 @@ def _merge_keywords(view, rows, idx, path="keyword_data.csv"):
         added += 1
     new_kws = len(set(store) - before)  # genuinely NEW (not dupes/updates)
     harvest.write_keyword_data(store, path)
+    # time-series seed (V33 CEO reviews' #1 ROI): snapshot the metrics of the
+    # keywords in THIS import so the Inbox can show rising/fading trends.
+    try:
+        import os
+        from datetime import date as _dt
+        hist = Path("data/history")
+        hist.mkdir(parents=True, exist_ok=True)
+        hp = hist / "keyword_snapshots.csv"
+        newfile = not hp.is_file()
+        with hp.open("a", encoding="utf-8", newline="") as fh:
+            w = csv.writer(fh)
+            if newfile:
+                w.writerow(["date", "keyword", "listings", "views", "revenue",
+                            "conversion", "momentum"])
+            today = _dt.today().isoformat()
+            for row in rows:
+                kw0 = (_cell(row, idx["keyword"]) or "").strip().lower()
+                rec = store.get(kw0)
+                if rec:
+                    w.writerow([today, kw0, rec.get("listings") or "",
+                                rec.get("views") or "", rec.get("revenue") or "",
+                                rec.get("conv") or "", rec.get("score") or ""])
+    except Exception:  # noqa: BLE001 - snapshots must never break an import
+        pass
     return added, new_kws
 
 

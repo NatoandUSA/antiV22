@@ -37,10 +37,6 @@ def _strong_sold():
     return float(_cfg("strong_seller_sold"))
 
 
-def _proven_sold24():
-    return float(_cfg("proven_sold_24h"))
-
-
 def _strong_sold24():
     return float(_cfg("strong_seller_sold_24h"))
 
@@ -182,11 +178,16 @@ _CAPTURE_MAX_FILES = 12
 
 
 def _capture_rows(mode=None):
+    """Fresh window: newest <= 12 capture files (Pattern-Miner freshness)."""
     d = CAPTURE_DIR
     if not d.is_dir():
         return []
     files = sorted(d.glob("*.json"), key=lambda p: p.stat().st_mtime,
                    reverse=True)[:_CAPTURE_MAX_FILES]
+    return _rows_from_files(files, mode)
+
+
+def _rows_from_files(files, mode=None):
     seen = {}
     for f in files:
         try:
@@ -225,6 +226,7 @@ def _capture_rows(mode=None):
             age_days = _num(c(agi))
             key = str(c(idi) or c(ui) or title.lower())
             rec = {
+                "key": key,
                 "keyword": kw, "title": title, "shop": (str(c(shi) or "")).strip(),
                 "sold": sold, "recent": recent, "revenue": _num(c(ri)),
                 "price": None,
@@ -237,6 +239,70 @@ def _capture_rows(mode=None):
             if old is None or (rec["sold"] or 0) > (old["sold"] or 0):
                 seen[key] = rec
     return list(seen.values())
+
+
+def _ledger_paths():
+    return (CAPTURE_DIR / "_proof_ledger.jsonl",
+            CAPTURE_DIR / "_ledger_seen.jsonl")
+
+
+def _ledger_update():
+    """Append normalized proof rows from capture files not yet ingested.
+    Durable L1: once a capture carried sales evidence, it stays in the proof
+    base even after the file rotates out of the newest-12 fresh window."""
+    if not CAPTURE_DIR.is_dir():
+        return
+    lp, sp = _ledger_paths()
+    try:
+        seen = set(json.loads(sp.read_text(encoding="utf-8")))
+    except Exception:  # noqa: BLE001
+        seen = set()
+    new_files = [f for f in sorted(CAPTURE_DIR.glob("*.json"))
+                 if f.name not in seen]
+    if not new_files:
+        return
+    from datetime import date as _d
+    rows = _rows_from_files(new_files)
+    try:
+        with lp.open("a", encoding="utf-8") as fh:
+            for r in rows:
+                if not (r.get("sold") or r.get("revenue")):
+                    continue                    # ledger keeps SALES evidence only
+                r2 = dict(r)
+                r2["captured_at"] = _d.today().isoformat()
+                fh.write(json.dumps(r2, ensure_ascii=False) + "\n")
+        seen.update(f.name for f in new_files)
+        sp.write_text(json.dumps(sorted(seen)), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _ledger_rows(mode=None):
+    """All-time proof rows from the ledger, deduped by listing key (latest
+    snapshot wins). Keyword re-extracted per mode at read time."""
+    lp, _ = _ledger_paths()
+    if not lp.is_file():
+        return []
+    best = {}
+    try:
+        with lp.open(encoding="utf-8") as fh:
+            for line in fh:
+                try:
+                    r = json.loads(line)
+                except ValueError:
+                    continue
+                k = str(r.get("key") or "").lower() or (r.get("title") or "").lower()
+                if k:
+                    best[k] = r                 # later lines = newer snapshots
+    except OSError:
+        return []
+    out = []
+    for r in best.values():
+        kw = st.extract_keyword(r.get("title") or "", mode).get("keyword")
+        if kw:
+            r["keyword"] = kw
+            out.append(r)
+    return out
 
 
 def _canon(kw):
@@ -271,14 +337,29 @@ def build_proof(mode=None):
     # Alura/EverBee export and an extension capture used to be summed twice -
     # 30 sold became 60 and crossed the PROVEN bar on one listing's evidence.
     # Key on normalized title + shop; first source wins (export loads first).
-    _seen_x = set()
+    _ledger_update()
+    _seen_x, _seen_key = set(), set()
     rows = []
-    for r in _latest_rows() + _capture_rows(mode):
+    # priority: latest export > fresh captures > durable ledger history - the
+    # ledger keeps proof ALIVE when old captures rotate out of the fresh window
+    # (V33 CEO fix: a PROVEN niche must never vanish because 13 newer spy files
+    # arrived). Primary dedup key = listing id/url; fallback title+shop.
+    for r in _latest_rows() + _capture_rows(mode) + _ledger_rows(mode):
+        k1 = str(r.get("key") or "").strip().lower()
         xk = (_canon(r.get("title") or r.get("keyword")),
               (r.get("shop") or "").strip().lower())
-        if xk in _seen_x:
-            continue
-        _seen_x.add(xk)
+        if k1:
+            # keyed rows (listing id/url): dedup by KEY, plus against any
+            # earlier keyless row of the same title+shop (the same listing seen
+            # via an export). Distinct keys never collapse - one shop's title
+            # variants are separate listings (CEO review #10 refinement).
+            if k1 in _seen_key or xk in _seen_x:
+                continue
+            _seen_key.add(k1)
+        else:
+            if xk in _seen_x:
+                continue
+            _seen_x.add(xk)
         rows.append(r)
     if not rows:
         return {}
@@ -288,7 +369,7 @@ def build_proof(mode=None):
         if not c:
             continue
         a = agg.setdefault(c, {"keyword": r["keyword"], "sold": 0.0, "sold24": 0.0,
-                               "revenue": 0.0, "shops": set(), "listings": 0,
+                               "revenue": 0.0, "shops": {}, "listings": 0,
                                "young": 0})
         if len(r["keyword"]) < len(a["keyword"]):
             a["keyword"] = r["keyword"]
@@ -301,7 +382,8 @@ def build_proof(mode=None):
         a["revenue"] += r["revenue"] or 0
         a["listings"] += 1
         if r["shop"]:
-            a["shops"].add(r["shop"].lower())
+            sh = r["shop"].lower()
+            a["shops"][sh] = a["shops"].get(sh, 0) + 1
         if (r["age_months"] is not None and r["age_months"] <= _young_months()
                 and (r["sold"] or 0) > 0):
             a["young"] += 1
@@ -340,7 +422,9 @@ def build_proof(mode=None):
         # 20+ units in a single day is proven demand even with zero lifetime data.
         s_life, s_24 = a["sold"], a["sold24"]
         spread_ok = shops_known and shops >= _min_shops()
-        if (s_life >= _proven_sold() or s_24 >= _proven_sold24()) and spread_ok:
+        # V33 CEO consensus: noisy 24h estimates NEVER mint PROVEN - lifetime
+        # sold is the only PROVEN signal; a 24h spike reaches STRONG_SELLER max.
+        if s_life >= _proven_sold() and spread_ok:
             verdict = "PROVEN_WINNER"          # real sales AND spread across shops
         elif (s_life >= _strong_sold() or s_24 >= _strong_sold24()) and spread_ok:
             verdict = "STRONG_SELLER"          # solid sales + spread, below PROVEN bar
@@ -348,6 +432,13 @@ def build_proof(mode=None):
             verdict = "SELLING"                # sells, but spread unknown/monopolised
         else:
             verdict = "LISTED"
+        # Monopoly cap: if ONE shop holds most of the group's listings, spread
+        # is an illusion - cap PROVEN/STRONG down to SELLING. (Top-share test,
+        # not raw HHI: an even 2-shop split is competition, not monopoly.)
+        if shops_known and verdict in ("PROVEN_WINNER", "STRONG_SELLER"):
+            tot_l = sum(a["shops"].values()) or 1
+            if max(a["shops"].values()) / tot_l > float(_cfg("monopoly_top_share")):
+                verdict = "SELLING"
         out[c] = {
             "keyword": a["keyword"], "sold": s_life, "sold_24h": s_24,
             "revenue": a["revenue"],

@@ -22,11 +22,13 @@ DEFAULTS = {
     "proven_sold": 50,
     "strong_seller_sold": 20,
     "proven_min_shops": 2,
-    # Etsy-proof verdict thresholds - 24-HOUR sold counts (captures). Different
-    # unit, different bar (audit fix: 24h and lifetime sold were summed and
-    # judged against one threshold).
-    "proven_sold_24h": 20,
+    # 24-HOUR sold bar (captures). V33 CEO consensus: noisy one-day estimates
+    # can reach STRONG_SELLER at most - only LIFETIME sold mints PROVEN.
     "strong_seller_sold_24h": 8,
+    # Monopoly cap: when ONE shop holds more than this share of the group's
+    # listings, PROVEN/STRONG is capped at SELLING. (Raw HHI was reviewed and
+    # rejected: a fair 2-shop split scores HHI 0.5 and would false-positive.)
+    "monopoly_top_share": 0.7,
     # Fuzzy proof match: Jaccard >= high_conf allows the PROVEN -> BUILD override;
     # matches in [min_conf, high_conf) are "medium": they RAISE weak actions to
     # CONFIRM_FIRST and annotate (never overwrite) a merit-earned BUILD_NOW.

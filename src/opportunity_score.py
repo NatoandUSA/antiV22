@@ -130,7 +130,17 @@ def _market(row, gt=None):
     demand = _demand_from(row)
     velocity = _first(row, "momentum_score", "velocity")
     cr = _first(row, "avg_conversion_rate", "conversion_rate", "conversion")
-    conversion = min(100.0, cr * 100.0 * 20.0) if cr is not None else None  # 5%->100
+    # V33 CEO fix (3-review consensus): min(100, cr*2000) SATURATED at 5% -
+    # a 12% converter tied a 5.1% one exactly where personalization wins.
+    # Fixed piecewise transform (deterministic, cross-import comparable):
+    # 0-5% -> 0-80 linear; above: 80 + 20*(1-e^(-25*(cr-.05)))
+    # so 5%->80, 8%->90.6, 12%->96.5, asymptote 100.
+    if cr is None:
+        conversion = None
+    elif cr <= 0.05:
+        conversion = cr * 1600.0
+    else:
+        conversion = 80.0 + 20.0 * (1.0 - math.exp(-25.0 * (cr - 0.05)))
     parts = [(demand, 0.40), (velocity, 0.35), (conversion, 0.25)]
     gt_demand, gt_vel = _trend_signals(gt)
     if gt_demand is not None:
@@ -203,7 +213,10 @@ def _private(keyword):
     except Exception:  # noqa: BLE001
         return None
     if orders <= 0:
-        return 50.0                      # we have history; this isn't a known win
+        # V33 CEO fix (3-review consensus): the old flat 50 once ANY history
+        # existed silently penalised every never-tried keyword (~-7.5 pts vs
+        # renormalising away). Untried stays honest-None; only real wins score.
+        return None
     return round(min(95.0, 60.0 + 7.0 * orders), 1)   # 1 order 67 ... 5+ -> 95
 
 

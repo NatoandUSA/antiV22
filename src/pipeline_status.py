@@ -102,6 +102,17 @@ def snapshot(mode=None):
     if c.get("needs_enrichment"):
         warn.append(f"{c['needs_enrichment']} lane leads have no market data - "
                     "run Enrich leads via MCP.")
+    try:
+        from src import backupper as _bk
+        _age_d = _bk.newest_age_days()
+        s["backup_age_days"] = _age_d
+        if _age_d is None:
+            warn.append("No backup yet - one is created automatically on the "
+                        "first homepage load each day (backups/).")
+        elif _age_d > 2:
+            warn.append(f"Newest backup is {_age_d:.0f} days old.")
+    except Exception:  # noqa: BLE001
+        pass
     s["warnings"] = warn
     s["age"] = {
         "master": _age(s["master_mtime"]),

@@ -84,7 +84,12 @@ def generate(keyword=None, limit=14):
         # selling experience + eRank/seller consensus) - never emit short-tails.
         if kw and kw not in seen and len(kw.split()) >= 3:
             seen.add(kw)
-            cands.append({"keyword": kw, "angle": angle})
+            # bucket per the long-tail rule (CEO review): 4+ words with a real
+            # angle can graduate to BUILD; 3-word terms are research/confirm.
+            tag = ("\U0001F680 build-ready" if len(kw.split()) >= 4
+                   else "\U0001F52C research (3 words - confirm first)")
+            cands.append({"keyword": kw, "angle": f"{angle} · {tag}",
+                          "bucket": "build" if len(kw.split()) >= 4 else "research"})
 
     # (a) adjacent buyer identities in the same niche -> product
     # (the phrase, else each word of it: 'nurse' inside 'er nurse' etc.)

@@ -142,9 +142,15 @@ def winner_orders(keyword):
         return 0
     w = _load("winner")
     total = _i((w.get("keywords", {}).get(kw) or {}).get("orders"))
-    toks = set(kw.split())
+    # V33 CEO fix: generic words must not leak boosts across niches - a "nurse
+    # gift" sale must never lift "dog gift" just because both say "gift".
+    _GENERIC = {"gift", "gifts", "shirt", "tshirt", "t", "tee", "custom",
+                "personalized", "personalised", "sweatshirt", "hoodie", "name",
+                "svg", "png", "mug", "tote", "bag", "embroidered", "embroidery",
+                "for", "her", "him", "mom", "dad", "day", "the", "and"}
+    toks = set(kw.split()) - _GENERIC
     for t, row in (w.get("tags", {}) or {}).items():
-        if toks & set(str(t).split()):
+        if toks & (set(str(t).split()) - _GENERIC):
             total += _i(row.get("orders"))
     return total
 

@@ -1833,6 +1833,12 @@ def inbox(mode=None, q="", show_archived=False):
           f"⛔ **{c['skip']}** skip · \U0001F6AB **{c['blocked']}** blocked. "
           "Sorted by **Etsy proof → final action → market signal** (the layered "
           "engine). Real sales rank above a good-looking market score._", ""]
+    # Launch capacity (CEO review): a small team works 3-5 builds, not 33 -
+    # everything below the top handful is queue, not work.
+    if c.get("build", 0) > 5:
+        L += ["_\U0001F3AF **Launch capacity:** work the TOP 3-5 Build rows "
+              "only - the rest is queue. More parallel launches means worse "
+              "images and slower learning, not more sales._", ""]
     # lifecycle + enrichment queue lines (V32): stale rows out, leads visible
     if c.get("archived"):
         L += [f"_\U0001F5C4 **{c['archived']}** stale WATCH rows archived (no "

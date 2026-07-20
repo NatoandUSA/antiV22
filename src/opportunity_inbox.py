@@ -144,6 +144,7 @@ def _data_stamp():
     # unrelated file changed (audit fix).
     return (mt(MASTER), mt(MASTER_ALT), mt(_PROOF_LATEST),
             mt("data/learning/winner.json"),
+            mt("data/history/keyword_snapshots.csv"),
             newest(_CAPTURE_DIR), newest(_PIN_DIR), newest(_SUP_DIR))
 
 
@@ -208,6 +209,41 @@ def lead_keywords(mode=None, limit=12):
             and r["comp"] is None and r["rev"] is None][:limit]
 
 
+def _trend_map():
+    """kw -> (arrow, detail) from the last two snapshot dates per keyword.
+    V33 (CEO reviews' top ROI): rising / stable / fading, from real history."""
+    p = Path("data/history/keyword_snapshots.csv")
+    if not p.is_file():
+        return {}
+    hist = {}
+    try:
+        with p.open(encoding="utf-8-sig") as fh:
+            for r in csv.DictReader(fh):
+                kw = (r.get("keyword") or "").strip().lower()
+                d = r.get("date") or ""
+                try:
+                    m = float(r.get("momentum") or "")
+                except ValueError:
+                    continue
+                if kw and d:
+                    hist.setdefault(kw, {})[d] = m
+    except OSError:
+        return {}
+    out = {}
+    for kw, by_date in hist.items():
+        if len(by_date) < 2:
+            continue
+        d2, d1 = sorted(by_date)[-2:]
+        prev, cur = by_date[d2], by_date[d1]
+        if cur - prev > 5:
+            out[kw] = ("\u2197", f"mom {prev:.0f}\u2192{cur:.0f}")   # rising
+        elif prev - cur > 5:
+            out[kw] = ("\u2198", f"mom {prev:.0f}\u2192{cur:.0f}")   # fading
+        else:
+            out[kw] = ("\u2192", f"mom stable {cur:.0f}")
+    return out
+
+
 def _build_inbox(mode=None, limit=80):
     """Rank the master keyword data through the LAYERED engine. Returns {counts, rows}.
 
@@ -216,6 +252,7 @@ def _build_inbox(mode=None, limit=80):
     market signal AND the final action, sorted by final action then market score, so
     a high market score on a broad / theme / risky term never reads as 'Build'."""
     raw = _load_master()
+    trends = _trend_map()
     try:
         from src import etsy_proof as ep
         proof_map = ep.build_proof(mode)
@@ -257,6 +294,9 @@ def _build_inbox(mode=None, limit=80):
         # your OWN sales history lifting this keyword (learning loop, visible)
         if (s["sub_scores"].get("private_boost") or 0) > 50:
             ev += " · \U0001F4C8 boosted by your sales"
+        tr = trends.get(kw.lower())
+        if tr:
+            ev += f" · trend {tr[0]} ({tr[1]})"
         rec = {
             "keyword": kw,
             "verdict": s["verdict"],          # L2 market-signal verdict

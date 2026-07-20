@@ -329,6 +329,11 @@ def build_app(password, secret):
         # The Command Center + live tools are MCP-backed and operator-independent,
         # so they ALWAYS render — even on a fresh deploy before the first report
         # sync. Only the (optional) daily-report archive depends on synced modes.
+        try:                      # daily flat-file backup (V33 CEO review)
+            from src import backupper as _bk
+            _bk.ensure_daily_backup()
+        except Exception:  # noqa: BLE001
+            pass
         modes = _available_modes()
         keys = [m[0] for m in modes]
         active = request.args.get("mode", "")
@@ -436,10 +441,16 @@ def build_app(password, secret):
                                   f'columns seen: {_h_esc(_hd)}. Check the file type '
                                   'or pick the source manually.</div>')
             else:
+                _kwn = _li.get("kw_new")
+                _kwbit = ""
+                if _kwn is not None and "keywords" in str(_li.get("lanes") or {}):
+                    _kwbit = (f' · <b>+{_kwn} new keywords</b>' if _kwn
+                              else ' · <b>0 new</b> (all duplicates — rank unchanged)')
                 _implabel_html = ('<div class="plmeta">Last import: '
                                   f'<b>{_li.get("rows")} rows</b> from '
                                   f'{_li.get("files")} file(s) → '
-                                  f'<b>{_h_esc(str(_li.get("lane")))}</b> lane · '
+                                  f'<b>{_h_esc(str(_li.get("lane")))}</b> lane'
+                                  f'{_kwbit} · '
                                   f'{_ago(_li.get("age_seconds"))}</div>')
         elif _imp_info:
             _v = _imp_info.get("view") or ""
@@ -2332,6 +2343,7 @@ def build_app(password, secret):
                 "filenames": [u[0] for u in uploads][:6],
                 "headers": [str(h) for h in (headers_seen or [])][:15],
                 "empty": total_rows == 0,
+                "kw_new": kw_new_total,
             }), encoding="utf-8")
         except Exception:  # noqa: BLE001
             pass
