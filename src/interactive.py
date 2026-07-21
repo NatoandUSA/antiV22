@@ -1491,23 +1491,27 @@ def _mode_for(kw, mode=None):
     return "embroidery" if matches_mode((kw or "").lower(), "embroidery") else "pod"
 
 
-def _tags_for(kw, limit=13, mode=None):
-    """Clean 13-tag list for a keyword. V35.2: no longer depends on the live
-    related-keyword lookup alone - an unindexed long-tail used to yield ONE tag
-    while the owner's own data sat unused. Cascade, best source first:
+def tags_with_sources(kw, limit=13, mode=None):
+    """V35.4: the 13-tag cascade WITH provenance - every tag says where it came
+    from and why, so the seller can judge it instead of trusting a bare chip.
 
-      1. live related keywords (YTrends MCP) - market truth when indexed
-      2. competitor TAGS + title phrases mined from the owner's captures
-         (pattern_miner) - what actually-ranking listings in this niche use
-      3. sibling keywords from the ranked master (opportunity_inbox focus)
-      4. buyer-intent combos built from the keyword's own tokens (subject +
-         gift/product suffixes) - generic fill so the block is never empty
+    Returns [{tag, source, why, count}] where source is one of:
+      keyword  - the keyword itself
+      related  - live YTrends related keyword (market truth when indexed)
+      captures - competitor tag/phrase from the owner's captures; count = how
+                 many captured competitor listings use it
+      master   - sibling keyword from the owner's ranked master
+      fill     - buyer-intent combo built from the keyword's own tokens
 
-    Every candidate is trademark-checked, 3-20 chars, deduped. Never raises."""
-    tags, seen = [], set()
+    ON-NICHE guard (V35.4 tightened): a capture/master candidate must share a
+    SUBJECT word with the keyword, or at least TWO non-generic words - sharing
+    only a product noun ('shirt') let 'custom teacher shirt' ride into a funny
+    emo shirt tag list. Every candidate is trademark-checked, 3-20 chars,
+    deduped. Never raises."""
+    out, seen = [], set()
 
-    def add(cand):
-        if len(tags) >= limit:
+    def add(cand, source, why, count=None):
+        if len(out) >= limit:
             return
         c = (cand or "").strip().lower()
         if not c or c in seen or not (3 <= len(c) <= 20):
@@ -1518,23 +1522,34 @@ def _tags_for(kw, limit=13, mode=None):
             r2 = "OK"
         if r2 != "HIGH":
             seen.add(c)
-            tags.append(c)
+            out.append({"tag": c, "source": source, "why": why, "count": count})
 
-    # ON-NICHE guard for local sources: a candidate mined from captures or the
-    # master must share at least one word with the keyword - without this, a
-    # keyword with zero matched captures inherited the WHOLE batch's tags
-    # ('nurse gift' on a birding tee).
-    from src.etsy_proof import _PROOF_GENERIC
+    from src.etsy_proof import _PROOF_GENERIC, _PROOF_PRODUCT
+    _MODS = {"funny", "cute", "cool", "best", "vintage", "retro",
+             "aesthetic", "trendy", "unique"}
     kw_toks = {w for w in kw.lower().split() if len(w) > 2}
+    kw_subj = kw_toks - _PROOF_GENERIC - _PROOF_PRODUCT - _MODS
 
     def on_niche(cand):
-        # shared words must include at least one NON-generic token: sharing
-        # only 'personalized'/'custom'/'gift' is not niche membership
-        ov = kw_toks & {w for w in str(cand or "").lower().split()
-                        if len(w) > 2}
-        return bool(ov - _PROOF_GENERIC)
+        # must share a SUBJECT word (emo, teacher, goose...) OR >=2 non-generic
+        # words (funny+shirt) - a lone product noun is not niche membership
+        ct = {w for w in str(cand or "").lower().split() if len(w) > 2}
+        ov = kw_toks & ct
+        if ov & kw_subj:
+            return True
+        return len(ov - _PROOF_GENERIC) >= 2
 
-    add(kw)
+    def shares_subj(cand):
+        return bool(kw_subj & {w for w in str(cand or "").lower().split()
+                               if len(w) > 2})
+
+    def subject_first(items):
+        # candidates sharing the SUBJECT word ('emo ...') outrank ones that
+        # only share modifier+product ('funny shirt ...')
+        return sorted(items, key=lambda it: not shares_subj(it[0])) \
+            if kw_subj else list(items)
+
+    add(kw, "keyword", "your keyword - always tag 1")
     # 1) live related keywords
     try:
         rk = mcp.research_keyword(kw) or {}
@@ -1542,45 +1557,44 @@ def _tags_for(kw, limit=13, mode=None):
     except (SystemExit, Exception):  # noqa: BLE001 - stay useful if the MCP is down
         related = []
     for r in related:
-        add(_g(r, "tag", "keyword", "title"))
+        add(_g(r, "tag", "keyword", "title"), "related",
+            "live YTrends related keyword")
     # 2) competitor tags + winning-title phrases from the owner's captures
-    if len(tags) < limit:
+    if len(out) < limit:
         try:
             from src import pattern_miner as pm
             p = pm.mine(kw) or {}
-            for t, _n in (p.get("top_tags") or []):
+            for t, n in subject_first(list(p.get("top_tags") or [])):
                 if on_niche(t):
-                    add(t)
-            for ph, _n in (p.get("phrases") or []):
+                    add(t, "captures",
+                        f"real Etsy tag on {n} captured competitor listing(s)",
+                        count=n)
+            for ph, n in subject_first(list(p.get("phrases") or [])):
                 if on_niche(ph):
-                    add(ph)
+                    add(ph, "captures",
+                        f"phrase in {n} winning competitor title(s)", count=n)
         except (SystemExit, Exception):  # noqa: BLE001
             pass
     # 3) sibling keywords from the ranked master
-    if len(tags) < limit:
+    if len(out) < limit:
         try:
             from src import opportunity_inbox as oi
             res = oi.build_inbox(mode, limit=1, q=kw)
-            for r in (res.get("focus") or []):
-                if on_niche(r.get("keyword")):
-                    add(r.get("keyword"))
+            rows_ = [(r.get("keyword"), r) for r in (res.get("focus") or [])]
+            for kw2, r in subject_first(rows_):
+                if on_niche(kw2):
+                    add(kw2, "master",
+                        f"sibling niche in your ranked master "
+                        f"({r.get('action', 'tracked')})")
         except (SystemExit, Exception):  # noqa: BLE001
             pass
     # 4) buyer-intent combos from the keyword's own tokens (generic fill)
-    if len(tags) < limit:
+    if len(out) < limit:
         try:
             import re as _re
-            from src.etsy_proof import _PROOF_GENERIC, _PROOF_PRODUCT
-            # style modifiers are not the niche SUBJECT - 'funny birding tee'
-            # must build combos around 'birding', not 'funny'
-            mods = {"funny", "cute", "cool", "best", "vintage", "retro",
-                    "aesthetic", "trendy", "unique"}
             toks = [w for w in _re.findall(r"[a-z0-9']+", kw.lower())
                     if len(w) > 2]
-            subj = [w for w in toks
-                    if w not in _PROOF_GENERIC and w not in _PROOF_PRODUCT
-                    and w not in mods] or \
-                   [w for w in toks if w not in _PROOF_GENERIC
+            subj = [w for w in toks if w in kw_subj] or                    [w for w in toks if w not in _PROOF_GENERIC
                     and w not in _PROOF_PRODUCT]
             prods = [w for w in toks if w in _PROOF_PRODUCT]
             base = " ".join(subj[:2]) if subj else " ".join(toks[:2])
@@ -1588,26 +1602,30 @@ def _tags_for(kw, limit=13, mode=None):
                 "sweatshirt" if _mode_for(kw, mode) == "embroidery" else "shirt")
             made = ("embroidered" if _mode_for(kw, mode) == "embroidery"
                     else "custom")
+            why = "buyer-intent fill from your keyword (no data claim)"
             cands = [f"{base} {prod}", f"{base} gift", f"{base} gifts",
                      f"{base} lover", f"{base} lover gift",
                      f"gift for {base}", f"{made} {prod}",
                      f"{base} {made} gift", f"personalized {prod}",
                      f"{prod} for her", f"{prod} for him",
                      f"funny {base} {prod}", f"{base} lover {prod}"]
-            # per-subject-token variants (kindergarten gift, teacher shirt…)
             for t in subj[:4]:
                 cands += [f"{t} {prod}", f"{t} gift", f"{t} gifts",
                           f"{t} lover gift", f"gift for {t}",
                           f"{made} {t} {prod}", f"personalized {t}",
                           f"{t} lover", f"custom {t} {prod}"]
             for cand in cands:
-                add(cand)
-            # drop-one-word variants of the keyword itself
+                add(cand, "fill", why)
             for i in range(len(toks)):
-                add(" ".join(toks[:i] + toks[i + 1:]))
+                add(" ".join(toks[:i] + toks[i + 1:]), "fill", why)
         except (SystemExit, Exception):  # noqa: BLE001
             pass
-    return tags
+    return out
+
+
+def _tags_for(kw, limit=13, mode=None):
+    """Clean 13-tag list (cascade with provenance - see tags_with_sources)."""
+    return [t["tag"] for t in tags_with_sources(kw, limit=limit, mode=mode)]
 
 
 def _price_cost_for(kw, mode):

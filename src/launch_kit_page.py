@@ -142,6 +142,43 @@ RETURNS ON PERSONALIZED ITEMS
 • Wrong name typed by the buyer: we stitch what was entered, but message us — we'll offer a discounted remake."""
 
 
+_TAG_SRC = {  # label + chip class per tag source (V35.4: show WHY each tag)
+    "keyword":  ("KW",   "your keyword"),
+    "related":  ("LIVE", "live YTrends related keywords"),
+    "captures": ("CAP",  "real competitor tags/phrases from YOUR captures"),
+    "master":   ("DB",   "sibling niches from YOUR ranked master"),
+    "fill":     ("FILL", "buyer-intent fill from the keyword (no data claim)"),
+}
+
+
+def _tags_block(tag_infos, tags_csv, tag_note):
+    """④ tag block with PROVENANCE: every chip shows its source badge (and the
+    competitor-listing count for capture tags); hover = the full reason."""
+    chips = []
+    counts = {}
+    for t in tag_infos[:13]:
+        src = t.get("source", "fill")
+        counts[src] = counts.get(src, 0) + 1
+        badge, _ = _TAG_SRC.get(src, ("?", ""))
+        n = t.get("count")
+        n_html = f'<i class="tn">×{int(n)}</i>' if n else ""
+        chips.append(
+            f'<span class="chip tsrc-{src}" title="{_e(t.get("why", ""))}">'
+            f'{_e(t["tag"])}{n_html} <b class="tb">{badge}</b></span>')
+    legend = " · ".join(
+        f'<span class="tsrc-{s} tl">{counts[s]} {_TAG_SRC[s][0]}</span> '
+        f'{_TAG_SRC[s][1]}'
+        for s in ("keyword", "related", "captures", "master", "fill")
+        if s in counts)
+    return ('<div class="lkblock"><div class="lbrow"><b>④ 13 tags (each ≤20 '
+            'chars)</b>' + _copy("lk-tags", "📋 Copy all 13") + '</div>'
+            '<div class="chips">' + "".join(chips) + '</div>'
+            + f'<div class="lbval" id="lk-tags">{_e(tags_csv)}</div>'
+            + f'<p class="note">Sources (hover any tag): {legend}.</p>'
+            + (f'<p class="note">{_e(tag_note)}</p>' if tag_note else "")
+            + '</div>')
+
+
 # --------------------------- scorecard -------------------------------------
 
 def _chip(label, value, cls=""):
@@ -348,6 +385,19 @@ _CSS = """
 .needs-human .nh,.nh{background:#d92d20;color:#fff;font-size:.62rem;
 font-weight:800;padding:1px 7px;border-radius:9px;letter-spacing:.06em;
 vertical-align:middle}
+.lktop{display:grid;grid-template-columns:minmax(0,.95fr) minmax(0,1.05fr);
+gap:18px;align-items:start}
+@media(max-width:960px){.lktop{grid-template-columns:1fr}}
+.lkside .lkblock{margin-top:0}
+.lkside .lbval{max-height:120px}
+.chip .tb{font-size:.56rem;font-weight:800;letter-spacing:.05em;
+vertical-align:middle;opacity:.75;margin-left:2px}
+.chip .tn{font-style:normal;font-size:.62rem;font-weight:800;color:var(--ok)}
+.chip.tsrc-captures{border-color:var(--ok)}
+.chip.tsrc-master{border-color:var(--accent)}
+.chip.tsrc-related{border-color:#3B6E8F}
+.chip.tsrc-fill{border-style:dashed}
+.tl{font-weight:800}
 .lkpv{max-width:680px}
 .lkpv .pv{padding:12px;gap:12px;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr)}
 .lkpv .pvmain{font-size:.72rem}
@@ -433,7 +483,8 @@ def build(kw, mode=None, sent=False):
                else "Printed T-Shirt")
 
     ev = iv.kit_evidence(kw, mode)
-    tags = iv._tags_for(kw, mode=mode)
+    tag_infos = iv.tags_with_sources(kw, mode=mode)
+    tags = [t["tag"] for t in tag_infos]
     price, base, ship, _conv = iv._price_cost_for(kw, mode)
 
     title = _title(kw, mode)
@@ -461,27 +512,23 @@ def build(kw, mode=None, sent=False):
          # scorecard
          '<article class="md"><h2>① Scorecard</h2>'
          + _scorecard(kw, mode, ev, price, base, ship) + '</article>',
-         # compact marketplace preview
-         '<article class="md"><h2>② Listing preview</h2>'
-         '<div class="lkpv"><div class="pv"><div>'
+         # V35.4 (owner feedback): preview LEFT + title/tags RIGHT - the copy
+         # work starts beside the preview instead of leaving a blank column
+         '<article class="md"><h2>② Listing preview + core SEO</h2>'
+         '<div class="lktop"><div class="lkpv"><div class="pv"><div>'
          + _gallery(kw, mode, product) + '</div>'
-         + _preview(kw, mode, title, tags, price) + '</div></div>'
+         + _preview(kw, mode, title, tags, price) + '</div>'
          '<p class="note">Compact internal preview — how the buyer roughly '
-         'sees it. Not a real marketplace page.</p></article>']
+         'sees it. Not a real marketplace page.</p></div>'
+         '<div class="lkside">'
+         + _block("lk-title", "③ Title (keyword in first 40 chars)", title,
+                  note="Etsy cuts titles around 140 chars; the first ~40 "
+                  "carry the ranking weight.")
+         + _tags_block(tag_infos, tags_csv, tag_note)
+         + '</div></div></article>']
 
     # copy-paste blocks
     blocks = [
-        _block("lk-title", "③ Title (keyword in first 40 chars)", title,
-               note="Etsy cuts titles around 140 chars; the first ~40 carry "
-               "the ranking weight."),
-        ('<div class="lkblock"><div class="lbrow"><b>④ 13 tags (each ≤20 '
-         'chars)</b>' + _copy("lk-tags", "📋 Copy all 13") + '</div>'
-         '<div class="chips">'
-         + "".join(f'<span class="chip">{_e(t)}</span>' for t in tags[:13])
-         + '</div>'
-         + f'<div class="lbval" id="lk-tags">{_e(tags_csv)}</div>'
-         + (f'<p class="note">{_e(tag_note)}</p>' if tag_note else "")
-         + '</div>'),
         _block("lk-desc", "⑤ Description (hook · details · sizing · order "
                "steps)", desc),
         _block("lk-pers", "⑥ Personalization instructions", pers, red=True,
@@ -493,7 +540,7 @@ def build(kw, mode=None, sent=False):
                note="Replace [X–Y] with your REAL production + carrier "
                "timelines and attach the matching Etsy shipping profile."),
     ]
-    H.append('<article class="md"><h2>③–⑧ Copy-paste the listing</h2>'
+    H.append('<article class="md"><h2>⑤–⑧ Copy-paste the listing</h2>'
              + "".join(blocks) + '</article>')
 
     # next steps

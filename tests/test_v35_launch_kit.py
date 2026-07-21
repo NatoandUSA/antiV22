@@ -324,6 +324,47 @@ def test_tags_fill_to_13_when_keyword_unindexed(monkeypatch):
     assert any("gift" in t for t in tags)            # buyer-intent covered
 
 
+# --------------------------- V35.4 tag provenance --------------------------
+
+def test_tags_carry_source_and_count(monkeypatch):
+    monkeypatch.setattr("src.ytrends_mcp.research_keyword",
+                        lambda kw, days=30: {})
+    monkeypatch.setattr(
+        "src.pattern_miner.mine",
+        lambda kw=None: {"have": True, "matched": 5,
+                         "top_tags": [("emo cat shirt", 9),
+                                      ("custom teacher shirt", 7)],
+                         "phrases": []})
+    from src import interactive as iv
+    infos = iv.tags_with_sources("funny emo shirt", mode="pod")
+    srcs = {t["tag"]: t for t in infos}
+    assert infos[0] == {"tag": "funny emo shirt", "source": "keyword",
+                        "why": "your keyword - always tag 1", "count": None}
+    # capture tag carries its competitor-listing count + reason
+    assert srcs["emo cat shirt"]["source"] == "captures"
+    assert srcs["emo cat shirt"]["count"] == 9
+    assert "9 captured competitor" in srcs["emo cat shirt"]["why"]
+    # product-only overlap ('shirt') must NOT ride in from captures
+    assert "custom teacher shirt" not in srcs
+    assert all(t["source"] in ("keyword", "related", "captures", "master",
+                               "fill") for t in infos)
+
+
+def test_launch_kit_top_layout_and_tag_legend(monkeypatch):
+    from src import etsy_proof as ep
+    monkeypatch.setattr(ep, "build_proof", lambda mode=None: {})
+    monkeypatch.setattr(
+        "src.shortlister_integration._enrich_row", lambda d, m=None: False)
+    from src import launch_kit_page as lkp
+    html = lkp.build("funny emo shirt", "pod")
+    # preview + title/tags share the top row; long blocks follow below
+    assert "lktop" in html and "lkside" in html
+    assert html.index('id="lk-title"') < html.index("⑤–⑧ Copy-paste")
+    assert html.index('id="lk-tags"') < html.index('id="lk-desc"')
+    # provenance visible: source chips + legend
+    assert "tsrc-" in html and "Sources (hover any tag)" in html
+
+
 def test_launch_kit_markdown_still_works(monkeypatch):
     from src import etsy_proof as ep
     monkeypatch.setattr(ep, "build_proof", lambda mode=None: {})
