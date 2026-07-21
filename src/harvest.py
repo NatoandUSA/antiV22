@@ -72,7 +72,7 @@ def _clean(tag):
     return t
 
 
-_METRICS = ("listings", "sellers", "comp", "price", "conv", "revenue", "sold",
+_METRICS = ("age", "listings", "sellers", "comp", "price", "conv", "revenue", "sold",
             "views")
 
 
@@ -90,14 +90,14 @@ def _est_views(views, sold, conv):
 
 
 def _add(store, tag, score, source, listings=None, comp=None, price=None,
-         conv=None, sellers=None, revenue=None, sold=None, views=None):
+         conv=None, sellers=None, revenue=None, sold=None, views=None, age=None):
     c = _clean(tag)
     if not c:
         return
     rec = {"tag": c, "score": float(score or 0), "source": source,
            "listings": listings, "sellers": sellers, "comp": comp,
            "price": price, "conv": conv, "revenue": revenue, "sold": sold,
-           "views": _est_views(views, sold, conv) or None}
+           "views": _est_views(views, sold, conv) or None, "age": age}
     cur = store.get(c)
     if cur is None or rec["score"] > cur["score"]:
         if cur:  # keep any metrics we already learned from another source
@@ -211,7 +211,7 @@ def _num(v, cast=float, default=0):
 # product_manager.load_keyword_data expects.
 KDATA_FIELDS = ["keyword", "etsy_listings", "seller_count", "views_24h",
                 "avg_price", "avg_revenue", "conversion_rate", "momentum",
-                "tm_risk", "source", "collected_at"]
+                "niche_age_days", "tm_risk", "source", "collected_at"]
 
 
 def write_keyword_data(store, path="keyword_data.csv"):
@@ -246,6 +246,7 @@ def write_keyword_data(store, path="keyword_data.csv"):
                 "avg_revenue": round(_num(r["revenue"]), 2),
                 "conversion_rate": round(_num(r["conv"]), 4),
                 "momentum": round(r["score"], 2),
+                "niche_age_days": _num(r.get("age"), int) if r.get("age") is not None else "",
                 "tm_risk": "",
                 # keep the TRUE channel: only bare MCP view names get the mcp:
                 # prefix. ext:*/keyword-lab/*-lead rows keep their identity so

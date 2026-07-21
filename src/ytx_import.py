@@ -85,7 +85,16 @@ def _resolve(headers):
         "views": _find(headers, "views vel", "view"),
         "score": _find(headers, "gem score", "opportunity", "momentum", "score"),
         "comp": _find(headers, "competition"),
+        "age": _find(headers, "freshness", "avg age", "niche age"),
     }
+
+
+def _age_days(v):
+    """FRESHNESS 'avg age 52.7d · 52.7d' -> 52.7 (days). None if absent."""
+    if v is None:
+        return None
+    m = re.search(r"(\d+(?:\.\d+)?)\s*d", str(v))
+    return float(m.group(1)) if m else None
 
 
 def _cell(row, i):
@@ -119,7 +128,8 @@ def _merge_keywords(view, rows, idx, path="keyword_data.csv"):
                     price=parse_number(r.get("avg_price")),
                     conv=parse_number(r.get("conversion_rate")),
                     revenue=parse_number(r.get("avg_revenue")),
-                    views=parse_number(r.get("views_24h")))
+                    views=parse_number(r.get("views_24h")),
+                    age=parse_number(r.get("niche_age_days")))
     added = 0
     before = set(store)                 # keywords already in the master
     for row in rows:
@@ -135,7 +145,8 @@ def _merge_keywords(view, rows, idx, path="keyword_data.csv"):
             revenue=parse_number(_cell(row, idx["revenue"])),
             sold=parse_number(_cell(row, idx["sold"])),
             views=parse_number(_cell(row, idx["views"])),
-            comp=(_cell(row, idx["comp"]) or None))
+            comp=(_cell(row, idx["comp"]) or None),
+            age=_age_days(_cell(row, idx["age"])))
         added += 1
     new_kws = len(set(store) - before)  # genuinely NEW (not dupes/updates)
     harvest.write_keyword_data(store, path)

@@ -1790,6 +1790,12 @@ def _inbox_row(i, r):
         proof_cell = f"\U0001F7E2 {pr['evidence']}"
     else:
         proof_cell = "—"
+    # several related keywords share ONE proof group - name it, so identical
+    # evidence on neighbouring rows reads as "same group", not duplicated data
+    if pr:
+        via = str(pr.get("keyword") or "").strip()
+        if via and via.lower() != r["keyword"].strip().lower():
+            proof_cell += f" (group: {_clean(via)[:32]})"
     comp = int(r["comp"]) if r["comp"] is not None else "—"
     conv = f"{r['conv']*100:.1f}%" if r["conv"] is not None else "—"
     mom = int(r["momentum"]) if r["momentum"] is not None else "—"

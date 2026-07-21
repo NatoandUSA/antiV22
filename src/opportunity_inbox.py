@@ -297,6 +297,11 @@ def _build_inbox(mode=None, limit=80):
         tr = trends.get(kw.lower())
         if tr:
             ev += f" · trend {tr[0]} ({tr[1]})"
+        # niche age (from YTrends FRESHNESS): young niches are beatable markets
+        nage = _num(row.get("niche_age_days"))
+        if nage is not None:
+            ev += (f" · \U0001F331 young niche ({int(nage)}d)" if nage <= 45
+                   else f" · niche age {int(nage)}d")
         rec = {
             "keyword": kw,
             "verdict": s["verdict"],          # L2 market-signal verdict

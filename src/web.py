@@ -2007,20 +2007,33 @@ def build_app(password, secret):
             g = kl.generate(q or None)
             if g["candidates"]:
                 import html as _h
-                kws = "\n".join(c["keyword"] for c in g["candidates"])
+                boxes = "".join(
+                    '<label style="display:flex;gap:7px;align-items:center;'
+                    'font-size:12.5px;padding:3px 0">'
+                    f'<input type="checkbox" name="kw" value='
+                    f'"{_h.escape(c["keyword"], quote=True)}"'
+                    + (" checked" if c.get("bucket") == "build" else "")
+                    + f'> {_h.escape(c["keyword"])}'
+                    '<span style="color:var(--ink-faint);font-size:11px">'
+                    f'{_h.escape(c["angle"].split("·")[-1].strip())}</span>'
+                    '</label>' for c in g["candidates"])
                 addform = (
                     '<form method="post" action="/keyword-lab/add" '
                     'style="margin:10px 0 4px">'
                     f'<input type="hidden" name="_csrf" value="{_csrf()}">'
                     f'<input type="hidden" name="mode" value="{m or ""}">'
                     f'<input type="hidden" name="q" value="{_h.escape(q, quote=True)}">'
-                    f'<textarea name="kws" hidden>{_h.escape(kws)}</textarea>'
+                    '<details open style="border:1px solid var(--line);'
+                    'border-radius:10px;padding:8px 12px;margin-bottom:8px">'
+                    '<summary style="font-size:12.5px;font-weight:700;'
+                    'cursor:pointer">☑ Choose which keywords to add '
+                    '(build-ready pre-checked)</summary>'
+                    f'{boxes}</details>'
                     '<button class="pullbtn primary" type="submit">➕ Add '
-                    f'{len(g["candidates"])} keywords to the Inbox & re-rank '
-                    '→</button> <span style="font-size:.78rem;color:'
-                    'var(--ink-soft)">saves into keyword_data.csv · enriched from '
-                    'the live MCP when reachable · then ranked by the layered '
-                    'engine</span></form>')
+                    'SELECTED to the Inbox & re-rank →</button> '
+                    '<span style="font-size:.78rem;color:var(--ink-soft)">'
+                    'saves into keyword_data.csv · MCP-enriched when reachable · '
+                    'ranked by the layered engine</span></form>')
         except (SystemExit, Exception):  # noqa: BLE001
             addform = ""
         try:
@@ -2037,8 +2050,11 @@ def build_app(password, secret):
         from src import keyword_lab as kl
         m = request.form.get("mode")
         mode = m if m in ("pod", "embroidery") else None
-        kws = [k.strip() for k in (request.form.get("kws") or "").splitlines()
-               if k.strip()][:20]
+        kws = [k.strip() for k in request.form.getlist("kw") if k.strip()]
+        if not kws:                       # legacy textarea fallback
+            kws = [k.strip() for k in
+                   (request.form.get("kws") or "").splitlines() if k.strip()]
+        kws = kws[:20]
         try:
             added, enriched = kl.save_candidates(kws, mode)
             activity.log("keyword_lab_add", module="keyword_lab",

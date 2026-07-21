@@ -23,6 +23,8 @@
   function isPinterest() { return /(^|\.)pinterest\./.test(location.hostname); }
   function isAmazon() { return /(^|\.)amazon\./.test(location.hostname); }
   function isAlibaba() { return /(^|\.)alibaba\.com$/.test(location.hostname); }
+  function isAliExpress() { return /(^|\.)aliexpress\.(com|us)$/.test(location.hostname); }
+  function is1688() { return /(^|\.)1688\.com$/.test(location.hostname); }
   function isYtuongMe() { return /(^|\.)ytuong\.me$/.test(location.hostname); }
 
   // ---- generic table extraction (YTrends) ------------------------------------
@@ -126,7 +128,9 @@
   // ---- Alibaba search results ------------------------------------------------
   function extractAlibaba() {
     const byHref = {};
-    for (const a of document.querySelectorAll('a[href*="product-detail"]')) {
+    for (const a of document.querySelectorAll(
+        'a[href*="product-detail"], a[href*="/p-detail/"], a[href*="/item/"], ' +
+        'a[href*="/product/"], a[href*="offer/"]')) {
       const href = (a.href || "").split("?")[0];
       if (!href) continue;
       if (!byHref[href] || clean(a.innerText).length >
@@ -160,7 +164,7 @@
       seenTitle[title.toLowerCase()] = 1;
       // space-tolerant price parse: Alibaba renders prices from fragment spans, so
       // accept "$ 1 . 85 - $ 3 . 20" and collapse the internal whitespace.
-      const priceRaw = (T.match(/\$\s*\d[\d.,\s]*(?:-\s*\$?\s*\d[\d.,\s]*)?/) || [""])[0];
+      const priceRaw = (T.match(/(?:US\s*)?[$\u00a5\u20ab]\s*\d[\d.,\s]*(?:-\s*(?:US\s*)?[$\u00a5\u20ab]?\s*\d[\d.,\s]*)?/) || [""])[0];
       const price = priceRaw.replace(/\s+/g, "");
       const minOrder = (T.match(/[Mm]in\.?\s*order:?\s*([\d.,]+\s*[a-z]+)/i) || ["", ""])[1];
       const sold = (T.match(/([\d.,]+\+?)\s*sold/i) || ["", ""])[1];
@@ -355,6 +359,8 @@
     if (isEtsy()) return "etsy";
     if (isAmazon()) return "amazon";
     if (isAlibaba()) return "alibaba";
+    if (isAliExpress()) return "aliexpress";
+    if (is1688()) return "supplier-1688";
     if (isYtuongMe()) return "ytuongme";
     return "ytrends";
   }
@@ -362,7 +368,8 @@
   function viewSlug() {
     const q = new URLSearchParams(location.search).get("q") ||
       new URLSearchParams(location.search).get("k") ||          // amazon uses k=
-      new URLSearchParams(location.search).get("SearchText") || // alibaba
+      new URLSearchParams(location.search).get("SearchText") || // alibaba/aliexpress
+      new URLSearchParams(location.search).get("keywords") ||   // 1688
       location.pathname.replace(/^\/+|\/+$/g, "");
     const sort = new URLSearchParams(location.search).get("sort");
     const base = (q || sourceTag()).replace(/[^a-z0-9]+/gi, "_").toLowerCase().slice(0, 40);
@@ -382,7 +389,7 @@
     if (isPinterest()) d = extractPinterest();
     else if (isEtsy()) d = extractEtsy();
     else if (isAmazon()) d = extractAmazon();
-    else if (isAlibaba()) d = extractAlibaba();
+    else if (isAlibaba() || isAliExpress() || is1688()) d = extractAlibaba();
     else {
       const table = pickTable();
       if (table) d = extractTable(table);
