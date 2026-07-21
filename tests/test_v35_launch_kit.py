@@ -296,9 +296,9 @@ def test_xss_payloads_escaped_in_launch_kit(monkeypatch):
         "src.shortlister_integration._enrich_row", lambda d, m=None: False)
     monkeypatch.setattr(
         "src.interactive._tags_for",
-        lambda kw, limit=13: ['<img src=x onerror=alert(1)>',
-                              'teacher " onclick="alert(1)',
-                              '[x](javascript:alert(1))'])
+        lambda kw, limit=13, mode=None: ['<img src=x onerror=alert(1)>',
+                                         'teacher " onclick="alert(1)',
+                                         '[x](javascript:alert(1))'])
     from src import launch_kit_page as lkp
     html = lkp.build("teacher shirt", "embroidery")
     assert "<img src=x" not in html          # escaped, not raw
@@ -308,6 +308,20 @@ def test_xss_payloads_escaped_in_launch_kit(monkeypatch):
     import re
     assert not re.search(r'(href|src)\s*=\s*["\']?\s*javascript:', html,
                          re.IGNORECASE)
+
+
+def test_tags_fill_to_13_when_keyword_unindexed(monkeypatch):
+    # V35.3: MCP down + no captures -> the tag block must still fill from the
+    # owner's data cascade and buyer-intent combos, never stop at 1 tag
+    monkeypatch.setattr("src.ytrends_mcp.research_keyword",
+                        lambda kw, days=30: {})
+    from src import interactive as iv
+    tags = iv._tags_for("funny birding tee", mode="pod")
+    assert len(tags) == 13
+    assert tags[0] == "funny birding tee"
+    assert all(3 <= len(t) <= 20 for t in tags)
+    assert len(set(tags)) == 13                      # no duplicates
+    assert any("gift" in t for t in tags)            # buyer-intent covered
 
 
 def test_launch_kit_markdown_still_works(monkeypatch):

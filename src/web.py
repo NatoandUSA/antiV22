@@ -1725,7 +1725,7 @@ def build_app(password, secret):
         try:
             ev = interactive.kit_evidence(q, mode)
             price, _b, _s, _c = interactive._price_cost_for(q, mode)
-            tags = interactive._tags_for(q)
+            tags = interactive._tags_for(q, mode=mode)
             summary = launch_kit_page.summary_for_manager(q, mode, ev, price,
                                                          tags)
         except (SystemExit, Exception):  # noqa: BLE001 - summary is best-effort

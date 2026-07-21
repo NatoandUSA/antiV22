@@ -1491,27 +1491,122 @@ def _mode_for(kw, mode=None):
     return "embroidery" if matches_mode((kw or "").lower(), "embroidery") else "pod"
 
 
-def _tags_for(kw, limit=13):
-    """Best-effort clean tag list for a keyword, reusing the live related-keyword
-    data (same source draft_listing draws its tags from). Never raises."""
+def _tags_for(kw, limit=13, mode=None):
+    """Clean 13-tag list for a keyword. V35.2: no longer depends on the live
+    related-keyword lookup alone - an unindexed long-tail used to yield ONE tag
+    while the owner's own data sat unused. Cascade, best source first:
+
+      1. live related keywords (YTrends MCP) - market truth when indexed
+      2. competitor TAGS + title phrases mined from the owner's captures
+         (pattern_miner) - what actually-ranking listings in this niche use
+      3. sibling keywords from the ranked master (opportunity_inbox focus)
+      4. buyer-intent combos built from the keyword's own tokens (subject +
+         gift/product suffixes) - generic fill so the block is never empty
+
+    Every candidate is trademark-checked, 3-20 chars, deduped. Never raises."""
     tags, seen = [], set()
+
+    def add(cand):
+        if len(tags) >= limit:
+            return
+        c = (cand or "").strip().lower()
+        if not c or c in seen or not (3 <= len(c) <= 20):
+            return
+        try:
+            r2, _ = tm_check(c)
+        except Exception:  # noqa: BLE001
+            r2 = "OK"
+        if r2 != "HIGH":
+            seen.add(c)
+            tags.append(c)
+
+    # ON-NICHE guard for local sources: a candidate mined from captures or the
+    # master must share at least one word with the keyword - without this, a
+    # keyword with zero matched captures inherited the WHOLE batch's tags
+    # ('nurse gift' on a birding tee).
+    from src.etsy_proof import _PROOF_GENERIC
+    kw_toks = {w for w in kw.lower().split() if len(w) > 2}
+
+    def on_niche(cand):
+        # shared words must include at least one NON-generic token: sharing
+        # only 'personalized'/'custom'/'gift' is not niche membership
+        ov = kw_toks & {w for w in str(cand or "").lower().split()
+                        if len(w) > 2}
+        return bool(ov - _PROOF_GENERIC)
+
+    add(kw)
+    # 1) live related keywords
     try:
         rk = mcp.research_keyword(kw) or {}
         related = (rk.get("related_keywords") if isinstance(rk, dict) else None) or []
     except (SystemExit, Exception):  # noqa: BLE001 - stay useful if the MCP is down
         related = []
-    for cand in [kw] + [_g(r, "tag", "keyword", "title") for r in related]:
-        c = (cand or "").strip().lower()
-        if c and c not in seen and 3 <= len(c) <= 20:
-            try:
-                r2, _ = tm_check(c)
-            except Exception:  # noqa: BLE001
-                r2 = "OK"
-            if r2 != "HIGH":
-                seen.add(c)
-                tags.append(c)
-        if len(tags) >= limit:
-            break
+    for r in related:
+        add(_g(r, "tag", "keyword", "title"))
+    # 2) competitor tags + winning-title phrases from the owner's captures
+    if len(tags) < limit:
+        try:
+            from src import pattern_miner as pm
+            p = pm.mine(kw) or {}
+            for t, _n in (p.get("top_tags") or []):
+                if on_niche(t):
+                    add(t)
+            for ph, _n in (p.get("phrases") or []):
+                if on_niche(ph):
+                    add(ph)
+        except (SystemExit, Exception):  # noqa: BLE001
+            pass
+    # 3) sibling keywords from the ranked master
+    if len(tags) < limit:
+        try:
+            from src import opportunity_inbox as oi
+            res = oi.build_inbox(mode, limit=1, q=kw)
+            for r in (res.get("focus") or []):
+                if on_niche(r.get("keyword")):
+                    add(r.get("keyword"))
+        except (SystemExit, Exception):  # noqa: BLE001
+            pass
+    # 4) buyer-intent combos from the keyword's own tokens (generic fill)
+    if len(tags) < limit:
+        try:
+            import re as _re
+            from src.etsy_proof import _PROOF_GENERIC, _PROOF_PRODUCT
+            # style modifiers are not the niche SUBJECT - 'funny birding tee'
+            # must build combos around 'birding', not 'funny'
+            mods = {"funny", "cute", "cool", "best", "vintage", "retro",
+                    "aesthetic", "trendy", "unique"}
+            toks = [w for w in _re.findall(r"[a-z0-9']+", kw.lower())
+                    if len(w) > 2]
+            subj = [w for w in toks
+                    if w not in _PROOF_GENERIC and w not in _PROOF_PRODUCT
+                    and w not in mods] or \
+                   [w for w in toks if w not in _PROOF_GENERIC
+                    and w not in _PROOF_PRODUCT]
+            prods = [w for w in toks if w in _PROOF_PRODUCT]
+            base = " ".join(subj[:2]) if subj else " ".join(toks[:2])
+            prod = prods[0] if prods else (
+                "sweatshirt" if _mode_for(kw, mode) == "embroidery" else "shirt")
+            made = ("embroidered" if _mode_for(kw, mode) == "embroidery"
+                    else "custom")
+            cands = [f"{base} {prod}", f"{base} gift", f"{base} gifts",
+                     f"{base} lover", f"{base} lover gift",
+                     f"gift for {base}", f"{made} {prod}",
+                     f"{base} {made} gift", f"personalized {prod}",
+                     f"{prod} for her", f"{prod} for him",
+                     f"funny {base} {prod}", f"{base} lover {prod}"]
+            # per-subject-token variants (kindergarten gift, teacher shirt…)
+            for t in subj[:4]:
+                cands += [f"{t} {prod}", f"{t} gift", f"{t} gifts",
+                          f"{t} lover gift", f"gift for {t}",
+                          f"{made} {t} {prod}", f"personalized {t}",
+                          f"{t} lover", f"custom {t} {prod}"]
+            for cand in cands:
+                add(cand)
+            # drop-one-word variants of the keyword itself
+            for i in range(len(toks)):
+                add(" ".join(toks[:i] + toks[i + 1:]))
+        except (SystemExit, Exception):  # noqa: BLE001
+            pass
     return tags
 
 
@@ -1593,7 +1688,7 @@ def ads_plan(kw, mode=None):
     access — it tells the human exactly what to set inside Etsy's Ads dashboard."""
     kw = (kw or "").strip()
     mode = _mode_for(kw, mode)
-    tags = _tags_for(kw)
+    tags = _tags_for(kw, mode=mode)
     price, base, ship, conv = _price_cost_for(kw, mode)
     from src import ads_plan as ap
     plan = ap.build(kw, tags=tags, price=price, product_cost=base,

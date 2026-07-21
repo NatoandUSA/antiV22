@@ -433,7 +433,7 @@ def build(kw, mode=None, sent=False):
                else "Printed T-Shirt")
 
     ev = iv.kit_evidence(kw, mode)
-    tags = iv._tags_for(kw)
+    tags = iv._tags_for(kw, mode=mode)
     price, base, ship, _conv = iv._price_cost_for(kw, mode)
 
     title = _title(kw, mode)
