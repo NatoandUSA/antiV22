@@ -116,12 +116,14 @@ def rows_from_export(headers, data, mode=None):
     ti = _ci(H, "title", "product", "name", "listing", exclude=("shop", "seller"))
     if ti is None:
         return []
-    # 'sales' / 'total sales' / 'mo. sales' -> units sold
-    si = _ci(H, "sales", "sold", "orders", exclude=("revenue", "$"))
-    ri = _ci(H, "revenue", exclude=())
+    # LIFETIME sold first (he_sold from overlay captures) - the generic 'sold'
+    # needle used to grab sold_24h by column order and shrink proof 100x.
+    si = _ci(H, "he_sold", "total sales", "sales", "sold", "orders",
+             exclude=("revenue", "$", "24h", "24 h", "shop_daily"))
+    ri = _ci(H, "he_revenue", "revenue", exclude=())
     pi = _ci(H, "price", exclude=("was",))
     shi = _ci(H, "shop", "seller", exclude=("id",))
-    ai = _ci(H, "age")
+    ai = _ci(H, "age_days", "age (days)", "age")
     revi = _ci(H, "review", "rating", exclude=())
     out = []
     for r in data:
