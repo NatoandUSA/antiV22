@@ -214,6 +214,102 @@ def test_launch_kit_submit_creates_review_task(monkeypatch, tmp_path):
         appdb.DB_PATH = old_db
 
 
+# --------------------------- V35.2 trust hotfix ----------------------------
+
+def test_momentum_only_capped_watch():
+    from src import opportunity_score as osc
+    s = osc.score({"tag": "monogrammed makeup bag", "momentum_score": 92,
+                   "competition_level": "low"}, keyword="monogrammed makeup bag")
+    assert s["verdict"] == "WATCH" and s["demand_grounded"] is False
+    assert any("demand" in r.lower() for r in s["rationale"])
+
+
+def test_demand_grounded_row_can_still_go():
+    from src import opportunity_score as osc
+    # real revenue + views -> demand grounded; the cap must NOT hold this back
+    s = osc.score({"tag": "kindergarten teacher shirt", "momentum_score": 90,
+                   "revenue": 250000, "views_24h": 400,
+                   "avg_conversion_rate": 0.06, "competition_level": "low"},
+                  keyword="kindergarten teacher shirt")
+    assert s["demand_grounded"] is True
+    assert s["verdict"] in ("GO", "CONDITIONAL")
+
+
+def test_copy_warning_travels_with_red_blocks(monkeypatch):
+    from src import etsy_proof as ep
+    monkeypatch.setattr(ep, "build_proof", lambda mode=None: {})
+    monkeypatch.setattr(
+        "src.shortlister_integration._enrich_row", lambda d, m=None: False)
+    from src import launch_kit_page as lkp
+    html = lkp.build("teacher shirt 4x", "embroidery")
+    # red blocks carry the warning INSIDE the copyable value
+    for tid in ("lk-pers", "lk-policy"):
+        seg = html.split(f'id="{tid}"')[1].split("</div>")[0]
+        assert "[CHECK REQUIRED BEFORE PUBLISHING]" in seg, tid
+    # the title block is not red - no warning inside it
+    seg = html.split('id="lk-title"')[1].split("</div>")[0]
+    assert "[CHECK REQUIRED" not in seg
+    # description carries its own confirm-and-delete line
+    seg = html.split('id="lk-desc"')[1].split("</div>")[0]
+    assert "CHECK REQUIRED BEFORE PUBLISHING" in seg
+    # no pre-filled shipping promise anywhere
+    assert "7–14" not in html and "DRAFT ONLY — DO NOT PUBLISH" in html
+
+
+def test_photo_prompt_copy_carries_real_photo_warning():
+    from src import interactive as iv
+    from src import photo_brief as pb
+    out = iv.photo_prompts("teacher shirt 4x", "embroidery")
+    # every REAL slot's fenced (= copyable) block starts with the AI-draft
+    # warning; graphic slots stay clean
+    slots = pb.build("teacher shirt 4x", mode="embroidery")
+    for s in slots:
+        block = out.split(f"## {s['n']}. {s['slot']}")[1].split("```")[1]
+        if s["real_photo"]:
+            assert "do NOT use the AI output as the final Etsy image" in block
+        else:
+            assert "final Etsy image" not in block
+
+
+def test_runner_forbids_ai_as_final_image():
+    from src import photo_brief as pb
+    r = pb.runner("teacher shirt 4x", mode="embroidery")
+    assert "DO NOT USE THE AI OUTPUT AS THE FINAL ETSY IMAGE" in r
+
+
+def test_cache_stamp_includes_proof_ledger(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    import os
+    from src import opportunity_inbox as oi
+    led = tmp_path / "data" / "imports" / "etsy_spy" / "_proof_ledger.jsonl"
+    led.parent.mkdir(parents=True, exist_ok=True)
+    led.write_text("{}\n", encoding="utf-8")
+    s1 = oi._data_stamp()
+    os.utime(led, (led.stat().st_atime, led.stat().st_mtime + 10))
+    assert oi._data_stamp() != s1     # ledger-only change busts the cache
+
+
+def test_xss_payloads_escaped_in_launch_kit(monkeypatch):
+    from src import etsy_proof as ep
+    monkeypatch.setattr(ep, "build_proof", lambda mode=None: {})
+    monkeypatch.setattr(
+        "src.shortlister_integration._enrich_row", lambda d, m=None: False)
+    monkeypatch.setattr(
+        "src.interactive._tags_for",
+        lambda kw, limit=13: ['<img src=x onerror=alert(1)>',
+                              'teacher " onclick="alert(1)',
+                              '[x](javascript:alert(1))'])
+    from src import launch_kit_page as lkp
+    html = lkp.build("teacher shirt", "embroidery")
+    assert "<img src=x" not in html          # escaped, not raw
+    assert 'onclick="alert' not in html
+    # escaped TEXT may mention javascript: - what must never exist is a LIVE
+    # javascript: URL inside a link/attribute
+    import re
+    assert not re.search(r'(href|src)\s*=\s*["\']?\s*javascript:', html,
+                         re.IGNORECASE)
+
+
 def test_launch_kit_markdown_still_works(monkeypatch):
     from src import etsy_proof as ep
     monkeypatch.setattr(ep, "build_proof", lambda mode=None: {})

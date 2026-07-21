@@ -33,9 +33,16 @@ def _copy(tid, label="📋 Copy"):
             '</button>')
 
 
+COPY_WARN = "[CHECK REQUIRED BEFORE PUBLISHING]"
+
+
 def _block(tid, heading, text, note="", red=False):
-    """One labelled copy-paste block: header row + Copy button + value box."""
+    """One labelled copy-paste block: header row + Copy button + value box.
+    V35.2: red (needs-human) blocks carry the warning INSIDE the copied text -
+    a visual-only warning dies the moment staff hit Copy."""
     cls = "lkblock needs-human" if red else "lkblock"
+    if red:
+        text = f"{text}\n\n{COPY_WARN}"
     n = f'<p class="note">{note}</p>' if note else ""
     return (f'<div class="{cls}"><div class="lbrow"><b>{heading}</b>'
             + _copy(tid) + '</div>'
@@ -82,7 +89,10 @@ HOW TO ORDER
 
 {price_note}
 
-Questions? Message us — we answer within 24 hours."""
+Questions? Message us — we answer within 24 hours.
+
+[CHECK REQUIRED BEFORE PUBLISHING — confirm price, production time, material
+details and sizing numbers, then DELETE this line]"""
 
 
 def _personalization(kw):
@@ -118,7 +128,7 @@ PRODUCTION TIME
 • Made to order: [X–Y] business days before shipping [set your REAL {made} production time]
 
 SHIPPING (Vietnam → USA)
-• Tracked international shipping: typically [7–14] business days after production [confirm with your carrier]
+• Tracked international shipping: [X–Y] business days after production — do NOT publish a number until your carrier/shipping profile confirms it
 • A tracking number is added to your order the day it ships
 • Need it by a date? Message us BEFORE ordering and we'll confirm honestly.
 
@@ -324,7 +334,7 @@ def _preview(kw, mode, title, tags, price, pers_limit=12):
         '<details class="pvacc"><summary>Item details</summary>'
         '<p>Full description below — copy block ⑤.</p></details>'
         '<details class="pvacc"><summary>Shipping &amp; returns</summary>'
-        '<p>Made to order · VN→US tracked [7–14] business days · no returns on '
+        '<p>Made to order · VN→US tracked [X–Y] business days · no returns on '
         'personalized items unless defective.</p></details>'
         f'<div class="pvtags">{chips}<span>+7 tags</span></div>'
         '</div>')
@@ -444,9 +454,10 @@ def build(kw, mode=None, sent=False):
                 'approved AND the human gates pass.</div>' if sent else "")
     H = [_CSS,
          f'<article class="md">{sent_bar}<h1>🚀 Launch Kit — {_e(kw)}</h1>'
-         f'<p><i>{_e(label)} · <b>draft only</b> — copy each block into Etsy '
-         'yourself; nothing here touches your account. Red blocks need YOUR '
-         'input before publish.</i></p></article>',
+         f'<p><i>{_e(label)} · <b>DRAFT ONLY — DO NOT PUBLISH</b> until the '
+         'four gates pass. Copy each block into Etsy yourself; nothing here '
+         'touches your account. Red blocks need YOUR input first.</i></p>'
+         '</article>',
          # scorecard
          '<article class="md"><h2>① Scorecard</h2>'
          + _scorecard(kw, mode, ev, price, base, ship) + '</article>',

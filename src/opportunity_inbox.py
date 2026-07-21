@@ -142,9 +142,13 @@ def _data_stamp():
     # data/learning/winner.json feeds the private_boost score component -
     # without it in the stamp, logging a sale never re-ranked anything until an
     # unrelated file changed (audit fix).
+    # V35.2: the durable proof LEDGER is .jsonl, which the *.json glob missed -
+    # a ledger-only change (rotation/rebuild) never busted this cache, so the
+    # inbox could serve proof rows that no longer exist. Stamp it explicitly.
     return (mt(MASTER), mt(MASTER_ALT), mt(_PROOF_LATEST),
             mt("data/learning/winner.json"),
             mt("data/history/keyword_snapshots.csv"),
+            mt(_CAPTURE_DIR / "_proof_ledger.jsonl"),
             newest(_CAPTURE_DIR), newest(_PIN_DIR), newest(_SUP_DIR))
 
 

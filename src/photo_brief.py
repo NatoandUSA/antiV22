@@ -146,6 +146,10 @@ def runner(keyword, product="Embroidered Sweatshirt", mode="embroidery",
          "colors, same style in every image - it must read as one listing.",
          "4. Square format, no watermarks, no brand logos, no text unless the "
          "slot brief asks for it.",
+         "5. IMPORTANT: slots tagged [AI draft for comparison only] are "
+         "planning/mockup images - DO NOT USE THE AI OUTPUT AS THE FINAL ETSY "
+         "IMAGE for those slots; the published photo must be a real photo of "
+         "the actual product / sew-out.",
          "",
          "THE 12 SLOTS:"]
     for s in slots:

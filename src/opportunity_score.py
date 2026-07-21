@@ -329,10 +329,21 @@ def score(row, keyword=None, mode=None, private=None, category=None,
     # F .118 with the default weights).
     core_missing = any(subs[k] is None for k in
                        ("market_potential", "competition_health"))
+    # V35.2 trust hotfix (3-review consensus): DEMAND-GROUNDED check. A market
+    # score standing only on velocity/conversion - with NO real demand data
+    # (no revenue, no views, no explicit demand score) - must never mint a
+    # confident GO/CONDITIONAL: momentum-92 rows with zero listings were
+    # scoring GO 83 on the strength of one leg. Such rows cap at WATCH (needs
+    # enrichment). The lifetime Etsy-proof override in ranking_engine still
+    # applies downstream, so a niche with REAL sales evidence is never held
+    # back by this cap. Ranking math otherwise untouched (90-day freeze).
+    demand_grounded = _demand_from(row) is not None
     if ip_risk == "high":
         verdict = SKIP
     elif overall is None or core_missing:
         verdict = WATCH                  # honest-nulls: no confident GO without core
+    elif not demand_grounded and overall >= 50:
+        verdict = WATCH                  # momentum/conversion-only: never GO
     elif overall >= 80:
         verdict = GO
     elif overall >= 65:
@@ -344,8 +355,12 @@ def score(row, keyword=None, mode=None, private=None, category=None,
     return {"keyword": keyword, "overall_score": overall, "verdict": verdict,
             "sub_scores": subs, "missing": missing, "ip_risk": ip_risk,
             "core_complete": not core_missing,
+            "demand_grounded": demand_grounded,
             "rationale": _rationale(subs, missing, ip_risk, core_missing,
-                                    gtrends_dir),
+                                    gtrends_dir)
+            + ([] if demand_grounded else
+               ["No real demand data (revenue/views) yet - capped at WATCH "
+                "until enriched or proven"]),
             "weights_used": wt_map}
 
 

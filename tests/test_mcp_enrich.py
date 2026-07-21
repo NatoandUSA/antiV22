@@ -52,7 +52,11 @@ def test_insufficient_data_cannot_produce_a_false_go():
     for src, dest in me.FIELD_MAP.items():          # simulate an ungated enrich
         if EMPTY.get(src) is not None:
             naive[dest] = EMPTY[src]
-    assert osc.score(naive, keyword=naive["tag"])["verdict"] == "GO"   # the danger
+    # V35.2: the scorer itself now refuses a confident verdict on
+    # demand-ungrounded rows (no revenue/views/demand score), so even an
+    # UNGATED enrich can no longer mint the false GO this test documented.
+    naive_s = osc.score(naive, keyword=naive["tag"])
+    assert naive_s["verdict"] == "WATCH" and naive_s["demand_grounded"] is False
 
     gated = dict(base)
     me.enrich_row(gated, EMPTY)

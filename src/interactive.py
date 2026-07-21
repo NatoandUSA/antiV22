@@ -1571,7 +1571,14 @@ def photo_prompts(kw, mode=None):
               f"_{s['purpose']}_", ""]
         if s.get("ai_note"):
             L += [f"> ⚠️ {s['ai_note']}", ""]
-        L += ["```", s["prompt"], "```", ""]
+        # V35.2: the warning must TRAVEL WITH the copied prompt - a note above
+        # the code block dies the moment staff hit Copy.
+        body = s["prompt"]
+        if s["real_photo"]:
+            body = ("[AI DRAFT for comparison/mockup ONLY - do NOT use the AI "
+                    "output as the final Etsy image; the published photo must "
+                    "be your REAL product / sew-out]\n" + body)
+        L += ["```", body, "```", ""]
     L += ["---",
           "**Next:** shoot the REAL-PHOTO slots first (hero + macro stitch decide "
           "the sale), generate the graphic slots, then load image #1 as your "
