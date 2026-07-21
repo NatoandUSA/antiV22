@@ -526,6 +526,68 @@ def proof_for(keyword, proof_map):
     return None
 
 
+_VERDICT_RANK = {"PROVEN_WINNER": 3, "STRONG_SELLER": 2, "SELLING": 1, "LISTED": 0}
+
+
+def niche_proof(keyword, proof_map):
+    """NICHE-LEVEL roll-up (V35). For a long-tail phrase with no confident
+    exact-canonical proof group of its own, aggregate ALL sibling proof groups
+    that share a SUBJECT token with the keyword (same subject-word rule as
+    proof_for, so a generic 'embroidered sweatshirt' can never absorb a niche).
+
+    Returns an aggregate dict with match='niche' plus the member groups (best
+    first), or None. The numbers are the SUM across real sibling groups - they
+    are NICHE-level evidence, clearly labelled, never presented as exact-phrase
+    data. The verdict is the best MEMBER verdict (each member already earned it
+    honestly per-group); the roll-up itself never mints a higher tier."""
+    if not proof_map:
+        return None
+    kt = set(_canon(keyword).split())
+    subj = kt - _PROOF_PRODUCT - _PROOF_GENERIC
+    if not subj:
+        return None                     # no niche identity to roll up on
+    kw_products = kt & _PROOF_PRODUCT
+    members = []
+    for pc, p in proof_map.items():
+        pt = set(pc.split())
+        if not (subj & pt):
+            continue                    # must share a real subject word
+        # If the keyword names a product, the sibling must name a COMPATIBLE
+        # product (or none at all): 'teacher mug' proof must not prop up a
+        # 'teacher shirt' launch. Product-less groups (pure niche phrases)
+        # still count - they are the niche itself.
+        p_products = pt & _PROOF_PRODUCT
+        if kw_products and p_products and not (kw_products & p_products):
+            continue
+        members.append(p)
+    if not members:
+        return None
+    members.sort(key=lambda m: -((m.get("sold") or 0) + (m.get("sold_24h") or 0)))
+    sold = sum(m.get("sold") or 0 for m in members)
+    sold24 = sum(m.get("sold_24h") or 0 for m in members)
+    revenue = sum(m.get("revenue") or 0 for m in members)
+    shops_known = any(m.get("shops_known") for m in members)
+    # shop counts can overlap across groups -> this is an UPPER bound, say so
+    shops = sum(m.get("shops") or 0 for m in members if m.get("shops_known"))
+    listings = sum(m.get("listings") or 0 for m in members)
+    young = sum(m.get("young") or 0 for m in members)
+    best = max(members, key=lambda m: _VERDICT_RANK.get(m.get("verdict"), 0))
+    return {
+        "keyword": keyword,
+        "sold": sold, "sold_24h": sold24, "revenue": revenue,
+        "shops": shops, "shops_known": shops_known, "listings": listings,
+        "young": young,
+        "score": best.get("score"),
+        "verdict": best.get("verdict", "LISTED"),
+        "evidence": _evidence(sold, revenue, shops, shops_known, listings,
+                              young, sold24=sold24),
+        "match": "niche", "match_confidence": None,
+        "groups": len(members),
+        "members": [{"keyword": m.get("keyword"), "verdict": m.get("verdict"),
+                     "evidence": m.get("evidence")} for m in members[:5]],
+    }
+
+
 def latest_info():
     """{count, source} for the newest proof export, or None."""
     p = PROOF_DIR / "latest.json"

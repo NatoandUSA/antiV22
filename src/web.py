@@ -1681,9 +1681,26 @@ def build_app(password, secret):
     @app.route("/launch-kit")
     @login_required
     def launch_kit():
-        return _kw_mode_tool(lambda iv, q, m: iv.launch_kit(q, m), "Launch Kit",
-                             path="/launch-kit", stage="build",
-                             button="\U0001F680 Build Launch Kit")
+        # V35: dedicated HTML page (marketplace copy-paste layout), not the
+        # markdown pipeline - the markdown kit remains available to other
+        # callers via interactive.launch_kit().
+        q, mode = _kw_mode()
+        m = request.args.get("mode") or request.args.get("supplier_type") or ""
+        head = (_stage_nav("build", q, m)
+                + _stage_kwbar("/launch-kit", q,
+                               "\U0001F680 Build Launch Kit", mode=m))
+        if not q:
+            return page("Launch Kit", _bar() + head
+                        + '<article class="md"><h1>Launch Kit</h1>'
+                        '<p class="empty">Type a keyword in the box above '
+                        '(or click a step in the strip — it carries your '
+                        'keyword).</p></article>')
+        from src import launch_kit_page
+        try:
+            return page(f"Launch Kit: {q}", _bar() + head
+                        + launch_kit_page.build(q, mode) + WORKSPACE_JS)
+        except (SystemExit, Exception) as exc:  # noqa: BLE001
+            return _tool_error("Launch Kit", exc)
 
     @app.route("/trending")
     @login_required

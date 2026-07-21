@@ -1552,15 +1552,26 @@ def photo_prompts(kw, mode=None):
          f"_{len(slots)} listing images for a **{product}** ({label}). "
          "Etsy allows up to 10 photos; image #1 is the thumbnail and does most of "
          "the converting._", "",
-         "> **Honesty rule (baked in):** use AI for concept, mockups, graphics and "
-         "styled scenes only. Any slot marked **REAL PHOTO** must show your actual "
-         "product / sew-out — an AI render of your real item is a misleading "
-         "product claim on Etsy.", ""]
+         "> **Honesty rule (baked in):** every slot now has a full AI prompt so "
+         "you can draft the COMPLETE set and compare — but any slot marked "
+         "**REAL PHOTO** must be *published* as your actual product / sew-out. "
+         "The AI version of those slots is for comparison/mockup only — an AI "
+         "render published as your real item is a misleading product claim on "
+         "Etsy.", "",
+         "## ⚡ GPT runner — all 12 images in one chat", "",
+         "_Paste this ONCE into ChatGPT (image mode). It generates image 1, then "
+         "waits; reply `.` to get the next slot. Same product, design and colors "
+         "across all 12._", "",
+         "```",
+         photo_brief.runner(kw, product=product, mode=mode, slots=slots),
+         "```", ""]
     for s in slots:
         kind = "📸 REAL PHOTO" if s["real_photo"] else "🎨 AI ok"
         L += [f"## {s['n']}. {s['slot']}  ·  {kind}",
-              f"_{s['purpose']}_", "",
-              "```", s["prompt"], "```", ""]
+              f"_{s['purpose']}_", ""]
+        if s.get("ai_note"):
+            L += [f"> ⚠️ {s['ai_note']}", ""]
+        L += ["```", s["prompt"], "```", ""]
     L += ["---",
           "**Next:** shoot the REAL-PHOTO slots first (hero + macro stitch decide "
           "the sale), generate the graphic slots, then load image #1 as your "
@@ -2190,14 +2201,23 @@ def _shift_headings(md_text, by=2):
     return "\n".join(out)
 
 
-def _kit_verdict(kw, mode):
-    """Compact verdict + winner-score row for one keyword, enriched from the MCP
-    when it's reachable. Returns markdown lines; never raises."""
+def kit_evidence(kw, mode):
+    """V35: ONE structured, honest evidence bundle for the Launch Kit scorecard,
+    shared by the markdown kit and the HTML launch page. Never raises.
+
+    When the exact phrase has no YTrends index entry (normal for a good 4-word
+    long-tail), it falls back to NICHE-LEVEL evidence: sibling proof groups
+    rolled up (etsy_proof.niche_proof), the best parent-niche market row
+    (opportunity_inbox focus), and the winning-title patterns (pattern_miner).
+    Exact numbers are never invented - niche evidence is labelled niche-level."""
     from src import shortlister_integration as si
     from src import opportunity_score as osc
-    risk, reason = "OK", ""
+    out = {"keyword": kw, "mode": mode, "risk": "OK", "reason": "",
+           "score": None, "sub": {}, "verdict": None, "gap": None, "proven": 0,
+           "proof": None, "niche_row": None, "patterns": None,
+           "exact_indexed": True}
     try:
-        risk, reason = tm_check(kw.lower())
+        out["risk"], out["reason"] = tm_check(kw.lower())
     except (SystemExit, Exception):  # noqa: BLE001
         pass
     d = {"tag": kw}
@@ -2208,31 +2228,152 @@ def _kit_verdict(kw, mode):
     try:
         s = osc.score(d, keyword=kw, mode=mode)
     except (SystemExit, Exception):  # noqa: BLE001
-        return [f"- **Trademark:** {risk}" + (f" — {reason}" if reason else "")]
-    sub = s.get("sub_scores", {})
-    proven = _proven_orders(kw)
-    gap = osc.opportunity_gap(sub, proven)
+        s = None
+    if s:
+        out["sub"] = s.get("sub_scores", {}) or {}
+        out["verdict"] = s.get("verdict")
+        if s.get("core_complete") and s.get("overall_score") is not None:
+            out["score"] = s["overall_score"]
+    out["proven"] = _proven_orders(kw)
+    try:
+        out["gap"] = osc.opportunity_gap(out["sub"], out["proven"])
+    except (SystemExit, Exception):  # noqa: BLE001
+        pass
+    # exact phrase indexed? demand AND competition both absent = no index entry
+    mkt = out["sub"].get("market_potential")
+    comp = out["sub"].get("competition_health")
+    out["exact_indexed"] = (isinstance(mkt, (int, float))
+                            or isinstance(comp, (int, float)))
+
+    proof_map = {}
+    try:
+        from src import etsy_proof as ep
+        proof_map = ep.build_proof(mode)
+        out["proof"] = ep.proof_for(kw, proof_map)
+    except (SystemExit, Exception):  # noqa: BLE001
+        pass
+    if not out["exact_indexed"]:
+        # 1) sibling proof groups rolled up to niche level. The roll-up REPLACES
+        # a thin fuzzy match (a 2-sold sibling at conf 0.6) but never replaces
+        # an exact-canonical group.
+        try:
+            from src import etsy_proof as ep
+            np_ = ep.niche_proof(kw, proof_map)
+            if np_ and (not out["proof"]
+                        or out["proof"].get("match") != "exact"):
+                out["proof"] = np_
+        except (SystemExit, Exception):  # noqa: BLE001
+            pass
+        # 2) parent-niche market row: best related row from the ranked master
+        try:
+            from src import opportunity_inbox as oi
+            res = oi.build_inbox(mode, limit=1, q=kw)
+            for r in (res.get("focus") or []):
+                if (r.get("keyword") or "").strip().lower() != kw.strip().lower():
+                    out["niche_row"] = r
+                    break
+        except (SystemExit, Exception):  # noqa: BLE001
+            pass
+        # 3) what the winning titles in this niche share
+        try:
+            from src import pattern_miner as pm
+            p = pm.mine(kw)
+            if p and p.get("have"):
+                out["patterns"] = p
+        except (SystemExit, Exception):  # noqa: BLE001
+            pass
+    return out
+
+
+def _proof_cell(proof):
+    """One honest table cell for a proof dict (exact/fuzzy/niche), or em-dash."""
+    if not proof:
+        return "—"
+    ev = proof.get("evidence") or "—"
+    m = proof.get("match")
+    if m == "niche":
+        return f"{ev} _(niche-level, {proof.get('groups', 1)} group(s))_"
+    if m == "fuzzy":
+        return f"{ev} (conf {proof.get('match_confidence')})"
+    return ev
+
+
+def _niche_fallback_lines(ev):
+    """Markdown block for the niche-level fallback (exact phrase unindexed)."""
+    L = ["", "> 🧭 **Niche-level evidence** — the exact phrase has **no index "
+         "entry**, which for a 4+ word long-tail is an **open lane** "
+         "(✓ long-tail rule). Everything below describes the NICHE around it, "
+         "never the exact phrase:"]
+    got = False
+    proof = ev.get("proof")
+    if proof and proof.get("match") == "niche":
+        got = True
+        groups = "; ".join(f"**{m['keyword']}** ({m['evidence']})"
+                           for m in (proof.get("members") or [])[:3])
+        L.append(f"> - **Sibling proof groups:** {proof['evidence']} across "
+                 f"{proof.get('groups', 1)} group(s) — {groups}")
+    r = ev.get("niche_row")
+    if r:
+        got = True
+        rs = r.get("sub_scores") or {}
+
+        def rc(k):
+            v = rs.get(k)
+            return round(v) if isinstance(v, (int, float)) else "—"
+
+        L.append(f"> - **Parent niche '{r.get('keyword')}':** demand "
+                 f"{rc('market_potential')} · competition "
+                 f"{rc('competition_health')} · final action "
+                 f"**{r.get('action', '—')}**")
+    p = ev.get("patterns")
+    if p:
+        bits = [w for w, _ in (p.get("phrases") or [])[:3]] or \
+               [w for w, _ in (p.get("top_words") or [])[:5]]
+        if bits:
+            got = True
+            L.append("> - **Winning-title patterns in this niche:** "
+                     + ", ".join(f"`{b}`" for b in bits))
+    if not got:
+        L.append("> - _No sibling proof groups or parent market row on file yet "
+                 "— capture this niche with the extension (Etsy search → Send "
+                 "to agent) to light this up._")
+    return L
+
+
+def _kit_verdict(kw, mode):
+    """Compact verdict + winner-score row for one keyword, enriched from the MCP
+    when it's reachable. Returns markdown lines; never raises."""
+    ev = kit_evidence(kw, mode)
+    risk, reason = ev["risk"], ev["reason"]
+    if ev["verdict"] is None and not ev["sub"]:
+        L = [f"- **Trademark:** {risk}" + (f" — {reason}" if reason else "")]
+        if not ev["exact_indexed"]:
+            L += _niche_fallback_lines(ev)
+        return L
+    sub = ev["sub"]
 
     def cell(k):
         v = sub.get(k)
         return round(v) if isinstance(v, (int, float)) else "—"
 
-    overall = (s["overall_score"] if s.get("core_complete")
-               and s["overall_score"] is not None else "—")
+    overall = ev["score"] if ev["score"] is not None else "—"
+    gap, proven = ev["gap"], ev["proven"]
     winner_cell = (f"**{gap if gap is not None else '—'}**"
                    + (f" ✔{proven}" if proven > 0 else ""))
-    L = ["| Winner | Score | Verdict | Demand | Competition | Trademark |",
-         "|---|---|---|---|---|---|",
-         f"| {winner_cell} | {overall} | **{s['verdict']}** "
+    L = ["| Winner | Score | Verdict | Demand | Competition | Etsy proof | Trademark |",
+         "|---|---|---|---|---|---|---|",
+         f"| {winner_cell} | {overall} | **{ev['verdict']}** "
          f"| {cell('market_potential')} | {cell('competition_health')} "
-         f"| {risk} |"]
+         f"| {_proof_cell(ev['proof'])} | {risk} |"]
+    if not ev["exact_indexed"]:
+        L += _niche_fallback_lines(ev)
     if proven > 0:
         L += ["", f"> ✔ **Proven for us:** {proven} order(s) logged in this niche — "
               "the learning loop has already lifted its winner score."]
     if risk == "HIGH":
         L += ["", f"> ⚠️ **Trademark HIGH on '{kw}'** — {reason}. Change the wording "
               "before building."]
-    elif s["verdict"] == "SKIP":
+    elif ev["verdict"] == "SKIP":
         L += ["", "> ⚠️ This scored **SKIP** — the kit is below, but the data says "
               "sharpen the angle (narrower buyer / occasion) before you build."]
     return L
