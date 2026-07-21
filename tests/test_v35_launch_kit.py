@@ -161,6 +161,59 @@ def test_launch_kit_page_escapes_keyword(monkeypatch):
     assert "<script" not in html.lower().replace("</script", "")
 
 
+def test_launch_kit_page_compact_preview_and_submit_form(monkeypatch):
+    from src import etsy_proof as ep
+    monkeypatch.setattr(ep, "build_proof", lambda mode=None: {})
+    monkeypatch.setattr(
+        "src.shortlister_integration._enrich_row", lambda d, m=None: False)
+    from src import launch_kit_page as lkp
+    html = lkp.build("goose funny shirt", "pod")
+    # compact preview: thumb strip + collapsible 12-image plan, capped width
+    assert "lkpv" in html and "lkthumbs" in html
+    assert "Full 12-image plan" in html
+    # send-to-manager section present with the three decision words explained
+    assert 'action="/launch-kit/submit"' in html
+    assert "List</b> / <b>Fix</b> / <b>Decline" in html
+    # sent=True swaps the form for the confirmation bar
+    html2 = lkp.build("goose funny shirt", "pod", sent=True)
+    assert "lksent" in html2 and 'action="/launch-kit/submit"' not in html2
+
+
+def test_launch_kit_submit_creates_review_task(monkeypatch, tmp_path):
+    import socket
+    socket.setdefaulttimeout(4)
+    from src import appdb
+    old_db = appdb.DB_PATH
+    appdb.DB_PATH = tmp_path / "app.db"
+    try:
+        from src import auth, web
+        from src import etsy_proof as ep
+        appdb.init_db()
+        monkeypatch.setattr(ep, "build_proof", lambda mode=None: {})
+        monkeypatch.setattr(
+            "src.shortlister_integration._enrich_row", lambda d, m=None: False)
+        auth.create_user("owner2@test.local", "pw12345", "Owner", "OWNER", "t")
+        u = auth.get_user_by_email("owner2@test.local")
+        app = web.build_app("", "secret")
+        app.config["TESTING"] = True
+        c = app.test_client()
+        with c.session_transaction() as s:
+            s["uid"] = u["user_id"]
+            s["_csrf"] = "t"
+        r = c.post("/launch-kit/submit",
+                   data={"q": "goose funny shirt", "mode": "pod",
+                         "note": "price set to $27", "_csrf": "t"})
+        assert r.status_code in (301, 302) and "sent=1" in r.headers["Location"]
+        from src import tasks as tk
+        q = tk.review_queue()
+        assert any(t["title"] == "List approval: goose funny shirt"
+                   and "price set to $27" in (t.get("work_report") or "")
+                   and "LISTING APPROVAL REQUEST" in (t.get("work_report") or "")
+                   for t in q)
+    finally:
+        appdb.DB_PATH = old_db
+
+
 def test_launch_kit_markdown_still_works(monkeypatch):
     from src import etsy_proof as ep
     monkeypatch.setattr(ep, "build_proof", lambda mode=None: {})

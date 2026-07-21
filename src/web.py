@@ -1697,10 +1697,52 @@ def build_app(password, secret):
                         'keyword).</p></article>')
         from src import launch_kit_page
         try:
+            sent = request.args.get("sent") == "1"
             return page(f"Launch Kit: {q}", _bar() + head
-                        + launch_kit_page.build(q, mode) + WORKSPACE_JS)
+                        + launch_kit_page.build(q, mode, sent=sent)
+                        + WORKSPACE_JS)
         except (SystemExit, Exception) as exc:  # noqa: BLE001
             return _tool_error("Launch Kit", exc)
+
+    @app.route("/launch-kit/submit", methods=["POST"])
+    @login_required
+    def launch_kit_submit():
+        # V35.1: "Send FINAL to manager" - drops the kit into the EXISTING
+        # review queue (/admin/reviews) as a READY_FOR_REVIEW task with an
+        # auto-summary + the seller's note. Approval never publishes anything.
+        _check_csrf()
+        from src import interactive, launch_kit_page
+        from src import tasks as tk
+        u = current_user()
+        raw = (request.form.get("q") or "").strip()[:80]
+        q = "".join(c for c in raw if c.isalnum() or c in " '&-.").strip()
+        m = request.form.get("mode")
+        mode = m if m in ("pod", "embroidery") else None
+        if not q:
+            return redirect("/launch-kit")
+        mode = interactive._mode_for(q, mode)
+        note = _no_tags((request.form.get("note") or "").strip())[:1000]
+        try:
+            ev = interactive.kit_evidence(q, mode)
+            price, _b, _s, _c = interactive._price_cost_for(q, mode)
+            tags = interactive._tags_for(q)
+            summary = launch_kit_page.summary_for_manager(q, mode, ev, price,
+                                                         tags)
+        except (SystemExit, Exception):  # noqa: BLE001 - summary is best-effort
+            summary = f"LISTING APPROVAL REQUEST - {q} [{mode}]"
+        if note:
+            summary += f"\nSeller note: {note}"
+        t = tk.create_task(
+            f"List approval: {q}", assigned_by_user_id=u["user_id"],
+            assigned_to_user_id=u["user_id"], task_type="MANAGER_REVIEW",
+            priority="HIGH", role_target="MANAGER", related_keyword=q,
+            description="Launch Kit final review - List / Fix / Decline.")
+        tk.update_task(t["task_id"], status="READY_FOR_REVIEW",
+                       work_report=summary)
+        _log("TASK_CREATE", module="tasks", entity_type="task",
+             entity_id=t["task_id"], summary=f"launch-kit submit: {q}")
+        from urllib.parse import quote_plus as _qp2
+        return redirect(f"/launch-kit?q={_qp2(q)}&mode={mode}&sent=1")
 
     @app.route("/trending")
     @login_required
@@ -3655,23 +3697,34 @@ def build_app(password, secret):
         rows = tk.review_queue()
         items = ""
         by_id = {u["user_id"]: u for u in auth.list_users()}
+        from urllib.parse import quote_plus as _qp_r
         for t in rows:
             who = by_id.get(t["assigned_to_user_id"], {}).get("display_name", "—")
             rep = (t.get("work_report") or "").strip()
             report_html = (f'<div class="tkreported"><b>📝 {_h_esc(who)} reported:</b> '
                            f'{_h_esc(rep)}</div>' if rep else
                            '<div class="note">— no report submitted —</div>')
+            kw = (t.get("related_keyword") or "").strip()
+            # a launch-kit approval: keyword links to the full kit, and the
+            # decisions read List / Fix / Decline (same underlying statuses)
+            is_listing = ((t.get("task_type") or "") == "MANAGER_REVIEW"
+                          and str(t.get("title", "")).startswith("List approval"))
+            kw_html = (f'<a href="/launch-kit?q={_qp_r(kw)}">{_h_esc(kw)}</a>'
+                       if kw and is_listing else _h_esc(kw))
+            b_ok, b_fix, b_no = (("✅ List", "🔧 Fix", "⛔ Decline")
+                                 if is_listing
+                                 else ("Approve", "Needs fix", "Reject"))
             items += ('<div class="saveditem"><div class="sihead">'
                       f'<b>{_h_esc(t["title"])}</b> '
                       f'<span class="pill">{_h_esc(t["task_type"])}</span></div>'
-                      f'<div class="note">{_h_esc(who)} · {_h_esc(t.get("related_keyword"))}</div>'
+                      f'<div class="note">{_h_esc(who)} · {kw_html}</div>'
                       + report_html
                       + '<form method="post" action="/admin/reviews/act" class="toolbar">'
                       f'<input type="hidden" name="task_id" value="{t["task_id"]}">'
-                      '<input name="notes" placeholder="Review notes">'
-                      '<button class="primary" name="decision" value="APPROVED">Approve</button>'
-                      '<button name="decision" value="NEEDS_FIX">Needs fix</button>'
-                      '<button name="decision" value="REJECTED">Reject</button>'
+                      '<input name="notes" placeholder="Review notes / what to fix">'
+                      f'<button class="primary" name="decision" value="APPROVED">{b_ok}</button>'
+                      f'<button name="decision" value="NEEDS_FIX">{b_fix}</button>'
+                      f'<button name="decision" value="REJECTED">{b_no}</button>'
                       '</form></div>')
         return page("Review Queue", _bar() + '<article class="md"><h1>🔍 Review Queue</h1>'
                     '<p>Work submitted as READY_FOR_REVIEW.</p>'
