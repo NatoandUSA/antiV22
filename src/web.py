@@ -657,6 +657,27 @@ def build_app(password, secret):
             '<button formaction="/draft-listing">Draft listing</button>'
             '<button formaction="/edge">Beat competitors</button>'
             '</div></details></form>'
+            # --- DAILY: the everyday loop (Scope Reduction). Every other surface
+            # still works; the research / library / analytics tools live under
+            # "Advanced tools" below so staff see the daily loop first. ---
+            '<h2 class="grouph">🎯 Daily — your everyday loop</h2>'
+            '<p class="note" style="margin:-4px 0 10px">Research on '
+            '<b>YTuong / HeyEtsy</b>, then work the loop here: confirm → assign → '
+            'supplier check → draft → manager review → manual publish.</p>'
+            '<div class="toolgrid">'
+            '<a class="toolcard" href="/confirm"><b>✅ Confirm &amp; Assign</b>'
+            '<span>Start here: confirm a niche → hand it to staff</span></a>'
+            '<a class="toolcard" href="/imports"><b>📥 Import Center</b>'
+            '<span>Import a YTuong/Etsy URL or keyword → candidate + product-fit</span></a>'
+            '<a class="toolcard" href="/research-queue"><b>🧭 Research Queue</b>'
+            '<span>Every idea from spark → review → manual publish</span></a>'
+            '<a class="toolcard" href="/suppliers"><b>🏭 Suppliers</b>'
+            '<span>Catalogs + ShineOn/Embroidery CSV — the supplier-check step</span></a>'
+            '<a class="toolcard" href="/team/calendar"><b>📅 Team Calendar</b>'
+            '<span>Tasks by due date: today / week / month / overdue</span></a>'
+            '<a class="toolcard" href="/team"><b>👥 Team</b>'
+            '<span>My Tasks, assign work, review queue, feedback</span></a>'
+            '</div>'
             + pipeline_html + _oppq +
             # --- TOOLS: the default-visible shelf. Exactly what staff need to
             # read alongside the pipeline — trend feeds, ranked views, execution
@@ -688,10 +709,12 @@ def build_app(password, secret):
             '<span>Measured gaps in the ranking listings, biggest weakness first</span></a>'
             '<a class="toolcard" href="/grade"><b>📋 Listing Analyzer</b>'
             '<span>SEO / Trust / Image scores + publish gate</span></a>'
+            '<a class="toolcard" href="/design-analyzer"><b>🎨 Design Analyzer</b>'
+            '<span>Image → trademark read, safe original redesign prompt, Etsy SEO pack</span></a>'
             '</div>'
             # --- ADVANCED: everything else — research library, team surfaces,
             # analytics — one click away so the home stays calm. ---
-            '<details class="archive advtools"><summary>🗂️ Advanced — research '
+            '<details class="archive advtools"><summary>🧰 Advanced tools — research '
             'library, team &amp; analytics (open when you need them)</summary>'
             '<div class="toolgrid">'
             f'<a class="toolcard" href="/launch-kit?mode={active}"><b>🚀 Launch Kit</b>'
@@ -719,18 +742,8 @@ def build_app(password, secret):
             '<span>Trends over time: rising / falling / stable</span></a>'
             '<a class="toolcard" href="/profit"><b>💰 Profit Center</b>'
             '<span>Real P&amp;L per product / supplier / mode</span></a>'
-            '<a class="toolcard" href="/confirm"><b>✅ Confirm &amp; Assign</b>'
-            '<span>Confirm a niche → hand it to staff</span></a>'
             '<a class="toolcard" href="/shortlist"><b>🎯 Shortlist</b>'
             '<span>Top opportunities ranked → GO/CONDITIONAL → one-click Confirm</span></a>'
-            '<a class="toolcard" href="/research-queue"><b>🧭 Research Queue</b>'
-            '<span>Every idea from spark → review → manual publish</span></a>'
-            '<a class="toolcard" href="/suppliers"><b>🏭 Suppliers</b>'
-            '<span>Catalogs + ShineOn/Embroidery CSV — the supplier-check step</span></a>'
-            '<a class="toolcard" href="/team/calendar"><b>📅 Team Calendar</b>'
-            '<span>Tasks by due date: today / week / month / overdue</span></a>'
-            '<a class="toolcard" href="/team"><b>👥 Team</b>'
-            '<span>My Tasks, assign work, review queue, feedback</span></a>'
             '</div></details>'
             # --- Guides: always one click away ---
             '<h2 class="grouph">📖 Guides</h2>'
@@ -1743,6 +1756,29 @@ def build_app(password, secret):
              entity_id=t["task_id"], summary=f"launch-kit submit: {q}")
         from urllib.parse import quote_plus as _qp2
         return redirect(f"/launch-kit?q={_qp2(q)}&mode={mode}&sent=1")
+
+    @app.route("/design-analyzer", methods=["GET", "POST"])
+    @login_required
+    def design_analyzer():
+        # V35.7: image -> Gemini vision analysis (trademark read + safe original
+        # redesign prompts + Etsy SEO pack), layered with our own trademark.check
+        # + product_fit.producibility gates. Draft-only; 'recreate' is analysis-only.
+        from src import design_analyzer as da
+        if request.method == "POST":
+            _check_csrf()
+            f = request.files.get("image")
+            img = f.read() if f else b""
+            title = _no_tags((request.form.get("title") or "").strip())[:300]
+            link = (request.form.get("link") or "").strip()[:500]
+            mode = "embroidery" if request.form.get("emb") == "1" else None
+            try:
+                res = da.analyze(img, title=title, link=link, mode=mode)
+            except (SystemExit, Exception) as exc:  # noqa: BLE001
+                return _tool_error("Design Analyzer", exc)
+            return page("Design Analyzer", _bar() + da.result_html(res, _csrf()))
+        q, _m = _kw_mode()
+        return page("Design Analyzer", _bar() + da.form_html(_csrf(), prefill_q=q or ""))
+
 
     @app.route("/trending")
     @login_required

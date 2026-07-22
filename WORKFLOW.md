@@ -19,6 +19,21 @@
   Day 3/7)    tay)       real-photo flag)   cá nhân hoá)
 ```
 
+### Bảng 9 bước — Bước · Vai trò · Hành động
+
+| Bước | Vai trò | Hành động |
+|---|---|---|
+| ① FEED | Researcher | Thả CSV / keyword (MCP + extension) vào ô Capture ở trang chủ |
+| ② RANK | Researcher | Mở **Opportunity Inbox** — đọc HÀNH ĐỘNG CUỐI, làm hàng *Build now* trước |
+| ③ PATTERN MINER | Researcher | Mổ 5–10 winner để hiểu **vì sao** chúng bán |
+| ④ KEYWORD LAB | Researcher | Sinh keyword mới từ mẫu vừa mổ |
+| ⑤ RE-RANK | Researcher | Đẩy keyword mới quay lại Inbox để xếp hạng |
+| ⑥ BUILD | Seller | **Launch Kit**: title + 13 tag + mô tả + cá nhân hoá (**tiếng Anh**) |
+| ⑦ PHOTO STUDIO | Designer | 12 slot ảnh + prompt (cờ real-photo) |
+| ⑧ ADS | Seller | Kế hoạch Etsy Ads tay: ngân sách, ACOS hoà vốn, kill rule |
+| ⑨ LEARN | Seller / Manager | Ghi đơn Ngày 3 / Ngày 7 → giữ / sửa / bỏ / scale |
+| 🔒 ĐĂNG | Manager → Seller | Duyệt **Publish Gate**, rồi **người thật đăng tay** trên Etsy |
+
 ---
 
 ## ② RANK — Opportunity Inbox: **hệ thống xếp hạng NHIỀU LỚP** (trái tim V30)
