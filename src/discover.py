@@ -11,12 +11,33 @@ from src.ytrends_client import top_keywords, trending, hidden_gems, top_listings
 EMBROIDERY_SIGNS = ("embroider", "chenille", "monogram", "applique",
                     "stitch", "patch", "crochet", "knit")
 
+# BUG-1 fix (V35.5): match embroidery signals on TOKEN / word boundaries, not
+# raw substrings. Prefix-stems (embroider*, applique*, monogram*, crochet*,
+# chenille*) still catch their inflections (embroidered, monogrammed, ...),
+# while the short ambiguous roots (stitch, patch, knit) match as WHOLE WORDS
+# only (+ simple plural) so "patchwork", "dispatch" and "knitting" no longer
+# collide into the embroidery lane. "cross stitch", "embroidered patch", etc.
+# are unaffected.
+_EMB_STEMS = ("embroider", "applique", "monogram", "crochet", "chenille")
+_EMB_WHOLE = ("stitch", "patch", "knit")
+_EMB_RE = re.compile(
+    r"\b(?:" + "|".join(_EMB_STEMS) + r")\w*"
+    r"|\b(?:" + "|".join(_EMB_WHOLE) + r")(?:es|s)?\b",
+    re.I,
+)
+
 
 def matches_mode(tag, mode):
-    """mode: None (all) | 'pod' | 'embroidery'"""
+    """mode: None (all) | 'pod' | 'embroidery'.
+
+    Token/word-boundary match (NOT substring): 'patch' no longer matches
+    'patchwork'/'dispatch' and 'knit' no longer matches 'knitting', while real
+    embroidery terms (embroidered, monogram, cross stitch, applique ...) still
+    route correctly.
+    """
     if not mode:
         return True
-    emb = any(s in tag for s in EMBROIDERY_SIGNS)
+    emb = bool(_EMB_RE.search(tag or ""))
     return emb if mode == "embroidery" else not emb
 
 
