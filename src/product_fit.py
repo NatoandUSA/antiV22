@@ -12,10 +12,25 @@ from src.discover import matches_mode
 from src.trademark import check as tm_check
 
 # --- vocab ---
+# F3 (V35.6): apparel / drinkware / accessory nouns added so real POD keywords
+# (denim jacket, leggings, joggers, water bottle, koozie, wallet ...) are no
+# longer mis-classified as "no product noun" -> THEME_FIT_NEEDS_PRODUCT and
+# silently dropped from launch opportunities.
 POD_NOUNS = {"shirt", "tshirt", "tee", "hoodie", "sweatshirt", "sweater",
              "mug", "tumbler", "cup", "tote", "bag", "pouch", "poster", "print",
              "blanket", "pillow", "hat", "cap", "beanie", "sticker", "decal",
-             "sign", "towel", "apron", "flag", "banner", "case", "mousepad"}
+             "sign", "towel", "apron", "flag", "banner", "case", "mousepad",
+             # apparel
+             "jacket", "coat", "vest", "cardigan", "joggers", "jogger",
+             "sweatpants", "leggings", "legging", "shorts", "romper", "jumpsuit",
+             "bodysuit", "onesie", "dress", "skirt", "jersey", "tank", "poncho",
+             "robe", "pajamas", "pajama", "overalls", "scarf", "gloves",
+             "mittens", "socks", "sock", "tights", "bandana", "headband",
+             "visor", "crewneck",
+             # drinkware / accessories / home
+             "bottle", "flask", "koozie", "coozie", "cooler", "wallet",
+             "backpack", "lanyard", "coaster", "magnet", "keytag", "doormat",
+             "placemat", "jar", "wristband", "hoodie"}
 EMB_SIGNS = {"embroider", "embroidered", "embroidery", "chenille", "monogram",
              "monogrammed", "applique", "patch", "stitch", "stitched"}
 JEWELRY_NOUNS = {"necklace", "bracelet", "ring", "pendant", "earring", "earrings",
@@ -159,7 +174,10 @@ def classify(keyword, mode=None):
                 "reason": f"fits {pt}, not the selected {mode} mode"}
 
     reason = "makeable product; verify trademark" if risk == "CAUTION" else "makeable product"
-    return {"status": st, "launchable": True, "product_type": pt, "reason": reason}
+    # F1 (V35.6): expose the trademark risk so ranking_engine can cap a CAUTION
+    # (ambiguous brand / slogan) term at CONFIRM_FIRST instead of BUILD_NOW.
+    return {"status": st, "launchable": True, "product_type": pt, "reason": reason,
+            "tm_risk": risk}
 
 
 # --- embroidery stitch producibility (used by opportunity_score._feasibility) ---

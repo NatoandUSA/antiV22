@@ -94,6 +94,15 @@ PRODUCT_WORDS = {
     "pendant", "ornament", "sticker", "print", "poster", "hat", "cap",
     "embroidered", "embroidery", "gift", "gifts", "custom", "personalized",
     "svg", "png", "digital", "womens", "mens", "kids", "baby", "vintage",
+    # V35.6 (F3): apparel / drinkware / accessory nouns + common fabrics so
+    # descriptive product long-tails aren't mistaken for registered slogans.
+    "sweater", "jacket", "coat", "vest", "cardigan", "joggers", "sweatpants",
+    "leggings", "shorts", "romper", "bodysuit", "onesie", "dress", "skirt",
+    "jersey", "tank", "robe", "pajamas", "scarf", "gloves", "socks", "bandana",
+    "tumbler", "cup", "bottle", "flask", "koozie", "cooler", "wallet",
+    "backpack", "blanket", "pillow", "towel", "apron", "keychain", "beanie",
+    "denim", "flannel", "corduroy", "fleece", "cotton", "linen", "velvet",
+    "wool", "knit", "crochet",
 }
 
 

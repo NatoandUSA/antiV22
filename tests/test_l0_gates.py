@@ -12,6 +12,7 @@ All pure/offline - no network, no data/ tree.
 from src.trademark import check
 from src.discover import matches_mode
 from src.product_fit import classify, EMBROIDERY_FIT, POD_FIT, TRADEMARK_RISK, DIGITAL_FIT
+from src.ranking_engine import decide, BUILD_NOW, CONFIRM_FIRST
 
 
 # --------------------------------------------------------------------------
@@ -123,3 +124,46 @@ def test_trademark_keywords_still_blocked_end_to_end():
 
 def test_digital_still_skipped():
     assert classify("nurse svg bundle")["status"] == DIGITAL_FIT
+
+
+# --------------------------------------------------------------------------
+# F1 (V35.6) : a CAUTION trademark term must not read as BUILD_NOW
+# --------------------------------------------------------------------------
+
+def test_caution_term_capped_at_confirm_not_build():
+    # ambiguous-brand words on a GO market must NOT auto-promote to BUILD_NOW.
+    for kw, mode in [("frozen hot chocolate mug", "pod"),
+                     ("converse with god shirt", "pod"),
+                     ("mario birthday party shirt", "pod")]:
+        d = decide(kw, "GO", mode=mode)
+        assert d["action"] == CONFIRM_FIRST, (kw, d["action"])
+        assert "trademark" in d["reason"].lower()
+
+
+def test_clean_term_still_builds_on_go():
+    # a clean (OK) 4+ word launchable term on a GO market still reaches BUILD_NOW.
+    d = decide("custom monogram nurse sweatshirt", "GO", mode="embroidery")
+    assert d["action"] == BUILD_NOW, d
+
+
+def test_high_trademark_still_blocked_not_just_capped():
+    assert decide("bluey birthday shirt", "GO", mode="pod")["action"] == "BLOCKED"
+
+
+# --------------------------------------------------------------------------
+# F3 (V35.6) : extended product-noun vocabulary is launchable
+# --------------------------------------------------------------------------
+
+def test_extended_product_nouns_are_launchable():
+    for kw in ("personalized dog dad denim jacket",
+               "personalized leggings gym mom",
+               "custom koozie bachelor party",
+               "water bottle teacher appreciation gift",
+               "funny varsity jacket dog dad"):
+        c = classify(kw, "pod")
+        assert c["launchable"], (kw, c["status"])
+
+
+def test_descriptive_apparel_longtail_not_false_caution():
+    # denim/jacket are product words now -> a plain descriptive long-tail is OK.
+    assert check("personalized dog dad denim jacket")[0] == "OK"

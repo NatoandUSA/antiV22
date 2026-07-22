@@ -185,6 +185,20 @@ def _base_decide(keyword, market_verdict, mode=None, fit=None):
                     f"expand to a {lt_min}+ word buyer-intent angle (or bring real "
                     "sales proof) before building", "pattern", fit, launchable)
 
+    # F1 (V35.6): a CAUTION trademark term (ambiguous brand word or slogan-like
+    # phrase) must NOT read as BUILD_NOW. HIGH is already BLOCKED at the gate; this
+    # catches the softer flag the score only nudged via feasibility. Cap it at
+    # CONFIRM_FIRST with a verify-trademark route until a human clears the mark.
+    # (Real Etsy PROOF can still raise it later in decide() - real sales are
+    # stronger evidence than the heuristic, and the publish gate still requires a
+    # trademark check before anything goes live.)
+    if (launchable and market_action == BUILD_NOW
+            and fit.get("tm_risk") == "CAUTION"):
+        return _out(CONFIRM_FIRST,
+                    "verify trademark first - ambiguous brand / slogan term; clear "
+                    "the mark at tmsearch.uspto.gov before building", "analyze",
+                    fit, launchable)
+
     # no gate -> a launchable product WITH a design angle: the market signal decides
     reason = _market_reason(market_verdict)
     if launchable and n_words >= lt_min and market_action in (BUILD_NOW, CONFIRM_FIRST):
