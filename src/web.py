@@ -711,6 +711,8 @@ def build_app(password, secret):
             '<span>SEO / Trust / Image scores + publish gate</span></a>'
             '<a class="toolcard" href="/design-analyzer"><b>🎨 Design Analyzer</b>'
             '<span>Image → trademark read, safe original redesign prompt, Etsy SEO pack</span></a>'
+            '<a class="toolcard" href="/training"><b>📚 Hướng dẫn nhân viên</b>'
+            '<span>Quy trình 9 bước + công cụ mới (Tiếng Việt)</span></a>'
             '</div>'
             # --- ADVANCED: everything else — research library, team surfaces,
             # analytics — one click away so the home stays calm. ---
@@ -1778,6 +1780,38 @@ def build_app(password, secret):
             return page("Design Analyzer", _bar() + da.result_html(res, _csrf()))
         q, _m = _kw_mode()
         return page("Design Analyzer", _bar() + da.form_html(_csrf(), prefill_q=q or ""))
+
+
+    @app.route("/design-analyzer/redesign", methods=["POST"])
+    @login_required
+    def design_analyzer_redesign():
+        # V35.9: generate the SAFE redesign as an image (Nano Banana), gated on the
+        # IP verdict. HIGH -> refused; MEDIUM -> needs the 'verified' tick.
+        _check_csrf()
+        from src import design_analyzer as da
+        prompt = (request.form.get("prompt") or "").strip()[:4000]
+        ip_level = (request.form.get("ip_level") or "LOW").strip()
+        confirmed = request.form.get("confirmed") == "1"
+        try:
+            res = da.generate_redesign_gated(prompt, ip_level=ip_level,
+                                             confirmed=confirmed)
+        except (SystemExit, Exception) as exc:  # noqa: BLE001
+            return _tool_error("Redesign", exc)
+        return page("Design Analyzer - Redesign",
+                    _bar() + da.redesign_result_html(res, prompt))
+
+
+    @app.route("/training")
+    @login_required
+    def training():
+        # V35.9: serve the Vietnamese staff walkthrough as a full page.
+        from pathlib import Path as _P
+        from flask import Response as _Resp
+        for _p in (_P("staff_guide_vn.html"), _P("docs/staff_guide_vn.html")):
+            if _p.is_file():
+                return _Resp(_p.read_text(encoding="utf-8"), mimetype="text/html")
+        return page("Huong dan", _bar() + '<article class="md"><p>Chua cai tai '
+                    'lieu (staff_guide_vn.html).</p></article>')
 
 
     @app.route("/trending")

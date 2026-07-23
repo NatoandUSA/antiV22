@@ -70,14 +70,28 @@ Return ONLY a JSON object with EXACTLY these keys:
  "style": "the visual style in 1-3 words, e.g. 'vintage line-art'",
  "extracted_text": ["verbatim text phrases visible in the design, [] if none"],
  "prompt_original": "A single detailed AI image prompt (English) that would RECREATE this design faithfully as a centered, print-ready PNG, 5000x5000px, 1:1, transparent or solid background, generous margins. FOR ANALYSIS ONLY.",
- "prompt_redesign_standard": "A single detailed AI image prompt (English) for a NEW, ORIGINAL redesign in the SAME niche/vibe that is SAFE — remove or replace any trademarked names, real people, logos, album titles and protected slogans with generic, non-infringing equivalents. Commercially appealing. Print-ready PNG, 5000x5000px, 1:1, generous margins.",
- "prompt_redesign_embroidery": "Same safe redesign but for MACHINE EMBROIDERY: bold simple shapes, max 4-6 solid thread colors, thick readable lettering, no gradients, no photorealism, no tiny details, clear outlines, high contrast.",
+ "win_reasons_en": ["2-4 SHORT bullets: why this design can SELL commercially — clear target buyer, emotional/identity hook, gift-ability, niche fit, reads at thumbnail size"],
+ "win_reasons_vi": ["Vietnamese of each win reason"],
+ "weak_points_en": ["2-4 SHORT bullets: why it may NOT win — too generic, hard to read small, weak hook, crowded, off-trend, no clear buyer"],
+ "weak_points_vi": ["Vietnamese of each weak point"],
+ "font_en": "FONT: what typeface style it uses + how to make it stronger / more readable / more on-brand.",
+ "font_vi": "Vietnamese of font_en.",
+ "quote_en": "QUOTE/TEXT: the message/phrase + how to sharpen the hook (make it funnier / more specific / more emotional). Never reuse a trademarked slogan.",
+ "quote_vi": "Vietnamese of quote_en.",
+ "layout_en": "LAYOUT: composition/structure + how to improve balance, focal point, and thumbnail readability.",
+ "layout_vi": "Vietnamese of layout_en.",
+ "color_en": "COLOR: the palette + how to improve contrast / appeal / print-safety (embroidery: <=6 solid colors, no gradient).",
+ "color_vi": "Vietnamese of color_en.",
+ "how_to_win_en": ["3-5 concrete steps to design a BETTER, ORIGINAL version that beats this one — a clear upgrade, NEVER a copy or trace of the original"],
+ "how_to_win_vi": ["Vietnamese of each how_to_win step"],
+ "prompt_redesign_standard": "A single detailed AI image prompt (English) for a NEW, ORIGINAL redesign in the SAME niche/vibe that is SAFE and BETTER — APPLY the how_to_win improvements (stronger hook, cleaner layout, higher-contrast color, more readable font). Remove/replace any trademarked names, people, logos, album titles or protected slogans with generic non-infringing equivalents. It must be an UPGRADE and an original, never a copy. Print-ready PNG, 5000x5000px, 1:1, generous margins.",
+ "prompt_redesign_embroidery": "Same safe, improved redesign but for MACHINE EMBROIDERY: bold simple shapes, max 4-6 solid thread colors, thick readable lettering, no gradients, no photorealism, no tiny details, clear outlines, high contrast.",
  "seo_title": "An Etsy-optimized, TRADEMARK-SAFE product title (max 140 chars) for the safe redesign — front-load the strongest keywords, no protected brand/artist names.",
  "seo_tags": ["exactly 13 Etsy tags", "each <= 20 chars", "multi-word long-tail", "no trademarked terms"],
  "seo_description": "A 2-3 sentence Etsy listing description for the safe redesign: benefit-driven, keyword-rich, mentions it's a great gift, no trademarked terms."
 }}
 
-Rules: seo_tags MUST be exactly 13 strings, each <= 20 characters. Never invent a fake IP owner. If the design is generic/original, set risk_level "Low" and ip_owner "". Output valid JSON only."""
+Rules: seo_tags MUST be exactly 13 strings, each <= 20 characters. win_reasons/weak_points MUST be commercial and buyer-focused (who buys it and why, does it read at thumbnail) — not art-critic fluff. how_to_win MUST describe an ORIGINAL, improved design; NEVER instruct to copy, trace, or reproduce the original. Cover all four design levers (font, quote, layout, color). Keep every bullet short and practical. Never invent a fake IP owner. If generic/original, set risk_level "Low" and ip_owner "". Output valid JSON only."""
 
 
 # --------------------------------------------------------------------------
@@ -296,12 +310,101 @@ def analyze(image_bytes, title="", link="", mode=None, model=None, key=None):
 
 
 # --------------------------------------------------------------------------
+# Redesign IMAGE generation (Nano Banana) — gated on the IP verdict
+# --------------------------------------------------------------------------
+
+# Free tier ~500 images/day at 1024px on the same key. Override with
+# GEMINI_IMAGE_MODEL (e.g. gemini-3-pro-image-preview for 4K, paid).
+IMAGE_MODEL = os.getenv("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image")
+_IMAGE_FALLBACK = ["gemini-2.5-flash-image", "gemini-3-pro-image-preview"]
+
+
+def _gemini_image(prompt, model, key, timeout=90):
+    """Generate one image. Returns (base64_data, mime_type). Raises on error."""
+    import requests
+    url = _ENDPOINT.format(model=model)
+    body = {"contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"responseModalities": ["IMAGE"]}}
+    r = requests.post(url, params={"key": key}, json=body, timeout=timeout)
+    if r.status_code != 200:
+        try:
+            msg = r.json().get("error", {}).get("message", "")
+        except Exception:  # noqa: BLE001
+            msg = ""
+        raise RuntimeError(f"Gemini image HTTP {r.status_code}: {msg or r.text[:200]}")
+    data = r.json()
+    cands = data.get("candidates") or []
+    if not cands:
+        pf = (data.get("promptFeedback") or {}).get("blockReason")
+        raise RuntimeError("no image returned"
+                           + (f" (blocked: {pf})" if pf else ""))
+    for p in (cands[0].get("content") or {}).get("parts") or []:
+        inline = p.get("inlineData") or p.get("inline_data")
+        if inline and inline.get("data"):
+            return inline["data"], (inline.get("mimeType")
+                                    or inline.get("mime_type") or "image/png")
+    raise RuntimeError("response contained no image data")
+
+
+def generate_redesign(prompt, key=None, model=None):
+    """Generate a redesign image from a prompt. {"ok":True,"image_b64","mime"} or
+    {"ok":False,"error"}. Never raises. Falls back across image models."""
+    if key is None:
+        key = os.getenv("GEMINI_API_KEY", "")
+    key = (key or "").strip()
+    if not key:
+        return {"ok": False, "error": "GEMINI_API_KEY is not set."}
+    if not (prompt or "").strip():
+        return {"ok": False, "error": "No redesign prompt provided."}
+    tried, last_err = [], ""
+    for mdl in [model or IMAGE_MODEL] + _IMAGE_FALLBACK:
+        if mdl in tried:
+            continue
+        tried.append(mdl)
+        try:
+            b64, mime = _gemini_image(prompt, mdl, key)
+            return {"ok": True, "image_b64": b64, "mime": mime, "model": mdl}
+        except Exception as exc:  # noqa: BLE001
+            last_err = str(exc)
+            if _is_model_unavailable(last_err):
+                continue
+            return {"ok": False, "error": f"Image generation failed: {exc}"}
+    return {"ok": False, "error": "No available image model — set GEMINI_IMAGE_MODEL "
+            "in .env. Last error: " + last_err}
+
+
+def generate_redesign_gated(prompt, ip_level="LOW", confirmed=False, key=None,
+                            model=None):
+    """Enforce the IP verdict BEFORE generating (server-side, tamper-resistant):
+    HIGH -> refuse; MEDIUM -> require confirmed; and refuse outright if the prompt
+    itself still trips the trademark blocklist. Only clean, original prompts get
+    an image."""
+    lvl = (ip_level or "LOW").upper()
+    if lvl == "HIGH":
+        return {"ok": False, "error": "Blocked — IP risk is HIGH. No redesign is "
+                "generated for a trademarked design; create something original."}
+    if lvl == "MEDIUM" and not confirmed:
+        return {"ok": False, "error": "Verify the trademark first (tick the box) "
+                "before generating this redesign."}
+    from src.trademark import check as tm_check
+    if tm_check(prompt or "")[0] == "HIGH":
+        return {"ok": False, "error": "Blocked — the prompt still names a protected "
+                "brand. Re-run the analysis to get a clean, original prompt."}
+    return generate_redesign(prompt, key=key, model=model)
+
+
+# --------------------------------------------------------------------------
 # Server-side rendering (keeps web.py thin)
 # --------------------------------------------------------------------------
 
 def _esc(s):
     return (str(s) if s is not None else "").replace("&", "&amp;").replace(
         "<", "&lt;").replace(">", "&gt;")
+
+
+def _attr(s):
+    """Escape a value for use inside a double-quoted HTML attribute."""
+    return _esc(s).replace('"', "&quot;")
 
 
 _VERDICT_META = {
@@ -366,6 +469,72 @@ def result_html(r, csrf_token):
         f'border:1px solid #d5e2fb;border-radius:99px;padding:3px 9px;'
         f'font-size:12px;margin:2px">{_esc(t)}</span>' for t in tags)
 
+    # --- design critique: why win / why weak / 4 levers / how to beat it ---
+    def _bullets(vi, en):
+        items = vi if isinstance(vi, list) and vi else (en if isinstance(en, list) else [])
+        return "".join(f"<li>{_esc(x)}</li>" for x in items) or "<li>—</li>"
+
+    def _lever(label, vi_key, en_key):
+        v = r.get(vi_key) or r.get(en_key) or "—"
+        return ('<tr><td style="border:1px solid #EBE4DA;padding:5px 8px;'
+                'font-weight:800;white-space:nowrap;background:#FBF6F0">' + label
+                + '</td><td style="border:1px solid #EBE4DA;padding:5px 8px">'
+                + _esc(v) + '</td></tr>')
+
+    win = _bullets(r.get("win_reasons_vi"), r.get("win_reasons_en"))
+    weak = _bullets(r.get("weak_points_vi"), r.get("weak_points_en"))
+    how = _bullets(r.get("how_to_win_vi"), r.get("how_to_win_en"))
+    levers = (_lever("Font", "font_vi", "font_en")
+              + _lever("Quote / Text", "quote_vi", "quote_en")
+              + _lever("Layout", "layout_vi", "layout_en")
+              + _lever("Color", "color_vi", "color_en"))
+    critique = (
+        box("🏆 Vì sao THẮNG (bán được)", f'<ul style="margin:0">{win}</ul>')
+        + box("⚠ Điểm YẾU (vì sao có thể không thắng)",
+              f'<ul style="margin:0">{weak}</ul>')
+        + box("🎨 Mổ xẻ thiết kế: Font · Quote · Layout · Color",
+              '<table style="width:100%;border-collapse:collapse;font-size:12.5px">'
+              + levers + '</table>')
+        + box("🔧 Cách làm TỐT HƠN — thiết kế GỐC, KHÔNG sao chép",
+              f'<ul style="margin:0 0 6px">{how}</ul>'
+              '<p style="margin:0;font-size:11.5px;color:#7A736B">Nguyên tắc: KHÔNG '
+              'copy đối thủ — làm bản GỐC tốt hơn. Prompt "Safe Redesign" bên dưới đã '
+              'áp dụng sẵn các cải thiện này.</p>'))
+
+    # --- gated redesign image generation (Nano Banana) ---
+    ip = g.get("ip_level", "LOW")
+    if ip == "HIGH":
+        gen_section = box("🎨 Tạo ảnh redesign",
+            '<div style="color:#7f1d1d">🚫 Không tạo redesign cho thiết kế dính '
+            'nhãn hiệu (IP HIGH). Hãy tự thiết kế một bản GỐC khác.</div>')
+    else:
+        confirm = ""
+        if ip == "MEDIUM":
+            confirm = ('<label style="display:block;font-size:12px;margin:2px 0 6px">'
+                       '<input type="checkbox" name="confirmed" value="1" required> '
+                       'Tôi đã tra nhãn hiệu ở tmsearch.uspto.gov và thấy an toàn.'
+                       '</label>')
+
+        def _genform(label, prompt_text):
+            return (
+                '<form method="POST" action="/design-analyzer/redesign" '
+                'style="display:inline-block;margin:4px 8px 4px 0;vertical-align:top">'
+                f'<input type="hidden" name="_csrf" value="{_attr(csrf_token)}">'
+                f'<input type="hidden" name="prompt" value="{_attr(prompt_text)}">'
+                f'<input type="hidden" name="ip_level" value="{_attr(ip)}">'
+                + confirm
+                + f'<button type="submit" class="btn">{label}</button></form>')
+
+        gen_section = box("🎨 Tạo ảnh redesign (Nano Banana · miễn phí)",
+            '<p style="margin:0 0 8px;font-size:12.5px">Tạo BẢN NHÁP thiết kế GỐC từ '
+            'prompt an toàn ở trên. Chỉ dùng bản Safe Redesign — không bao giờ tạo lại '
+            'thiết kế đối thủ.</p>'
+            + _genform("🎨 Tạo bản Standard", std_prompt)
+            + _genform("🧵 Tạo bản Embroidery", emb_prompt)
+            + '<p style="margin:8px 0 0;font-size:11.5px;color:#7A736B">Bản nháp ~1024px '
+              '— cần upscale trước khi in; hàng thêu cần digitize thành file mũi chỉ. '
+              'Ảnh này là ĐỒ HOẠ thiết kế, KHÔNG phải ảnh sản phẩm.</p>')
+
     html = f"""<article class="md"><h1>🎨 Design Analyzer</h1>
 <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px">
   <span style="background:{vcol};color:#fff;font-weight:800;border-radius:99px;padding:6px 14px">{_esc(vlabel)}</span>
@@ -385,6 +554,8 @@ def result_html(r, csrf_token):
      f'<p style="margin:0 0 4px"><b>Meaning:</b> {_esc(r.get("meaning_en"))}</p>'
      f'<p style="margin:0;color:#555">{_esc(r.get("meaning_vi"))}</p>')}
 
+{critique}
+
 {box("✅ SAFE original redesign prompt — Standard", pre(std_prompt))}
 {box("🧵 SAFE original redesign prompt — Embroidery", pre(emb_prompt))}
 {box("Recreate prompt — ⚠ ANALYSIS ONLY (do NOT produce/sell)", pre(r.get("prompt_original")))}
@@ -396,6 +567,31 @@ def result_html(r, csrf_token):
      f'<p style="margin:8px 0 4px"><b>Description</b></p>'
      f'<div style="background:#faf7f2;border:1px solid #EBE4DA;border-radius:8px;padding:8px 10px">{_esc(r.get("seo_description"))}</div>')}
 
+{gen_section}
+
 <p style="margin-top:14px"><a href="/design-analyzer">← Analyze another design</a></p>
 </article>"""
     return html
+
+
+def redesign_result_html(res, prompt=""):
+    """Render the generated redesign image (or a graceful error)."""
+    if not res or not res.get("ok"):
+        err = _esc((res or {}).get("error", "Unknown error"))
+        return ('<article class="md"><h1>🎨 Redesign</h1>'
+                f'<div style="background:#FDF2F0;border:1px solid #F3B7AE;'
+                f'border-radius:10px;padding:12px 14px;color:#7f1d1d">⚠ {err}</div>'
+                '<p style="margin-top:12px"><a href="/design-analyzer">← Quay lại '
+                'Design Analyzer</a></p></article>')
+    src = f'data:{res.get("mime", "image/png")};base64,{res["image_b64"]}'
+    return ('<article class="md"><h1>🎨 Redesign — bản nháp GỐC</h1>'
+            f'<img src="{src}" alt="redesign" style="max-width:100%;border:1px solid '
+            '#EBE4DA;border-radius:12px;display:block;margin:8px 0">'
+            f'<p><a href="{src}" download="redesign.png" class="btn">⬇ Tải ảnh</a></p>'
+            '<div style="background:#FDF6EC;border:1px solid #F3D9A6;border-left:5px '
+            'solid #E5850B;border-radius:0 10px 10px 0;padding:12px 14px;font-size:13px">'
+            '⚠ Đây là BẢN NHÁP ~1024px (chưa phải file in 4000–5000px) — cần upscale '
+            'trước khi in. Hàng thêu: phải DIGITIZE thành file mũi chỉ. Ảnh này là ĐỒ HOẠ '
+            'thiết kế GỐC, KHÔNG phải ảnh sản phẩm (hero/macro vẫn phải chụp THẬT).</div>'
+            '<p style="margin-top:12px"><a href="/design-analyzer">← Phân tích thiết kế '
+            'khác</a></p></article>')

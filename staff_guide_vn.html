@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GEA — Hướng dẫn dùng Toolkit V35.7 (bản đầy đủ + có gì mới)</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+:root{--orange:#F1641E;--orange-dark:#D24C0C;--gold:#F0A429;--ink:#2B2926;--muted:#7A736B;--bg:#FBF9F6;--surface:#fff;--border:#EBE4DA;--success:#1F8A4C;--blue:#3B82F6;--purple:#8B5CF6;--red:#B91C1C;--amber:#E5850B}
+*{box-sizing:border-box}
+body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--ink);margin:0;line-height:1.62;font-size:15px}
+.confid{background:repeating-linear-gradient(45deg,#B91C1C,#B91C1C 18px,#a51616 18px,#a51616 36px);color:#fff;font-weight:800;font-size:12.5px;text-align:center;padding:8px;position:sticky;top:0;z-index:30}
+.wrap{max-width:1080px;margin:0 auto;padding:26px 22px 70px}
+header.head{display:flex;align-items:center;gap:16px;border-bottom:3px solid var(--orange);padding-bottom:18px;margin-bottom:14px}
+.logo{width:56px;height:56px;border-radius:15px;background:linear-gradient(135deg,var(--orange),var(--gold));display:flex;align-items:center;justify-content:center;font-weight:900;color:#fff;font-size:19px;flex-shrink:0}
+.head h1{margin:0;font-size:22px;font-weight:900;letter-spacing:-.4px}
+.head .sub{color:var(--muted);font-size:13.5px;margin-top:3px}
+.disc{background:#F0F5FB;border:1px solid #CBDCF3;border-left:5px solid var(--blue);border-radius:0 12px 12px 0;padding:12px 16px;margin:12px 0;font-size:13.5px}
+.disc.ok{background:#EDF7F0;border-color:#A6DBB9;border-left-color:var(--success)}
+.disc.warn{background:#FDF6EC;border-color:#F3D9A6;border-left-color:var(--amber)}
+.rail{display:flex;gap:6px;flex-wrap:wrap;margin:18px 0 6px;position:sticky;top:37px;background:var(--bg);padding:8px 0;z-index:20}
+.railbtn{flex:1;min-width:86px;border:1px solid var(--border);background:#fff;border-radius:11px;padding:9px 6px;cursor:pointer;text-align:center;font-family:'Inter';transition:.15s;position:relative}
+.railbtn:hover{border-color:var(--orange)}
+.railbtn.active{background:var(--orange);color:#fff;border-color:var(--orange)}
+.railbtn .rn{display:block;font-weight:900;font-size:15px}
+.railbtn .rl{display:block;font-size:10px;font-weight:700;margin-top:2px;line-height:1.2}
+.railbtn.done .rn:after{content:" ✓";color:var(--success)}
+.railbtn.active.done .rn:after{color:#fff}
+.railbtn .new{position:absolute;top:-6px;right:-4px;background:var(--red);color:#fff;font-size:8.5px;font-weight:900;padding:1px 5px;border-radius:99px}
+.progwrap{height:8px;background:#F0EAE1;border-radius:99px;overflow:hidden;margin:4px 0 18px}
+.progfill{height:100%;width:9%;background:linear-gradient(90deg,var(--orange),var(--gold));transition:.3s}
+.panel{display:none}.panel.active{display:block;animation:fade .3s}
+@keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.stephead{display:flex;align-items:center;gap:14px;margin:4px 0 6px}
+.stepnum{width:52px;height:52px;border-radius:14px;background:linear-gradient(135deg,var(--orange),var(--gold));color:#fff;font-weight:900;font-size:22px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.stephead h2{margin:0;font-size:21px;border:none;padding:0;color:var(--ink)}
+.where{display:inline-block;background:#EEF2FF;color:#3730A3;border:1px solid #C7D0F5;border-radius:99px;padding:3px 12px;font-size:12px;font-weight:800;margin-top:4px}
+.badge-new{display:inline-block;background:var(--red);color:#fff;border-radius:99px;padding:3px 10px;font-size:11px;font-weight:900;margin-left:8px}
+.sec{margin:18px 0}
+.sec h3{font-size:14px;text-transform:uppercase;letter-spacing:.6px;color:var(--orange-dark);margin:0 0 8px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px 20px;box-shadow:0 2px 8px rgba(43,41,38,.05)}
+ol.actions{counter-reset:a;list-style:none;padding:0;margin:0}
+ol.actions li{position:relative;padding:8px 0 8px 40px;border-bottom:1px dashed var(--border)}
+ol.actions li:last-child{border-bottom:none}
+ol.actions li:before{counter-increment:a;content:counter(a);position:absolute;left:0;top:8px;width:26px;height:26px;background:var(--ink);color:#fff;border-radius:50%;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center}
+.screen{background:#111827;border-radius:12px;padding:0;overflow:hidden;margin:8px 0;border:1px solid #374151}
+.screen .bar{background:#1f2937;padding:8px 12px;font-size:12px;color:#9ca3af;font-family:ui-monospace,Menlo,monospace;border-bottom:1px solid #374151}
+.screen .bar b{color:#e5e7eb}
+.screen .body{padding:14px;color:#e5e7eb;font-family:ui-monospace,Menlo,monospace;font-size:12.5px;line-height:1.6;white-space:pre-wrap}
+.read{background:#EDF7F0;border-left:5px solid var(--success);padding:12px 16px;border-radius:0 10px 10px 0;font-size:13.5px}
+.twocol{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:8px 0}
+.wrongbox{background:#FDF2F0;border:1px solid #F3B7AE;border-radius:12px;padding:12px 14px;font-size:13px}
+.rightbox{background:#EDF7F0;border:1px solid #A6DBB9;border-radius:12px;padding:12px 14px;font-size:13px}
+.wrongbox b{color:var(--red)}.rightbox b{color:var(--success)}
+.gate{background:#FDF2F0;border:2px solid var(--red);border-radius:14px;padding:14px 18px;margin:16px 0}
+.gate b{color:var(--red)}
+.ck{list-style:none;padding:0;margin:6px 0}
+.ck li{padding:5px 0 5px 26px;position:relative;font-size:13.5px}
+.ck li:before{content:"☐";position:absolute;left:0;color:var(--orange);font-size:15px}
+.pill{display:inline-block;font-size:11.5px;font-weight:800;padding:2px 9px;border-radius:99px;color:#fff}
+.p-build{background:var(--success)}.p-confirm{background:var(--amber)}.p-watch{background:#64748b}.p-skip{background:#94743a}.p-blocked{background:var(--red)}.p-verify{background:var(--purple)}
+.nav{display:flex;justify-content:space-between;margin:22px 0 0}
+.btn{background:var(--orange);color:#fff;border:none;padding:11px 22px;border-radius:99px;font-weight:800;cursor:pointer;font-family:'Inter'}
+.btn.ghost{background:var(--ink)}
+.foot{margin-top:36px;color:var(--muted);font-size:12.5px;border-top:1px solid var(--border);padding-top:16px}
+@media print{.confid,.rail,.progwrap,.nav{position:static;display:none!important}.panel{display:block!important;break-inside:avoid;margin-bottom:20px}.card{box-shadow:none}}
+@media(max-width:720px){.twocol{grid-template-columns:1fr}.railbtn .rl{display:none}}
+</style>
+</head>
+<body>
+<div class="confid">🔒 Tài liệu nội bộ Team 4 — không public/chia sẻ ra ngoài dưới mọi hình thức.</div>
+<div class="wrap">
+<header class="head">
+  <div class="logo">GEA</div>
+  <div>
+    <h1>Hướng dẫn dùng Toolkit — bản V35.7 (đầy đủ + có gì mới)</h1>
+    <div class="sub">Quy trình từ ① đến ⑨ + công cụ MỚI 🎨 Design Analyzer · bấm từng bước ở thanh trên · dùng để dạy nhân viên</div>
+  </div>
+</header>
+
+<div class="disc"><strong>Cách dùng tài liệu:</strong> mỗi bước có: <b>Làm ở đâu</b> · <b>Thao tác đúng</b> · <b>Tool hiện gì</b> · <b>Đọc &amp; quyết định</b> · <b>Làm SAI vs ĐÚNG</b> · <b>Xong khi</b>. Bắt đầu ở thẻ <b>🆕 Mới</b> để nắm những thay đổi, rồi đi lần lượt các bước. Dashboard: <b>etsy.theglobalserviceteam.site</b>.</div>
+
+<div class="rail" id="rail"></div>
+<div class="progwrap"><div class="progfill" id="progfill"></div></div>
+<div id="panels"></div>
+
+<div class="foot">
+  Global Etsy Academy • Toolkit V35.7 • Số liệu thị trường phải verify LIVE trên tool — không bịa "GO".<br>
+  🔒 Không tự đăng · Ảnh hero/macro/số đo phải THẬT · Thiết kế GỐC · Kiểm nhãn hiệu · Đo lợi nhuận thật.<br>
+  Tài liệu nội bộ Team 4 — không chia sẻ ra ngoài.
+</div>
+</div>
+
+<script>
+const STEPS=[
+{
+ n:'🆕',key:'MỚI',isnew:true,name:'Có gì mới (V35.5 → V35.7) + Luật vàng',
+ where:'Đọc trước khi bắt đầu',
+ goal:'Nắm nhanh những thay đổi quan trọng của tool và các luật an toàn KHÔNG BAO GIỜ được phá.',
+ actions:[
+  '<b>Từ nghề THÊU đã dùng được trở lại.</b> Trước đây "cross stitch / satin stitch / stitch count..." bị chặn nhầm (tool tưởng là nhân vật Lilo &amp; Stitch). Nay đã sửa — khoảng <b>27 từ khoá cross-stitch</b> của shop đã hiện lại trong Inbox.',
+  '<b>Keyword POD không bị nhét nhầm sang Thêu nữa.</b> "patchwork usa tee", "dispatch rider shirt", "knitting nana shirt"... trước biến mất ở mode POD, nay hiện đúng.',
+  '<b>Từ đa nghĩa trùng brand nay chỉ CẢNH BÁO, không chặn cứng.</b> "frozen / converse / mario / cars / jordan..." nay gắn cờ <span class="pill p-verify">CAUTION</span> = "phải tự tra nhãn hiệu trước khi làm". Hành động cuối bị hạ xuống <span class="pill p-confirm">CONFIRM FIRST</span>.',
+  '<b>Brand viết liền nay bị bắt đúng:</b> superbowl, starwars, babyyoda → vẫn <span class="pill p-blocked">BLOCKED</span>.',
+  '<b>Nhận thêm nhiều loại sản phẩm:</b> jacket, leggings, joggers, dress, water bottle, koozie, wallet... (trước bị bỏ sót).',
+  '<b>CÔNG CỤ MỚI 🎨 Design Analyzer:</b> thả 1 ảnh thiết kế → đọc rủi ro nhãn hiệu + prompt thiết kế GỐC an toàn (thường + thêu) + gói SEO Etsy (title/13 tag/mô tả). Xem thẻ 🎨.'
+ ],
+ screen:{bar:'⚖️ 5 LUẬT VÀNG — không bao giờ phá',body:'1) KHÔNG tự đăng. Người thật + Manager ký mới đăng. (PUBLISH_AUTOMATION = false)\n2) Ảnh HERO / macro mũi chỉ / số đo / sew-out phải là ẢNH THẬT. AI chỉ để mockup/đồ hoạ.\n3) Thiết kế GỐC. Không copy art/mockup của đối thủ. Prompt "Recreate" CHỈ để phân tích.\n4) Trung thực dữ liệu: thiếu số thì nói thiếu, KHÔNG bịa "GO".\n5) Thấy cờ CAUTION (nghi nhãn hiệu) → tự tra USPTO (tmsearch.uspto.gov) TRƯỚC khi làm.'},
+ read:'Điểm thị trường KHÔNG phải quan toà. Mỗi keyword đi qua 4 lớp và Inbox hiện <b>Hành động cuối (Final Action)</b>. Nhân viên đọc Hành động cuối + rủi ro trước, không nhìn 1 con số.',
+ wrong:'Thấy điểm cao hoặc thấy tên gợi ý là làm ngay; dùng ảnh AI cho hero; sao chép y hệt thiết kế đối thủ.',
+ right:'Đọc Hành động cuối + kiểm nhãn hiệu + chờ ảnh thật + Manager ký. Luôn tự làm bản GỐC.',
+ ck:['Đã hiểu 5 luật vàng','Biết CAUTION = phải tự tra nhãn hiệu','Biết có công cụ mới 🎨 Design Analyzer']
+},
+{
+ n:'①',key:'FEED',name:'FEED — Thả dữ liệu vào đúng lane',
+ where:'Trang chủ · ô kéo–thả bước ① (hoặc extension "Send to agent")',
+ goal:'Nạp dữ liệu nghiên cứu vào tool và để tool tự đưa về đúng "lane" xử lý.',
+ actions:[
+  'Lấy dữ liệu bằng extension <b>22Etsy Exporter</b>: <b>trends.ytuong.ai</b> (keyword) · <b>ytuong.me "Hot"</b> hoặc <b>Etsy search + overlay HeyEtsy</b> (listings) · <b>Alura/EverBee</b> (products có đơn bán).',
+  'Trên extension có 3 nút: <b>CSV</b> · <b>JSON</b> · <b>Send to agent</b> (đẩy thẳng vào dashboard). Xem "N rows detected" — nếu 0 thì cuộn cho card hiện rồi bấm lại.',
+  'Nếu tải file: kéo–thả 1 hoặc NHIỀU file vào ô ①, để nguồn "Tự nhận diện". Tool tự route theo CỘT: keyword→Inbox · listings→Pattern Miner · products có sales/revenue→Etsy Proof. Nhìn "Last import: N rows".'
+ ],
+ screen:{bar:'① CAPTURE · Drop files',body:'⬇ Kéo thả CSV/JSON vào đây (Tự nhận diện)\n\n✓ ytuong_keywords.csv    → lane: YTuong keyword → INBOX\n✓ alura_products.csv     → lane: Alura/EverBee → ETSY PROOF\n\nLast import: 320 rows · 1 phút trước'},
+ read:'Inbox trống sau khi thả → file thiếu cột keyword+competition (đó là file listings). File listings đưa vào Pattern Miner; muốn xếp hạng thì cần file YTuong <b>keyword</b>.',
+ wrong:'Thả file listings (title/sold) rồi mong Inbox ra ranking.',
+ right:'File keyword → ranking; file listings → Pattern Miner; file Alura → Etsy Proof. Đúng lane, đúng việc.',
+ ck:['Đã xuất file từ nguồn','Đã thả vào ô ①','Dòng "Last import" hiện số dòng']
+},
+{
+ n:'②',key:'RANK',name:'RANK — Opportunity Inbox (đọc cho đúng)',
+ where:'/inbox',
+ goal:'Đọc <b>Hành động cuối</b> của từng keyword — và hiểu vì sao phần lớn là WATCH (đó là bình thường).',
+ actions:[
+  'Đọc theo thứ tự: <b>Etsy proof → Product-fit → Hành động cuối → Market signal → Do</b>.',
+  'Ưu tiên hàng có <b>Etsy proof</b> (🏆 PROVEN / 🟢 SELLING) và hàng <span class="pill p-confirm">CONFIRM FIRST</span> để đưa qua Pattern Miner.',
+  'Hàng <span class="pill p-verify">CAUTION / verify trademark</span> → tự tra USPTO cụm nghi ngờ trước khi đi tiếp.'
+ ],
+ screen:{bar:'/inbox · Opportunity Inbox',body:'Etsy proof │ Product-fit │ Hành động cuối    │ Market │ Điểm M/C/O/P/F\n───────────┼────────────┼─────────────────┼────────┼──────────────\n🟢 SELLING │ Embroidery │ 🔍 Confirm first │ COND 71│ 74/75/–/–/78\n—          │ POD        │ 🟡 Watch         │ WATCH  │ 60/45/–/–/79\n—          │ Trademark  │ 🚫 BLOCKED       │ —      │ —'},
+ read:'<b>Rất quan trọng cho nhân viên:</b> gần như KHÔNG có 🚀 BUILD NOW từ dữ liệu keyword — vì cột <b>O (Cơ hội)</b> và <b>P (Bán riêng)</b> thường TRỐNG. <b>Phần lớn là 🟡 WATCH — đó là ĐÚNG và trung thực</b>, không phải lỗi. Winner đến từ: (a) hàng <b>CONFIRM FIRST</b> → mở rộng ở Pattern Miner, hoặc (b) hàng có <b>Etsy Proof (đơn bán thật)</b>. O trống vì file keyword chưa có cột điểm "opportunity"; P trống vì chưa ghi đơn (bước ⑨).',
+ wrong:'Hoảng vì thấy nhiều WATCH; hoặc thấy Market cao là build ngay; hoặc bỏ qua cờ CAUTION.',
+ right:'Chọn hàng CONFIRM FIRST hoặc có Etsy Proof để đi tiếp. WATCH = theo dõi/bổ sung dữ liệu. CAUTION = tra nhãn hiệu trước.',
+ ck:['Đọc đúng cột Hành động cuối','Hiểu vì sao nhiều WATCH là bình thường','Đã tra nhãn hiệu cho hàng CAUTION']
+},
+{
+ n:'③',key:'PATTERN',name:'PATTERN MINER — mổ winner để biết VÌ SAO thắng',
+ where:'lane Etsy Spy / trang Pattern Miner',
+ goal:'Mổ 5–10 listing đang thắng của 1 keyword → rút mẫu → ra seed keyword cho bước ④.',
+ actions:[
+  'Lấy top listing: ytuong.me "Hot" hoặc Etsy search + overlay HeyEtsy (để có đủ sold/revenue/tags) → CSV hoặc Send to agent.',
+  'Đọc output: từ khoá tiêu đề hay lặp · <b>từ trong 40 ký tự đầu</b> · cấu trúc title · khoảng giá · % cá nhân hoá/gift/video · khe hở.',
+  'Ghi lại <b>seed keyword</b> + ít nhất 1 khe hở khai thác được.'
+ ],
+ screen:{bar:'Pattern Miner · top 10',body:'Top title keywords : nurse · graduation · personalized · RN · gift\nFirst-40 pattern   : [Personalized Nurse Gift] ...\nPrice band         : $34 – $49\n%Personalization 78% · %Video 22% · Star sellers 40%\nKhe hở             : ít listing có VIDEO · ít ai theo CHUYÊN KHOA'},
+ read:'"Từ trong 40 ký tự đầu" = từ khoá BẮT BUỘC đưa lên đầu title. Chỉ số % thấp (video 22%) = khe hở dễ thắng.',
+ wrong:'Copy y nguyên title/art/mockup của đối thủ.',
+ right:'Học CẤU TRÚC + khe hở rồi tự viết mới. Không dùng art/mockup đối thủ để sản xuất.',
+ ck:['Có seed keyword','Biết price band','Ghi ≥1 khe hở']
+},
+{
+ n:'④',key:'LAB',name:'KEYWORD LAB — sinh keyword mới từ mẫu thắng',
+ where:'Keyword Lab',
+ goal:'Từ seed, sinh keyword mới theo người mua lân cận + biến thể — không đoán bừa.',
+ actions:[
+  'Nhập seed vào Keyword Lab. Tool sinh keyword theo chuyên khoa/dịp/biến thể sản phẩm.',
+  'Tick các keyword muốn giữ trong <b>checklist</b>, rồi bấm <b>MỘT nút</b> "➕ Add SELECTED to Inbox &amp; re-rank" — cả lô (tối đa 20) được lưu vào keyword_data.csv + re-rank một lần. KHÔNG bấm từng cái.'
+ ],
+ screen:{bar:'Keyword Lab · seed: "nurse graduation"',body:'☑ NICU nurse graduation gift\n☑ ER nurse graduation gift\n☑ new grad nurse sweatshirt\n☐ ...\n[ ➕ Add SELECTED to Inbox & re-rank ]  ← bấm 1 lần cho cả lô (≤20)'},
+ read:'Ưu tiên keyword HẸP hơn (theo chuyên khoa): cạnh tranh thấp, buyer rõ, dễ cá nhân hoá sâu. 1 nút cho cả danh sách — không bấm 20 lần.',
+ wrong:'Nghĩ keyword trong đầu rồi build luôn; hoặc bấm "Score" từng cái.',
+ right:'Sinh keyword từ mẫu ĐANG THẮNG, tick, add 1 lần — để dữ liệu dẫn đường.',
+ ck:['Có ≥5 keyword mới','Đã tick + Add SELECTED 1 lần']
+},
+{
+ n:'⑤',key:'RERANK',name:'RE-RANK — keyword mới quay lại Inbox',
+ where:'/inbox (sau khi Add)',
+ goal:'Đưa keyword mới đi lại engine đa lớp → chọn winner cuối cùng để build.',
+ actions:[
+  'Keyword mới xuất hiện trong Inbox với Hành động cuối riêng.',
+  'So sánh: ưu tiên keyword HẸP + (lý tưởng) có Etsy Proof.',
+  'Chốt 1 winner để đưa vào Launch Kit.'
+ ],
+ screen:{bar:'/inbox · sau re-rank',body:'nurse graduation gift (rộng)   │ 🔍 Confirm  │ COND 76\nNICU nurse graduation gift     │ 🔍 Confirm  │ COND 78  ← hẹp hơn, ưu tiên\nER nurse graduation gift       │ 🟡 Watch    │ WATCH 61'},
+ read:'Keyword HẸP thường thắng keyword rộng khi cạnh tranh thấp + buyer rõ. Nếu chưa lên BUILD_NOW: đó là bình thường — đưa winner qua Launch Kit ở dạng nháp và bổ sung bằng chứng.',
+ wrong:'Giữ keyword rộng chỉ vì "nhiều search".',
+ right:'Chọn keyword hẹp WINNABLE.',
+ ck:['Đã so sánh Hành động cuối','Đã chốt 1 winner']
+},
+{
+ n:'⑥',key:'BUILD',name:'BUILD — Launch Kit (1 winner → 1 trang)',
+ where:'/launch-kit',
+ goal:'Biến winner thành gói listing đầy đủ + đọc 4 cổng quyết định. Vẫn là NHÁP cho tới khi đủ điều kiện.',
+ actions:[
+  'Mở Launch Kit. Đọc verdict + winner score (kèm cảnh báo trademark/SKIP nếu có).',
+  'Lấy Listing draft: title (keyword trong 40 ký tự đầu) · 13 tag (≤20 ký tự) · mô tả · cá nhân hoá · P&L.',
+  'Kiểm 4 cổng: Can-we-win · Launch-ready · First-image · Offer-strength. Hàng thêu: xem điểm producibility (STITCH_SAFE/OK/RISK).',
+  'Nếu winner là CAUTION (nghi nhãn hiệu): Launch Kit vẫn cho nháp NHƯNG hành động là 🔍 CONFIRM FIRST + ghi "verify trademark first" → tra USPTO xong mới làm tiếp.'
+ ],
+ screen:{bar:'/launch-kit · NICU nurse graduation gift',body:'Verdict: 🔍 CONFIRM · Winner score 78 · Trademark: clean\nTITLE: Personalized NICU Nurse Graduation Gift, Custom RN Embroidered Sweatshirt for Her\n13 TAGS: nicu nurse gift · nurse grad gift · ... (≤20 ký tự/tag)\nProducibility: STITCH_SAFE (monogram/tên thêu sạch)\n4 cổng: Can-we-win 80 · Launch-ready 85 · First-image 80* · Offer 82\n(*First-image chờ ẢNH THẬT)'},
+ read:'4 cổng đạt (≥70) <b>VÀ</b> Manager ký <b>VÀ</b> có ảnh thật thì mới PUBLISH_READY. Trước đó nút chỉ hiện "Save Draft". CAUTION → tra nhãn hiệu trước khi làm tiếp.',
+ wrong:'Thấy title đẹp là đăng ngay; bỏ qua cờ verify trademark.',
+ right:'Chưa đủ 4 cổng / chưa ảnh thật / chưa Manager ký / chưa tra nhãn hiệu → GIỮ DRAFT.',
+ ck:['Có title/13 tag/mô tả/cá nhân hoá','P&L ≥ 35%','Đã đọc 4 cổng','Đã tra nhãn hiệu nếu CAUTION'],
+ gate:true
+},
+{
+ n:'🎨',key:'DESIGN',isnew:true,name:'DESIGN ANALYZER — ảnh mẫu → thiết kế GỐC an toàn + SEO',
+ where:'Trang chủ → Advanced → 🎨 Design Analyzer',
+ goal:'Từ 1 ẢNH thiết kế, tool nói: <b>vì sao THẮNG / vì sao YẾU</b>, <b>mổ xẻ Font · Quote · Layout · Color</b>, <b>cách làm TỐT HƠN</b> (bản GỐC, không sao chép) + rủi ro nhãn hiệu + prompt Safe Redesign + gói SEO. Chạy trên Gemini (miễn phí).',
+ actions:[
+  'Thả ảnh thiết kế (PNG/JPG ≤ 7MB). Tuỳ chọn: dán title gốc + link.',
+  'Bật <b>Embroidery-safe mode</b> nếu làm hàng THÊU (bản đơn giản, ≤6 màu, không gradient).',
+  'Bấm <b>Analyze design</b>. Đọc theo thứ tự: <b>Verdict</b> → <b>🏆 Vì sao thắng</b> → <b>⚠ Điểm yếu</b> → <b>🎨 Mổ xẻ 4 yếu tố</b> → <b>🔧 Cách làm tốt hơn</b>.',
+  'Lấy prompt <b>Safe Redesign</b> (đã áp dụng sẵn các cải thiện) → tạo bản GỐC. Nếu OK: bấm <b>Tạo ảnh redesign</b>. TUYỆT ĐỐI không dùng prompt "Recreate" để sản xuất.'
+ ],
+ screen:{bar:'🎨 Design Analyzer · kết quả',body:'Verdict: ✅ OK to design | IP: LOW | Stitch: STITCH_SAFE\n\n🏆 VÌ SAO THẮNG: người mua rõ (dog mom) · câu hài đọc được ở thumbnail\n⚠ ĐIỂM YẾU: ngách khá đông · hook chưa đủ mạnh\n🎨 MỔ XẺ:  Font — sans đậm, nên tăng weight\n          Quote — chơi chữ, nên cụ thể hơn\n          Layout — canh giữa, thêm khoảng trống\n          Color — 2 màu, tăng tương phản áo tối\n🔧 CÁCH LÀM TỐT HƠN: chọn giống hiếm hơn · hook 3 từ · 2 màu tương phản cao\n\n✅ SAFE REDESIGN (Standard + Embroidery) · SEO (title/13 tag/mô tả, EN+VI)'},
+ read:'<b>Vì sao thắng/yếu</b> = lý do THƯƠNG MẠI (ai mua, có đọc được ở thumbnail không) — không phải "đẹp/xấu". <b>4 yếu tố (Font·Quote·Layout·Color)</b> là 4 cần gạt để chỉnh: mỗi ô ghi "hiện tại → nên sửa". <b>Cách làm tốt hơn</b> = mình làm bản GỐC XỊN HƠN, KHÔNG sao chép. <b>Data-driven:</b> luôn đối chiếu ngách này với Inbox (bước ②) — có cầu thật không? Verdict IP lấy mức THẬN TRỌNG HƠN giữa AI và blocklist shop; báo HIGH thì phải nghe.',
+ wrong:'Dùng prompt "Recreate" tạo lại y hệt đối thủ rồi bán → VI PHẠM BẢN QUYỀN. Hoặc chỉ khen "đẹp" mà không đọc điểm yếu + cách cải thiện.',
+ right:'Đọc vì sao thắng/yếu → sửa theo 4 yếu tố → làm bản GỐC TỐT HƠN bằng prompt Safe Redesign. Đối chiếu cầu ở Inbox trước khi làm. HIGH/Skip → bỏ.',
+ ck:['Đọc được vì sao THẮNG và YẾU','Hiểu 4 cần gạt Font·Quote·Layout·Color','Có ≥1 cách làm TỐT HƠN (không sao chép)','Đã đối chiếu cầu ở Inbox','Dùng Safe Redesign, KHÔNG dùng Recreate']
+},
+{
+ n:'⑦',key:'PHOTO',name:'PHOTO STUDIO — ảnh thật cho slot bắt buộc',
+ where:'Photo Studio (12 slot ảnh)',
+ goal:'Bộ ảnh vừa bán được vừa đúng chính sách; ảnh 1 quyết định CTR.',
+ actions:[
+  'Slot đồ hoạ (size chart, color chart, infographic): dùng prompt AI có sẵn.',
+  'Slot 📸 REAL PHOTO — hero, macro mũi chỉ, số đo, sew-out — PHẢI chụp thật.',
+  'Ảnh 1 (hero): 4:3 / 5:4, contrast cao, text đọc được ở thumbnail; thêm 1 video 15–25s.'
+ ],
+ screen:{bar:'Photo Studio · 12 slots',body:'1 Hero          📸 REAL\n2 Macro mũi chỉ 📸 REAL\n3 Số đo/size    📸 REAL\n4 Sew-out proof 📸 REAL\n5 Lifestyle/mockup 🤖 AI-ok\n6 Size chart     🤖 AI-ok\n...\n12 Video 15–25s 📸 REAL'},
+ read:'Sản phẩm personalized/embroidery → ảnh 1 phải thể hiện thành phẩm THẬT khách sẽ nhận. KHÔNG dùng blank/placeholder/AI cho hero.',
+ wrong:'Dùng ảnh AI đẹp cho hero + macro mũi chỉ.',
+ right:'AI chỉ cho mockup/đồ hoạ. Hero, macro, số đo, sew-out = ảnh thật. Quy tắc vàng, không du di.',
+ ck:['Hero thật (4:3/5:4)','Macro mũi chỉ thật','Size chart','≥1 video']
+},
+{
+ n:'⑧',key:'ADS',name:'ADS TEST — kế hoạch tay, đọc theo Day 3/7/14',
+ where:'Etsy Ads (thủ công) · plan từ Launch Kit',
+ goal:'Gom click cho listing đã có nền, đo ROAS/ACOS, quyết mở rộng hay tắt.',
+ actions:[
+  'Lấy breakeven ACOS mà Launch Kit tính sẵn từ phí thật.',
+  'Bật Etsy Ads $1–3/ngày (ưu tiên listing đã có tín hiệu organic).',
+  'Đọc &amp; quyết theo mốc Day 3 / 7 / 14.'
+ ],
+ screen:{bar:'Ads plan · read/kill rules',body:'Breakeven ACOS (từ P&L thật): ~34%   ← ACOS phải DƯỚI mức này\nNgân sách test: $2/ngày × 14 ngày\nDay 3 : ĐỌC (chưa quyết)\nDay 7 : ROAS ≥3 → tăng · 1.5–3 → tinh chỉnh · <1 → TẮT\nDay 14: có lợi nhuận + đủ năng lực → SCALE'},
+ read:'Chỉ scale khi có LỢI NHUẬN thật + đủ năng lực vận hành. ACOS trên breakeven = đang lỗ → sửa hoặc tắt.',
+ wrong:'Đổ tiền ads vào listing 0 nền, ngân sách lớn, tắt sau 1 ngày.',
+ right:'Ads đẩy listing đã có tín hiệu; ngân sách nhỏ; đọc theo Day 3/7/14; so ACOS với breakeven.',
+ ck:['Biết breakeven ACOS','Ngân sách test nhỏ','Có lịch đọc Day 3/7/14']
+},
+{
+ n:'⑨',key:'LEARN',name:'LEARN — ghi đơn để tool tự lên hạng vòng sau',
+ where:'/feedback (Launch Kit có link điền sẵn)',
+ goal:'Biến đơn bán thật thành điểm P (Private) → niche &amp; tag tự lên hạng lần sau. Đây là cách DUY NHẤT để winner nổi lên khỏi đống WATCH.',
+ actions:[
+  'Bán được → ghi ngay: keyword · tag · mode · giá · số đơn (dùng link điền sẵn trong Launch Kit).',
+  'Đọc gợi ý KEEP / FIX / KILL / SCALE theo Ngày 3 &amp; Ngày 7.',
+  'Winner thắng → nhân bản 10–20 biến thể (chuyên khoa/dịp/màu) từ concept đó.'
+ ],
+ screen:{bar:'/feedback · vòng học',body:'Ghi đơn: "NICU nurse graduation gift" · embroidery · $44.99 · 6 đơn\n→ Điểm P (Private) tăng · niche "nurse grad" +điểm · tag +điểm\n→ Lần sau keyword họ nurse tự lên hạng (hiện ✔6)\nGợi ý: Day 3 KEEP · Day 7 SCALE'},
+ read:'Nhớ: cột <b>P</b> trong Inbox trống cho tới khi bắt đầu ghi đơn. <b>Không ghi feedback = tool "mù"</b>, mọi thứ mãi ở WATCH. Đo LỢI NHUẬN thật, không đo doanh thu. Kill sớm cái chết, dồn lực nhân bản cái thắng.',
+ wrong:'Bán xong không ghi gì → vòng sau tool vẫn mù.',
+ right:'Ghi MỌI đơn → điểm niche/tag tự cải thiện → research nhanh &amp; chuẩn hơn.',
+ ck:['Đã log đơn (keyword/tag/giá/đơn)','Đọc gợi ý Keep/Fix/Kill/Scale','Winner → kế hoạch nhân bản']
+}
+];
+
+const rail=document.getElementById('rail'),panels=document.getElementById('panels');
+const done=new Set();
+STEPS.forEach((s,i)=>{
+  const b=document.createElement('button');b.className='railbtn'+(i===0?' active':'');b.id='rb-'+i;
+  b.innerHTML=`<span class="rn">${s.n}</span><span class="rl">${s.key}</span>`+(s.isnew?'<span class="new">MỚI</span>':'');
+  b.onclick=()=>go(i);rail.appendChild(b);
+  panels.insertAdjacentHTML('beforeend',renderStep(s,i));
+});
+function renderStep(s,i){
+  return `<div class="panel${i===0?' active':''}" id="panel-${i}">
+    <div class="stephead"><div class="stepnum">${s.n}</div><div><h2>${s.name}${s.isnew?'<span class="badge-new">MỚI</span>':''}</h2><span class="where">📍 ${s.where}</span></div></div>
+    <div class="card">
+      <div class="sec"><h3>🎯 Mục tiêu</h3><p style="margin:0">${s.goal}</p></div>
+      <div class="sec"><h3>✅ Thao tác ĐÚNG</h3><ol class="actions">${s.actions.map(a=>`<li>${a}</li>`).join('')}</ol></div>
+      <div class="sec"><h3>🖥️ Tool hiển thị gì (ví dụ)</h3>
+        <div class="screen"><div class="bar">▸ <b>${s.screen.bar}</b></div><div class="body">${s.screen.body}</div></div>
+      </div>
+      <div class="sec"><h3>🧠 Đọc &amp; quyết định</h3><div class="read">${s.read}</div></div>
+      <div class="sec"><h3>⚖️ Làm SAI vs Làm ĐÚNG</h3>
+        <div class="twocol">
+          <div class="wrongbox"><b>❌ SAI:</b><br>${s.wrong}</div>
+          <div class="rightbox"><b>✅ ĐÚNG:</b><br>${s.right}</div>
+        </div>
+      </div>
+      ${s.gate?'<div class="gate"><b>🔒 CHỐT CỨNG:</b> listing chỉ lên khi mọi cổng cứng đạt + Manager KÝ + người thật bấm đăng tay. <code>PUBLISH_AUTOMATION = false</code> — luôn luôn.</div>':''}
+      <div class="sec"><h3>☑️ Xong khi</h3><ul class="ck">${s.ck.map(c=>`<li>${c}</li>`).join('')}</ul></div>
+      <div class="nav">
+        <button class="btn ghost" onclick="go(${i-1})" ${i===0?'style="visibility:hidden"':''}>← Trước</button>
+        <button class="btn" onclick="markGo(${i})">${i===STEPS.length-1?'✓ Hoàn tất':'Đánh dấu xong · Tiếp →'}</button>
+      </div>
+    </div>
+  </div>`;
+}
+function go(i){
+  if(i<0||i>=STEPS.length)return;
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.railbtn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('panel-'+i).classList.add('active');
+  document.getElementById('rb-'+i).classList.add('active');
+  document.querySelector('.wrap').scrollIntoView({behavior:'smooth',block:'start'});
+}
+function markGo(i){
+  done.add(i);document.getElementById('rb-'+i).classList.add('done');
+  document.getElementById('progfill').style.width=Math.round(done.size/STEPS.length*100)+'%';
+  if(i<STEPS.length-1)go(i+1);
+}
+document.getElementById('progfill').style.width=Math.round(1/STEPS.length*100)+'%';
+</script>
+</body>
+</html>

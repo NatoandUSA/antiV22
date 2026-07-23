@@ -51,6 +51,53 @@ ROUTE_BLOCK = '''
 
 '''
 
+REDESIGN_MARK = '"/design-analyzer/redesign"'
+REDESIGN_BLOCK = '''
+    @app.route("/design-analyzer/redesign", methods=["POST"])
+    @login_required
+    def design_analyzer_redesign():
+        # V35.9: generate the SAFE redesign as an image (Nano Banana), gated on the
+        # IP verdict. HIGH -> refused; MEDIUM -> needs the 'verified' tick.
+        _check_csrf()
+        from src import design_analyzer as da
+        prompt = (request.form.get("prompt") or "").strip()[:4000]
+        ip_level = (request.form.get("ip_level") or "LOW").strip()
+        confirmed = request.form.get("confirmed") == "1"
+        try:
+            res = da.generate_redesign_gated(prompt, ip_level=ip_level,
+                                             confirmed=confirmed)
+        except (SystemExit, Exception) as exc:  # noqa: BLE001
+            return _tool_error("Redesign", exc)
+        return page("Design Analyzer - Redesign",
+                    _bar() + da.redesign_result_html(res, prompt))
+
+'''
+
+GUIDE_MARK = '@app.route("/training")'
+GUIDE_BLOCK = '''
+    @app.route("/training")
+    @login_required
+    def training():
+        # V35.9: serve the Vietnamese staff walkthrough as a full page.
+        from pathlib import Path as _P
+        from flask import Response as _Resp
+        for _p in (_P("staff_guide_vn.html"), _P("docs/staff_guide_vn.html")):
+            if _p.is_file():
+                return _Resp(_p.read_text(encoding="utf-8"), mimetype="text/html")
+        return page("Huong dan", _bar() + '<article class="md"><p>Chua cai tai '
+                    'lieu (staff_guide_vn.html).</p></article>')
+
+'''
+GUIDE_NAV_MARK = 'href="/training"'
+GUIDE_NAV_ADD = (
+    "\n            '<a class=\"toolcard\" href=\"/training\"><b>\U0001F4DA "
+    "Hướng dẫn nhân viên</b>'\n            '<span>Quy "
+    "trình 9 bước + công cụ mới (Tiếng "
+    "Việt)</span></a>'"
+)
+
+GUIDE_NAV_ANCHOR = "safe original redesign prompt, Etsy SEO pack</span></a>'"
+
 NAV_MARK = 'href="/design-analyzer"'
 NAV_ANCHOR = "<span>SEO / Trust / Image scores + publish gate</span></a>'"
 NAV_ADD = (
@@ -77,6 +124,10 @@ def _copy_sources(repo):
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(PKG / rel, dst)
         print(f"  copied {rel}")
+    guide = PKG / "staff_guide_vn.html"
+    if guide.is_file():
+        shutil.copyfile(guide, repo / "staff_guide_vn.html")
+        print("  copied staff_guide_vn.html")
 
 
 def _patch_web(repo):
@@ -104,6 +155,31 @@ def _patch_web(repo):
                 sys.exit("ERROR: could not find an anchor for the route.\n"
                          "Send Claude the region around @app.route(\"/trending\").")
 
+    # 1b) redesign route (image generation, gated on verdict)
+    if REDESIGN_MARK in txt:
+        print("  redesign route already present - skipped")
+    else:
+        anchor = '    @app.route("/trending")'
+        if anchor in txt:
+            txt = txt.replace(anchor, REDESIGN_BLOCK.lstrip("\n") + "\n" + anchor, 1)
+            changed = True
+            print("  redesign route inserted before /trending")
+        else:
+            print("  WARNING: could not anchor the redesign route (non-fatal); the "
+                  "analyzer still works, just no image-generation button.")
+
+    # 1c) training page route (staff walkthrough)
+    if GUIDE_MARK in txt:
+        print("  training route already present - skipped")
+    else:
+        anchor = '    @app.route("/trending")'
+        if anchor in txt:
+            txt = txt.replace(anchor, GUIDE_BLOCK.lstrip("\n") + "\n" + anchor, 1)
+            changed = True
+            print("  training route inserted before /trending")
+        else:
+            print("  WARNING: could not anchor the training route (non-fatal).")
+
     # 2) nav card
     if NAV_MARK in txt:
         print("  nav card already present - skipped")
@@ -115,6 +191,17 @@ def _patch_web(repo):
         print("  WARNING: Listing Analyzer nav anchor not found - the route still "
               "works at /design-analyzer, just no home card. (Non-fatal.)")
 
+    # 2b) training nav card (added after the Design Analyzer card)
+    if GUIDE_NAV_MARK in txt:
+        print("  training nav card already present - skipped")
+    elif GUIDE_NAV_ANCHOR in txt:
+        txt = txt.replace(GUIDE_NAV_ANCHOR, GUIDE_NAV_ANCHOR + GUIDE_NAV_ADD, 1)
+        changed = True
+        print("  training nav card inserted")
+    else:
+        print("  training nav card anchor not found - /training still works "
+              "(non-fatal)")
+
     if changed:
         p.write_text(txt, encoding="utf-8")
 
@@ -125,12 +212,12 @@ def _bump_version(repo):
         print("  version.py not found - skipped")
         return
     txt = p.read_text(encoding="utf-8")
-    new = re.sub(r'VERSION\s*=\s*"[^"]*"', 'VERSION = "35.7"', txt)
+    new = re.sub(r'VERSION\s*=\s*"[^"]*"', 'VERSION = "35.9"', txt)
     if new != txt:
         p.write_text(new, encoding="utf-8")
-        print("  version bumped to 35.7")
+        print("  version bumped to 35.9")
     else:
-        print("  version already 35.7 (or pattern not found)")
+        print("  version already 35.9 (or pattern not found)")
 
 
 def _env_example(repo):
