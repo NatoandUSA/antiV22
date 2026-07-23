@@ -209,6 +209,8 @@ def ingest(payload):
         merged, new_kws = _merge_keywords(view, rows, idx)
         out["keyword_rows_merged"] = merged
         out["keywords_new"] = new_kws   # NEW keywords (dupes excluded)
+        # existing keywords whose market numbers were refreshed by this resend
+        out["keywords_updated"] = max(0, merged - new_kws)
     elif idx["category"] is not None:
         out["type"] = "categories"
         out["files"].append(_write_csv(CATEGORY_CSV, headers, rows))

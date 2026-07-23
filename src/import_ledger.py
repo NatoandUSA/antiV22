@@ -24,8 +24,16 @@ _MAX_EVENTS = 5000          # ledger read cap (file is append-only)
 
 
 def record(user=None, channel="", view="", lanes=None, files=0,
-           rows=0, kw_new=0):
-    """Append one import event. Never raises (best-effort audit trail)."""
+           rows=0, kw_new=0, kw_updated=0, leads=0):
+    """Append one import event. Never raises (best-effort audit trail).
+
+    kw_new     = brand-new keyword phrases added to the master list.
+    kw_updated = existing keywords whose market numbers were refreshed by this
+                 import (resends count here, so a re-import never reads as '0').
+    leads      = rows captured into the spy / proof / supplier lanes (Etsy /
+                 Amazon / Pinterest / Alibaba / ytuong listings) — real work
+                 even though they are not keywords.
+    """
     try:
         LEDGER.parent.mkdir(parents=True, exist_ok=True)
         evt = {
@@ -38,6 +46,8 @@ def record(user=None, channel="", view="", lanes=None, files=0,
             "files": int(files or 0),
             "rows": int(rows or 0),
             "kw_new": int(kw_new or 0),
+            "kw_updated": int(kw_updated or 0),
+            "leads": int(leads or 0),
         }
         with LEDGER.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(evt, ensure_ascii=False) + "\n")

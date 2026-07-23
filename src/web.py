@@ -2005,12 +2005,31 @@ def build_app(password, secret):
             '<tr><td colspan="6">No import events recorded yet. Staff names '
             'appear here once they set "Your name" in the extension popup, or '
             'when they drop files while logged in.</td></tr>')
+        def _evt_result(e):
+            new = int(e.get("kw_new", 0) or 0)
+            upd = int(e.get("kw_updated", 0) or 0)
+            leads = int(e.get("leads", 0) or 0)
+            lanes = e.get("lanes") or {}
+            ltype = next(iter(lanes), "") if lanes else ""
+            # retro-fill leads for events logged before this column existed, so
+            # the older listing sends also stop reading as a bare "+0".
+            if (not leads and new == 0 and upd == 0 and ltype
+                    and ltype not in ("keywords", "categories", "empty")):
+                leads = int(e.get("rows", 0) or 0)
+            parts = []
+            if new:
+                parts.append(f'<b style="color:#15803d">+{new} new kw</b>')
+            if upd:
+                parts.append(f'<span style="color:#2563eb">{upd} updated</span>')
+            if leads:
+                parts.append(f'<span style="color:#a16207">{leads} leads</span>')
+            return " · ".join(parts) if parts else '<span style="color:#999">—</span>'
         erows = "".join(
             f"<tr><td>{_h.escape(str(e.get('date', '')))}</td>"
             f"<td>{_h.escape(str(e.get('user', '')))}</td>"
             f"<td>{_h.escape(str(e.get('channel', '')))}</td>"
             f"<td>{_h.escape(str(e.get('view', ''))[:40])}</td>"
-            f"<td>{e.get('rows', 0)}</td><td><b>+{e.get('kw_new', 0)}</b></td></tr>"
+            f"<td>{e.get('rows', 0)}</td><td>{_evt_result(e)}</td></tr>"
             for e in g["recent_events"]) or '<tr><td colspan="6">—</td></tr>'
         content = (
             '<article class="md"><h1>\U0001F4C8 Keyword base — growth &amp; '
@@ -2028,8 +2047,13 @@ def build_app(password, secret):
             '<th>Total new kws</th><th>Rows imported</th><th>Imports</th></tr>'
             f'{urows}</table>'
             '<h2>Recent import events</h2>'
+            '<p class="note">Result key: <b style="color:#15803d">new kw</b> = '
+            'brand-new keyword phrases · <span style="color:#2563eb">updated</span> '
+            '= existing keywords whose market numbers were refreshed by a resend · '
+            '<span style="color:#a16207">leads</span> = listing/spy rows captured '
+            '(Etsy, Amazon, Pinterest, Alibaba, ytuong) — useful, but not keywords.</p>'
             '<table><tr><th>Date</th><th>Who</th><th>Channel</th><th>View</th>'
-            f'<th>Rows</th><th>New kws</th></tr>{erows}</table>'
+            f'<th>Rows</th><th>Result</th></tr>{erows}</table>'
             f'<p class="note">{_h.escape(g["note"])}</p></article>')
         return page("Keyword base history", _bar()
                     + _stage_nav("feed", "", request.args.get("mode") or "")
@@ -2335,11 +2359,19 @@ def build_app(password, secret):
         try:
             from src import import_ledger as _il
             _op = str(payload.get("operator") or "").strip()[:60]
+            _typ = summary.get("type", "?")
+            _rows = summary.get("rows_received", 0)
+            _knew = summary.get("keywords_new", 0)
+            _kupd = summary.get("keywords_updated", 0)
+            # non-keyword lanes (etsy/pinterest/supplier/generic listings) are
+            # leads: real captured rows, just not keywords -> count them so a
+            # listing send never reads as "+0" and looks like a failure.
+            _leads = 0 if _typ in ("keywords", "categories", "empty") else _rows
             _il.record(user=_op or "extension (no name set)",
                        channel="extension", view=summary.get("view", ""),
-                       lanes={summary.get("type", "?"): summary.get("rows_received", 0)},
-                       files=1, rows=summary.get("rows_received", 0),
-                       kw_new=summary.get("keywords_new", 0))
+                       lanes={_typ: _rows},
+                       files=1, rows=_rows,
+                       kw_new=_knew, kw_updated=_kupd, leads=_leads)
         except Exception:  # noqa: BLE001
             pass
         return _cors(_json_resp({"ok": True, **summary}), origin)
@@ -2484,10 +2516,12 @@ def build_app(password, secret):
         try:
             from src import import_ledger as _il
             _u = current_user()
+            _lead_rows = sum(v for k, v in (lanes or {}).items()
+                             if str(k).lower() not in ("keywords", "categories", "empty"))
             _il.record(user=(_u or {}).get("display_name") or (_u or {}).get("email"),
                        channel="file-drop", view=act, lanes=lanes,
                        files=len(uploads), rows=sum(lanes.values()),
-                       kw_new=kw_new_total)
+                       kw_new=kw_new_total, leads=_lead_rows)
         except Exception:  # noqa: BLE001
             pass
         return redirect(dest)
