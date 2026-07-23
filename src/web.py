@@ -657,33 +657,15 @@ def build_app(password, secret):
             '<button formaction="/draft-listing">Draft listing</button>'
             '<button formaction="/edge">Beat competitors</button>'
             '</div></details></form>'
-            # --- DAILY: the everyday loop (Scope Reduction). Every other surface
-            # still works; the research / library / analytics tools live under
-            # "Advanced tools" below so staff see the daily loop first. ---
-            '<h2 class="grouph">🎯 Daily — your everyday loop</h2>'
-            '<p class="note" style="margin:-4px 0 10px">Research on '
-            '<b>YTuong / HeyEtsy</b>, then work the loop here: confirm → assign → '
-            'supplier check → draft → manager review → manual publish.</p>'
-            '<div class="toolgrid">'
-            '<a class="toolcard" href="/confirm"><b>✅ Confirm &amp; Assign</b>'
-            '<span>Start here: confirm a niche → hand it to staff</span></a>'
-            '<a class="toolcard" href="/imports"><b>📥 Import Center</b>'
-            '<span>Import a YTuong/Etsy URL or keyword → candidate + product-fit</span></a>'
-            '<a class="toolcard" href="/research-queue"><b>🧭 Research Queue</b>'
-            '<span>Every idea from spark → review → manual publish</span></a>'
-            '<a class="toolcard" href="/suppliers"><b>🏭 Suppliers</b>'
-            '<span>Catalogs + ShineOn/Embroidery CSV — the supplier-check step</span></a>'
-            '<a class="toolcard" href="/team/calendar"><b>📅 Team Calendar</b>'
-            '<span>Tasks by due date: today / week / month / overdue</span></a>'
-            '<a class="toolcard" href="/team"><b>👥 Team</b>'
-            '<span>My Tasks, assign work, review queue, feedback</span></a>'
-            '</div>'
+            # (Removed the "Daily — everyday loop" card block — the top workflow
+            # strip + the split Tools shelves below are the everyday surface now.)
             + pipeline_html + _oppq +
             # --- TOOLS: the default-visible shelf. Exactly what staff need to
             # read alongside the pipeline — trend feeds, ranked views, execution
             # helpers. Everything else lives under Advanced (owner directive:
             # "what staff need to read only, not a bunch of reports"). ---
-            '<h2 class="grouph">🧰 Tools — trend feeds &amp; execution helpers</h2>'
+            # SECTION 1 — TREND FEEDS: find what's rising (read these first).
+            '<h2 class="grouph">📈 Trend Feeds — tìm cái đang lên</h2>'
             '<div class="toolgrid">'
             f'<a class="toolcard" href="/winners?mode={active}"><b>🏆 Winner Finder</b>'
             '<span>High-demand × low-competition sweet spot — the fastest pick, ranked</span></a>'
@@ -701,16 +683,22 @@ def build_app(password, secret):
             '<span>Brand-new listings already outselling their niche</span></a>'
             f'<a class="toolcard" href="/calendar?mode={active}"><b>📅 Seasonal calendar</b>'
             '<span>Upcoming holidays + launch-by dates + keywords</span></a>'
+            '</div>'
+            # SECTION 2 — EXECUTION HELPERS: turn one pick into a listing.
+            '<h2 class="grouph">🛠 Execution Helpers — biến 1 pick thành listing</h2>'
+            '<div class="toolgrid">'
+            '<a class="toolcard" href="/design-analyzer"><b>🎨 Design Analyzer</b>'
+            '<span>Ảnh → vì sao thắng/yếu · Font/Quote/Layout/Color · redesign GỐC + SEO</span></a>'
+            f'<a class="toolcard" href="/launch-kit?mode={active}"><b>🚀 Launch Kit</b>'
+            '<span>One winner → verdict, edge, listing, photos &amp; ads on one page</span></a>'
             f'<a class="toolcard" href="/photo-brief?mode={active}"><b>📸 Photo prompt set</b>'
             '<span>Every listing image + a ready AI prompt (real-photo honesty rule)</span></a>'
-            f'<a class="toolcard" href="/ads-plan?mode={active}"><b>📣 Etsy Ads plan</b>'
-            '<span>Manual starter: budget, breakeven ACOS, tag coverage, kill rules</span></a>'
             f'<a class="toolcard" href="/edge?mode={active}"><b>🥊 Beat competitors</b>'
             '<span>Measured gaps in the ranking listings, biggest weakness first</span></a>'
             '<a class="toolcard" href="/grade"><b>📋 Listing Analyzer</b>'
             '<span>SEO / Trust / Image scores + publish gate</span></a>'
-            '<a class="toolcard" href="/design-analyzer"><b>🎨 Design Analyzer</b>'
-            '<span>Image → trademark read, safe original redesign prompt, Etsy SEO pack</span></a>'
+            f'<a class="toolcard" href="/ads-plan?mode={active}"><b>📣 Etsy Ads plan</b>'
+            '<span>Manual starter: budget, breakeven ACOS, tag coverage, kill rules</span></a>'
             '<a class="toolcard" href="/training"><b>📚 Hướng dẫn nhân viên</b>'
             '<span>Quy trình 9 bước + công cụ mới (Tiếng Việt)</span></a>'
             '</div>'
@@ -797,8 +785,8 @@ def build_app(password, secret):
                          ("Day 3 / 7 due", day37, "/research-queue"),
                          ("My tasks", len(mine), "/me/tasks")]
                 title, acts = "🧑‍💼 Manager desk — review &amp; decide", [
-                    ("🔍 Review Queue", "/admin/reviews"), ("🧭 Research Queue", "/research-queue"),
-                    ("📥 Import Center", "/imports"), ("📋 Team Tasks", "/admin/tasks")]
+                    ("✅ Review submitted listings", "/admin/reviews"),
+                    ("👥 Team", "/team")]
             else:
                 tiles = [("My tasks", len(mine), "/me/tasks"),
                          ("Overdue", od, "/me/tasks"), ("Due soon", ds, "/me/tasks"),
@@ -820,7 +808,7 @@ def build_app(password, secret):
         _deg = _data_degraded()
         deg_banner = ('<div class="notice warn">⚠️ <b>DATA DEGRADED:</b> '
                       f'{_h_esc(_deg)}</div>' if _deg else "")
-        body = deg_banner + focus + tools + arch
+        body = _bar() + deg_banner + focus + tools + arch
         upd = _last_updated(mdir)
         updated = f'<span class="updated">Updated {upd}</span>' if upd else ""
         _u = current_user()
@@ -3262,10 +3250,10 @@ def build_app(password, secret):
                              or auth.has_perm(u["role"], "tasks.review")))
         cur = request.path
         links = [("/", "🏠 Home"), ("/research-queue", "🧭 Research"),
-                 ("/imports", "📥 Import")]
-        links += ([("/admin/tasks", "📋 Team"), ("/admin/reviews", "🔍 Review")]
-                  if is_mgr else [("/me/tasks", "✅ My Tasks")])
-        links += [("/how-to-use", "📖 Guide")]
+                 ("/design-analyzer", "🎨 Design"), ("/launch-kit", "🚀 Launch Kit")]
+        links += ([("/admin/reviews", "✅ Review"), ("/team", "👥 Team")]
+                  if is_mgr else [("/me/tasks", "✅ My work")])
+        links += [("/training", "📚 Guide")]
         items = ""
         for h, l in links:
             on = " on" if (cur == h or (h != "/" and cur.startswith(h))) else ""
