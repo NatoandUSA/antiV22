@@ -1,4 +1,4 @@
-# 📖 Hướng dẫn sử dụng công cụ (How to Use) — V28
+# 📖 Hướng dẫn sử dụng công cụ (How to Use) — V36
 
 > Tài liệu **nội bộ** cho team (tiếng Việt). Giải thích **mọi khu vực**, **mọi điểm số**,
 > **mọi bước**, và **vì sao** công cụ quyết định như vậy. Đọc 1 lần để hiểu — sau đó chỉ cần
@@ -39,7 +39,30 @@ vòng học từ đơn bán thật**. Nó **không** đụng vào tài khoản E
 
 ## 2. Thanh điều hướng trên cùng
 
-Mọi trang có: **Home · Research · Import · Team · Review · Guide**. Nhảy giữa các bước không cần về trang chủ.
+Mọi trang có: **Home · 🎯 Build · Research · Design · Launch Kit · Review/Team · Guide**. Nhảy giữa các bước không cần về trang chủ. **🎯 Build** là nút mở đầu mỗi ngày (xem mục dưới).
+
+---
+
+## ⭐ 2.5 🎯 BUILD QUEUE — mở đầu tiên mỗi ngày (`/build-queue`)
+
+Kho keyword có hơn **1.000 dòng** nhưng chỉ khoảng **5% là "vàng"**. Build Queue làm sẵn việc lọc: bạn **không** phải cuộn cả kho — nó đưa lên đúng vài chục dòng đáng làm.
+
+**Nó hiện gì:**
+
+- Chỉ keyword **PROVEN** (đã chứng minh: có listing + views + doanh thu + conversion thật). Dòng rỗng (empty) bị giấu — làm trên dòng rỗng là **đoán mò**.
+- Xếp hạng bằng **Build Score (0–100)** = trộn cầu (views) + conversion + giá + momentum + ít cạnh tranh. Cao = thắng nhanh & an toàn hơn.
+- Cờ **⚠ verify TM** ở keyword nghi nhãn hiệu; keyword rủi ro cao (HIGH) đã bị loại sẵn.
+
+**Cách dùng (mỗi sáng):**
+
+1. Mở **🎯 Build Queue**. Đọc dòng tóm tắt: bao nhiêu proven / empty / cần làm / đã xong.
+2. Đọc bảng từ **Build Score cao → thấp**. Chọn 3–5 dòng cho hôm nay.
+3. Thấy **⚠** → tra nhãn hiệu (tmsearch.uspto.gov) trước.
+4. Bấm **🎨 Design** (mổ xẻ + thiết kế gốc) hoặc **🚀 Kit** (gói listing đầy đủ) — keyword điền sẵn.
+5. Làm xong / đã giao → bấm **✓** để chuyển xuống "Done" (không ai làm trùng).
+6. Định kỳ mở **🧹 Base maintenance → Archive empty keywords** để dọn dòng rỗng ra khỏi kho (khôi phục được).
+
+> Build Queue là **lối tắt**: có dòng ngon thì làm luôn, không bắt buộc chạy hết ①→⑨. Quy trình 9 bước bên dưới dành cho nghiên cứu sâu và tìm winner mới.
 
 ---
 
@@ -61,7 +84,21 @@ Có ô chọn **nguồn**; để **Tự nhận diện (Auto-detect)** là đư�
 Sau khi thả, tool tự chuyển bạn tới đúng trang. Dòng **"Last import: N rows · X phút trước"** dưới ô cho biết
 đang dùng dữ liệu gì.
 
-> **Extension "Send to agent"** (trên YTrends/Etsy/Pinterest) làm y hệt — không cần lưu file.
+> **Extension 22Etsy Exporter v2.6** — không cần lưu file:
+> - **↓ Grab all**: tự cuộn trang để lấy **tối đa** số dòng (Pinterest/Alibaba lấy hàng trăm thay vì ~30).
+> - **Multi-page batch** (Etsy/Amazon phân trang): bấm **+ Add page** ở mỗi trang → **Batch CSV** / **Send batch** gộp tất cả thành 1 file, tự khử trùng lặp. Bạn tự bấm sang trang; extension không tự phân trang.
+> - **Send to agent** hoạt động trên **mọi site**, tự route theo cột.
+
+**Đọc bảng "Recent import events" (`/kw-history`) cho đúng — cột kết quả:**
+
+| Bạn thấy | Nghĩa là |
+|---|---|
+| **+N new kw** | N keyword MỚI thêm vào kho |
+| **N updated** | Gửi LẠI bảng keyword cũ → làm mới số thị trường (đúng, nên làm — không phải "hỏng") |
+| **N leads** | Dòng listing/spy (Etsy/Amazon/Pinterest...) đã lưu vào lane spy — hữu ích, chỉ là **không phải keyword** |
+| **—** | Không có gì vào (mới cần kiểm tra) |
+
+> Gửi file **listing** thấy "leads" là **đúng**. Chỉ bảng **keyword** (YTrends) mới cộng "new kw". Gửi lại bảng keyword cũ để cập nhật giá/cầu → hiện "updated".
 
 ---
 

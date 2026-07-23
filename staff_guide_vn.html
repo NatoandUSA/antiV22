@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>GEA — Hướng dẫn dùng Toolkit V35.7 (bản đầy đủ + có gì mới)</title>
+<title>GEA — Hướng dẫn dùng Toolkit V36 (bản đầy đủ + có gì mới)</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 :root{--orange:#F1641E;--orange-dark:#D24C0C;--gold:#F0A429;--ink:#2B2926;--muted:#7A736B;--bg:#FBF9F6;--surface:#fff;--border:#EBE4DA;--success:#1F8A4C;--blue:#3B82F6;--purple:#8B5CF6;--red:#B91C1C;--amber:#E5850B}
@@ -73,8 +73,8 @@ ol.actions li:before{counter-increment:a;content:counter(a);position:absolute;le
 <header class="head">
   <div class="logo">GEA</div>
   <div>
-    <h1>Hướng dẫn dùng Toolkit — bản V35.7 (đầy đủ + có gì mới)</h1>
-    <div class="sub">Quy trình từ ① đến ⑨ + công cụ MỚI 🎨 Design Analyzer · bấm từng bước ở thanh trên · dùng để dạy nhân viên</div>
+    <h1>Hướng dẫn dùng Toolkit — bản V36 (đầy đủ + có gì mới)</h1>
+    <div class="sub">Bắt đầu ở 🎯 Build Queue mỗi ngày · quy trình đầy đủ ① đến ⑨ + 🎨 Design Analyzer · bấm từng bước ở thanh trên · dùng để dạy nhân viên</div>
   </div>
 </header>
 
@@ -85,7 +85,7 @@ ol.actions li:before{counter-increment:a;content:counter(a);position:absolute;le
 <div id="panels"></div>
 
 <div class="foot">
-  Global Etsy Academy • Toolkit V35.7 • Số liệu thị trường phải verify LIVE trên tool — không bịa "GO".<br>
+  Global Etsy Academy • Toolkit V36 • Số liệu thị trường phải verify LIVE trên tool — không bịa "GO".<br>
   🔒 Không tự đăng · Ảnh hero/macro/số đo phải THẬT · Thiết kế GỐC · Kiểm nhãn hiệu · Đo lợi nhuận thật.<br>
   Tài liệu nội bộ Team 4 — không chia sẻ ra ngoài.
 </div>
@@ -94,10 +94,14 @@ ol.actions li:before{counter-increment:a;content:counter(a);position:absolute;le
 <script>
 const STEPS=[
 {
- n:'🆕',key:'MỚI',isnew:true,name:'Có gì mới (V35.5 → V35.7) + Luật vàng',
+ n:'🆕',key:'MỚI',isnew:true,name:'Có gì mới (→ V36) + Luật vàng',
  where:'Đọc trước khi bắt đầu',
  goal:'Nắm nhanh những thay đổi quan trọng của tool và các luật an toàn KHÔNG BAO GIỜ được phá.',
  actions:[
+  '<b>🎯 CÔNG CỤ MỚI — Build Queue (bắt đầu ở đây mỗi ngày).</b> Kho keyword có hơn 1.000 dòng nhưng chỉ ~5% là "vàng". Build Queue lọc sẵn: chỉ hiện keyword ĐÃ CHỨNG MINH (có listing + views + doanh thu + tỉ lệ chuyển đổi thật), xếp hạng bằng <b>Build Score</b>, gắn cờ nhãn hiệu ⚠, 1 chạm sang 🎨 Design / 🚀 Kit. Xem thẻ 🎯 ngay sau đây.',
+  '<b>Kho keyword nay tự gắn cờ nhãn hiệu.</b> Mỗi keyword khi nhập được chấm rủi ro trademark tự động (trước để trống): "disney shirt" → HIGH, long-tail mô tả → sạch.',
+  '<b>Bảng "Recent import events" đọc dễ hơn.</b> Cột kết quả ghi rõ: <span class="pill p-build">+N new kw</span> (keyword mới) · <span class="pill p-verify">N updated</span> (gửi lại để làm mới số thị trường) · <span class="pill p-skip">N leads</span> (dòng listing/spy). Gửi listing nay thấy "leads" — KHÔNG còn "+0" gây hiểu nhầm là hỏng.',
+  '<b>Extension 22Etsy Exporter v2.6:</b> nút <b>↓ Grab all</b> tự cuộn để lấy TỐI ĐA số dòng (Pinterest/Alibaba lấy hàng trăm thay vì ~30); và <b>Multi-page batch</b> gộp nhiều trang Etsy/Amazon thành 1 file. Xem thẻ ①.',
   '<b>Từ nghề THÊU đã dùng được trở lại.</b> Trước đây "cross stitch / satin stitch / stitch count..." bị chặn nhầm (tool tưởng là nhân vật Lilo &amp; Stitch). Nay đã sửa — khoảng <b>27 từ khoá cross-stitch</b> của shop đã hiện lại trong Inbox.',
   '<b>Keyword POD không bị nhét nhầm sang Thêu nữa.</b> "patchwork usa tee", "dispatch rider shirt", "knitting nana shirt"... trước biến mất ở mode POD, nay hiện đúng.',
   '<b>Từ đa nghĩa trùng brand nay chỉ CẢNH BÁO, không chặn cứng.</b> "frozen / converse / mario / cars / jordan..." nay gắn cờ <span class="pill p-verify">CAUTION</span> = "phải tự tra nhãn hiệu trước khi làm". Hành động cuối bị hạ xuống <span class="pill p-confirm">CONFIRM FIRST</span>.',
@@ -109,7 +113,25 @@ const STEPS=[
  read:'Điểm thị trường KHÔNG phải quan toà. Mỗi keyword đi qua 4 lớp và Inbox hiện <b>Hành động cuối (Final Action)</b>. Nhân viên đọc Hành động cuối + rủi ro trước, không nhìn 1 con số.',
  wrong:'Thấy điểm cao hoặc thấy tên gợi ý là làm ngay; dùng ảnh AI cho hero; sao chép y hệt thiết kế đối thủ.',
  right:'Đọc Hành động cuối + kiểm nhãn hiệu + chờ ảnh thật + Manager ký. Luôn tự làm bản GỐC.',
- ck:['Đã hiểu 5 luật vàng','Biết CAUTION = phải tự tra nhãn hiệu','Biết có công cụ mới 🎨 Design Analyzer']
+ ck:['Đã hiểu 5 luật vàng','Biết CAUTION = phải tự tra nhãn hiệu','Biết mở 🎯 Build Queue mỗi ngày','Biết có 🎨 Design Analyzer']
+},
+{
+ n:'🎯',key:'BUILD QUEUE',isnew:true,name:'BUILD QUEUE — "làm cái này tiếp theo" (mở mỗi sáng)',
+ where:'Trang chủ → 🎯 Build Queue (hoặc thanh trên → 🎯 Build)',
+ goal:'Có ngay danh sách ngắn, đã xếp hạng, đã kiểm nhãn hiệu — lấy thẳng từ kho keyword. Không phải cuộn 1.000 dòng; chỉ chọn cái đáng làm.',
+ actions:[
+  'Mở <b>🎯 Build Queue</b>. Dòng đầu trang cho biết kho có bao nhiêu keyword <b>proven</b> (đã chứng minh) / partial / empty, và bao nhiêu cần làm / đã xong.',
+  'Đọc bảng từ <b>Build Score cao → thấp</b>. Đây là danh sách "làm trước". Mỗi dòng có: theme (Personalized/Family/Apparel...), số listing (cạnh tranh), views 24h (cầu), giá, conversion, momentum.',
+  'Thấy cờ <span class="pill p-verify">⚠ verify TM</span> → tra nhãn hiệu (USPTO) TRƯỚC khi làm. Keyword rủi ro cao (HIGH) đã bị loại khỏi danh sách sẵn.',
+  'Chọn 1 dòng → bấm <b>🎨 Design</b> (mổ xẻ + thiết kế gốc) hoặc <b>🚀 Kit</b> (gói listing đầy đủ). Keyword được điền sẵn, không phải gõ lại.',
+  'Làm xong (hoặc đã giao) → bấm <b>✓</b> để đánh dấu; dòng chuyển xuống mục "Done" nên không ai làm trùng.',
+  'Định kỳ: mở <b>🧹 Base maintenance</b> → "Archive empty keywords" để dọn các dòng rỗng (không listing/views) ra khỏi kho (có thể khôi phục).'
+ ],
+ screen:{bar:'🎯 Build Queue · make these next',body:'Base: 1123 keywords · 345 proven · 541 empty · 232 to build · 0 done\n\n#  Keyword / theme        Build  List  Views  Price  Conv  Mom  Action\n1  custom shirt kids       52   30    88    $21.76 4.1%  90  🎨 🚀 ✓\n   Personalized\n2  chenille name bag       50   97    157   $14.51 3.5%  88  🎨 🚀 ✓\n   Bag / accessory\n3  patriotic soft tee ⚠    48   30    33    $19.25 5.1%  88  🎨 🚀 ✓'},
+ read:'<b>PROVEN vs EMPTY:</b> chỉ keyword proven (có số thật) mới lên đây — làm trên dòng rỗng = ĐOÁN MÒ. <b>Build Score (0–100)</b> = trộn cầu (views) + conversion + giá + momentum + ít cạnh tranh; cao = thắng nhanh &amp; an toàn hơn. <b>⚠ verify TM</b> = tra nhãn hiệu trước. Build Queue là <b>lối tắt</b>: khi có dòng ngon thì làm luôn, khỏi cần chạy hết ①→⑨.',
+ wrong:'Cuộn cả kho 1.000 dòng để tìm việc; hoặc làm trên keyword rỗng (empty) vì "tên nghe hay".',
+ right:'Mỗi sáng mở Build Queue, chọn 3–5 dòng Build Score cao, kiểm ⚠, bấm Design/Kit, xong thì ✓.',
+ ck:['Hiểu proven vs empty','Đọc được Build Score','Đã tra ⚠ verify TM nếu có','Đã đưa ≥1 dòng sang Design/Kit','Đã ✓ dòng đã làm']
 },
 {
  n:'①',key:'FEED',name:'FEED — Thả dữ liệu vào đúng lane',
@@ -117,7 +139,8 @@ const STEPS=[
  goal:'Nạp dữ liệu nghiên cứu vào tool và để tool tự đưa về đúng "lane" xử lý.',
  actions:[
   'Lấy dữ liệu bằng extension <b>22Etsy Exporter</b>: <b>trends.ytuong.ai</b> (keyword) · <b>ytuong.me "Hot"</b> hoặc <b>Etsy search + overlay HeyEtsy</b> (listings) · <b>Alura/EverBee</b> (products có đơn bán).',
-  'Trên extension có 3 nút: <b>CSV</b> · <b>JSON</b> · <b>Send to agent</b> (đẩy thẳng vào dashboard). Xem "N rows detected" — nếu 0 thì cuộn cho card hiện rồi bấm lại.',
+  'Extension v2.6 có: <b>↓ Grab all</b> (tự cuộn lấy TỐI ĐA dòng — dùng cho Pinterest/Alibaba) · <b>CSV now</b> (lấy nhanh cái đang thấy) · <b>JSON</b> · <b>Send to agent</b> (đẩy thẳng vào dashboard). Xem "N rows detected".',
+  'Trang phân trang (Etsy/Amazon): dùng hàng <b>Multi-page batch</b> → bấm <b>+ Add page</b> ở trang 1, sang trang 2 bấm tiếp... rồi <b>Batch CSV</b> hoặc <b>Send batch</b> để gộp tất cả thành 1 file (tự khử trùng lặp). Bạn tự bấm sang trang — extension không tự phân trang.',
   'Nếu tải file: kéo–thả 1 hoặc NHIỀU file vào ô ①, để nguồn "Tự nhận diện". Tool tự route theo CỘT: keyword→Inbox · listings→Pattern Miner · products có sales/revenue→Etsy Proof. Nhìn "Last import: N rows".'
  ],
  screen:{bar:'① CAPTURE · Drop files',body:'⬇ Kéo thả CSV/JSON vào đây (Tự nhận diện)\n\n✓ ytuong_keywords.csv    → lane: YTuong keyword → INBOX\n✓ alura_products.csv     → lane: Alura/EverBee → ETSY PROOF\n\nLast import: 320 rows · 1 phút trước'},
