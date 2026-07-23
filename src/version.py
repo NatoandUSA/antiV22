@@ -1,2 +1,2 @@
 """App version - shown in the Pipeline Health badge and reports."""
-VERSION = "35.9"
+VERSION = "36.0"

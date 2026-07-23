@@ -667,6 +667,8 @@ def build_app(password, secret):
             # SECTION 1 — TREND FEEDS: find what's rising (read these first).
             '<h2 class="grouph">📈 Trend Feeds — tìm cái đang lên</h2>'
             '<div class="toolgrid">'
+            '<a class="toolcard" href="/build-queue"><b>🎯 Build Queue</b>'
+            '<span>Make these next: proven keywords from your base, ranked + TM-checked → 1-click Design/Kit</span></a>'
             f'<a class="toolcard" href="/winners?mode={active}"><b>🏆 Winner Finder</b>'
             '<span>High-demand × low-competition sweet spot — the fastest pick, ranked</span></a>'
             f'<a class="toolcard" href="/supplier-trends?mode={active}"><b>🏭 Supplier Trend Finder</b>'
@@ -3118,6 +3120,45 @@ def build_app(password, secret):
                     'Confirm &amp; Assign. Never fabricated — a missing score shows as '
                     '"pending".</p>' + sw + table + '</article>')
 
+    @app.route("/build-queue")
+    @login_required
+    def build_queue():
+        # V36: base-driven "make these next" — proven/buildable keywords ranked,
+        # TM-flagged, routed to Design Analyzer + Launch Kit. Works straight from
+        # keyword_data.csv (no warm cache needed, unlike /shortlist).
+        from src import build_shortlist as bq
+        try:
+            data = bq.analyze()
+        except (SystemExit, Exception) as exc:  # noqa: BLE001
+            return _tool_error("Build Queue", exc)
+        return page("Build Queue", _bar() + bq.render_html(data, _csrf()))
+
+    @app.route("/build-queue/done", methods=["POST"])
+    @login_required
+    def build_queue_done():
+        _check_csrf()
+        from src import build_shortlist as bq
+        _u = current_user() or {}
+        bq.mark_done(request.form.get("keyword", ""),
+                     _u.get("display_name") or _u.get("email") or "")
+        return redirect("/build-queue")
+
+    @app.route("/build-queue/archive-empties", methods=["POST"])
+    @login_required
+    def build_queue_archive():
+        _check_csrf()
+        from src import build_shortlist as bq
+        try:
+            moved, kept = bq.archive_empties()
+        except (SystemExit, Exception) as exc:  # noqa: BLE001
+            return _tool_error("Archive empties", exc)
+        return page("Build Queue", _bar() +
+                    '<article class="md"><h1>\U0001F9F9 Archived</h1><p>Moved '
+                    f'<b>{moved}</b> empty keywords to the archive (reversible). '
+                    f'Base now holds <b>{kept}</b> keywords with real signal.</p>'
+                    '<p><a class="tkbtn primary" href="/build-queue">'
+                    '← Back to Build Queue</a></p></article>')
+
     @app.route("/imports")
     @login_required
     def imports_center():
@@ -3283,7 +3324,8 @@ def build_app(password, secret):
         is_mgr = bool(u and (auth.has_perm(u["role"], "tasks.assign")
                              or auth.has_perm(u["role"], "tasks.review")))
         cur = request.path
-        links = [("/", "🏠 Home"), ("/research-queue", "🧭 Research"),
+        links = [("/", "🏠 Home"), ("/build-queue", "🎯 Build"),
+                 ("/research-queue", "🧭 Research"),
                  ("/design-analyzer", "🎨 Design"), ("/launch-kit", "🚀 Launch Kit")]
         links += ([("/admin/reviews", "✅ Review"), ("/team", "👥 Team")]
                   if is_mgr else [("/me/tasks", "✅ My work")])

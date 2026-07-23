@@ -231,6 +231,16 @@ def write_keyword_data(store, path="keyword_data.csv"):
                     first_seen[k] = d
     except OSError:
         pass
+    # V36: stamp the trademark risk at write-time so the base carries it (it was
+    # always blank before). Pure local regex gate; never blocks a write.
+    try:
+        from src import trademark as _tm
+        def _risk(kw):
+            lvl = (_tm.check(kw) or ("OK", ""))[0]
+            return "" if lvl == "OK" else lvl      # blank = clear, else CAUTION/HIGH
+    except Exception:  # noqa: BLE001
+        def _risk(kw):
+            return ""
     rows = sorted(store.values(), key=lambda r: r["score"], reverse=True)
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=KDATA_FIELDS)
@@ -247,7 +257,7 @@ def write_keyword_data(store, path="keyword_data.csv"):
                 "conversion_rate": round(_num(r["conv"]), 4),
                 "momentum": round(r["score"], 2),
                 "niche_age_days": _num(r.get("age"), int) if r.get("age") is not None else "",
-                "tm_risk": "",
+                "tm_risk": _risk(r["tag"]),
                 # keep the TRUE channel: only bare MCP view names get the mcp:
                 # prefix. ext:*/keyword-lab/*-lead rows keep their identity so
                 # the growth history can say WHERE keywords came from.
