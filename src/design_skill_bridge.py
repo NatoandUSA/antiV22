@@ -76,22 +76,90 @@ def _load_run(run_id):
     if not d.is_dir():
         return None
     out = {"run_id": run_id}
-    for name in ("input", "result", "validation", "approval"):
+    for name in ("input", "result", "validation", "approval", "rejection"):
         p = d / f"{name}.json"
         if p.is_file():
             try:
                 out[name] = json.loads(p.read_text(encoding="utf-8"))
             except ValueError:
                 out[name] = None
+    out["_has_result_file"] = (d / "result.json").is_file()
+    out["_has_raw"] = (d / "raw_result.txt").is_file()
     return out
 
 
-def list_runs(limit=30):
-    """Recent bridge runs with their state — powers the 'pending candidates'
-    list so the owner can find results the extension imported straight from
-    ChatGPT (which never opened a 22etsy page)."""
+def _sent_run_ids():
+    """Run ids that were handed to Launch Kit (recorded only in the index)."""
+    ids = set()
+    if not INDEX.is_file():
+        return ids
+    try:
+        for line in INDEX.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                e = json.loads(line)
+            except ValueError:
+                continue
+            if e.get("state") == "SENT_TO_LAUNCHKIT" and e.get("run_id"):
+                ids.add(e["run_id"])
+    except OSError:
+        pass
+    return ids
+
+
+def _derive_state(run, sent_ids):
+    """Single source of truth for a run's management state. WS1.1: a pack with no
+    result is WAITING_FOR_RESULT (never REJECTED); a failed import is
+    IMPORT_FAILED; an owner rejection is REJECTED."""
+    rid = run.get("run_id")
+    if rid in sent_ids:
+        return "SENT_TO_LAUNCHKIT"
+    if (run.get("approval") or {}).get("state") == "OWNER_APPROVED":
+        return "OWNER_APPROVED"
+    if (run.get("rejection") or {}).get("state") == "REJECTED":
+        return "REJECTED"
+    val = run.get("validation")
+    if val is not None:                       # an import was attempted
+        return "VALIDATED_CANDIDATE" if val.get("ok") else "IMPORT_FAILED"
+    if run.get("_has_raw") or run.get("_has_result_file"):
+        return "IMPORT_FAILED"                # raw came in but no validation record
+    return "WAITING_FOR_RESULT"               # pack exists, GPT result not back yet
+
+
+_MODE_LABEL = {"POD": "POD", "EMBROIDERY": "Embroidery", "OTHER": "Other",
+               "DIGITAL_EMBROIDERY": "Digital Embroidery",
+               "PHYSICAL EMBROIDERY": "Embroidery", "PRINTED POD": "POD",
+               "OTHER PHYSICAL PRODUCT": "Other", "DIGITAL EMBROIDERY FILE":
+               "Digital Embroidery"}
+
+
+def _mode_label(inp, res):
+    m = (inp or {}).get("mode")
+    if m and m in _MODE_LABEL:
+        return _MODE_LABEL[m]
+    route = ((res or {}).get("selected_concept") or {}).get("production_route")
+    if route and route.upper() in _MODE_LABEL:
+        return _MODE_LABEL[route.upper()]
+    return "—"
+
+
+def _human_time(inp, mtime):
+    ca = (inp or {}).get("created_at")
+    if ca:
+        return ca                    # already "YYYY-MM-DD HH:MM"
+    if mtime:
+        return time.strftime("%Y-%m-%d %H:%M", time.localtime(mtime))
+    return "—"
+
+
+def list_runs(limit=200):
+    """Every bridge run with full management metadata (9 columns). State comes
+    from _derive_state (WS1.1: pack-with-no-result = WAITING, never REJECTED)."""
     if not BASE.is_dir():
         return []
+    sent = _sent_run_ids()
     out = []
     for d in BASE.iterdir():
         if not d.is_dir():
@@ -99,24 +167,32 @@ def list_runs(limit=30):
         run = _load_run(d.name)
         if not run:
             continue
-        val = run.get("validation") or {}
-        appr = run.get("approval") or {}
-        res = run.get("result") or {}
         inp = run.get("input") or {}
+        res = run.get("result") or {}
         seeds = res.get("listing_seeds") or {}
-        state = ("OWNER_APPROVED" if appr.get("state") == "OWNER_APPROVED"
-                 else "VALIDATED_CANDIDATE" if val.get("ok")
-                 else "RESULT_IMPORTED" if res
-                 else "PACK_CREATED")
+        appr = run.get("approval") or {}
+        rej = run.get("rejection") or {}
         try:
             mtime = d.stat().st_mtime
         except OSError:
             mtime = 0
+        launched = (inp.get("launched_by") or appr.get("owner")
+                    or rej.get("owner") or "unknown")
+        try:
+            prompt = build_prompt(inp) if inp.get("bridge_run_id") else ""
+        except Exception:  # noqa: BLE001
+            prompt = ""
         out.append({
-            "run_id": d.name, "state": state,
+            "run_id": d.name,
+            "state": _derive_state(run, sent),
+            "prompt": prompt,
             "keyword": inp.get("keyword") or seeds.get("main_keyword")
             or res.get("keyword") or "",
-            "target": seeds.get("target_product") or inp.get("target_product") or "",
+            "batch": inp.get("batch") or "single-run",
+            "created": _human_time(inp, mtime),
+            "target": seeds.get("target_product") or inp.get("target_product") or "—",
+            "mode": _mode_label(inp, res),
+            "launched_by": launched or "unknown",
             "mtime": mtime,
         })
     out.sort(key=lambda r: r["mtime"], reverse=True)
@@ -152,6 +228,8 @@ def create_pack(form):
         "placement": _clean(form.get("placement"), 120),
         "personalization": _clean(form.get("personalization"), 300),
         "image_ref": _clean(form.get("image_ref"), 300),
+        "batch": _clean(form.get("batch"), 60),
+        "launched_by": _clean(form.get("launched_by"), 60),
         "created_at": time.strftime("%Y-%m-%d %H:%M"),
         "state": "PACK_CREATED",
     }
@@ -360,6 +438,20 @@ def approve(run_id, owner=""):
     return {"ok": True, "approval": appr}
 
 
+def reject(run_id, owner=""):
+    """Owner rejects a candidate. Marks the run rejected (a stored decision, not
+    an import failure) so it drops out of the pending queue."""
+    run = _load_run(run_id)
+    if not run:
+        return {"ok": False, "error": "Run not found."}
+    rej = {"owner": (owner or "")[:60], "at": time.strftime("%Y-%m-%d %H:%M"),
+           "state": "REJECTED"}
+    _write(run_id, "rejection.json", json.dumps(rej, ensure_ascii=False, indent=2))
+    _append_index({"ts": time.time(), "run_id": run_id, "state": "REJECTED",
+                   "owner": rej["owner"]})
+    return {"ok": True, "rejection": rej}
+
+
 def listing_seeds(run_id):
     """The approved listing_seeds packet for Launch Kit (never a finished listing)."""
     run = _load_run(run_id)
@@ -392,29 +484,145 @@ def _draft_banner():
             f'font-weight:800">🔒 {DRAFT_STAMP}</div>')
 
 
+# state -> (label, colour, next-action hint)
+_STATE_META = {
+    "WAITING_FOR_RESULT": ("Waiting for GPT result", "#64748b",
+                           "Run in GPT → import RESULT_JSON"),
+    "PACK_CREATED": ("Skill Pack ready", "#64748b",
+                     "Run in GPT → import RESULT_JSON"),
+    "IMPORT_FAILED": ("Import failed", "#B45309", "View error → retry import"),
+    "REJECTED": ("Import failed", "#B45309", "Rejected — no action"),
+    "VALIDATED_CANDIDATE": ("Candidate ready", "#2563EB", "Owner review & approve"),
+    "OWNER_APPROVED": ("Owner approved", "#15803D", "Send to Launch Kit"),
+    "SENT_TO_LAUNCHKIT": ("Sent to Launch Kit", "#7C3AED", "Open Launch Kit"),
+}
+
+
 def _state_pill(state):
-    color = {"OWNER_APPROVED": "#15803d", "VALIDATED_CANDIDATE": "#2563eb",
-             "RESULT_IMPORTED": "#a16207", "PACK_CREATED": "#777"}.get(state, "#777")
-    label = {"OWNER_APPROVED": "✅ approved", "VALIDATED_CANDIDATE": "🔵 candidate",
-             "RESULT_IMPORTED": "⚠ needs fix", "PACK_CREATED": "… pack"}.get(state, state)
+    label, color, _ = _STATE_META.get(state, (state, "#777", ""))
     return f'<span class="pill" style="background:{color};color:#fff">{label}</span>'
 
 
-def pending_html(runs):
-    if not runs:
-        return ""
-    rows = "".join(
-        f'<tr><td><a href="/design-skill-bridge/run/{_esc(r["run_id"])}">'
-        f'{_esc(r["run_id"])}</a></td>'
-        f'<td>{_esc(r["keyword"]) or "—"}</td>'
-        f'<td>{_esc(r["target"]) or "—"}</td>'
-        f'<td>{_state_pill(r["state"])}</td></tr>' for r in runs)
-    return ('<details class="archive" open><summary>📥 Runs &amp; pending '
-            'candidates (' + str(len(runs)) + ')</summary>'
-            '<p class="note">Kết quả gửi từ ChatGPT (qua extension) xuất hiện ở '
-            'đây. Bấm run để xem + owner duyệt.</p>'
-            '<table><tr><th>Run</th><th>Keyword</th><th>Target</th><th>State</th>'
-            f'</tr>{rows}</table></details>')
+def _btn(label, href, cls="tkbtn"):
+    return (f'<a class="{cls}" href="{href}" style="padding:3px 8px;font-size:11.5px;'
+            f'margin:1px">{label}</a>')
+
+
+def _post_btn(label, action, run_id, csrf, cls="tkbtn"):
+    return (f'<form method="post" action="{action}" style="display:inline;margin:1px">'
+            f'<input type="hidden" name="csrf" value="{csrf}">'
+            f'<input type="hidden" name="run_id" value="{_esc(run_id)}">'
+            f'<button class="{cls}" style="padding:3px 8px;font-size:11.5px">'
+            f'{label}</button></form>')
+
+
+def _row_actions(r, csrf):
+    st = r["state"]
+    rid = _esc(r["run_id"])
+    run_url = f"/design-skill-bridge/run/{rid}"
+    if st in ("PACK_CREATED", "WAITING_FOR_RESULT"):
+        return (_btn("Open Pack", run_url)
+                + f'<button class="tkbtn" style="padding:3px 8px;font-size:11.5px;'
+                f'margin:1px" onclick=" dsbCopy(\'p-{rid}\');return false;">Copy Prompt</button>'
+                + _btn("Open GPT Skill", SKILL_URL, "tkbtn")
+                + _btn("Import RESULT_JSON", run_url + "#import")
+                + f'<textarea id="p-{rid}" style="display:none">{_esc(r.get("prompt",""))}</textarea>')
+    if st in ("IMPORT_FAILED", "REJECTED"):
+        return (_btn("View Error", run_url)
+                + _btn("Retry Import", run_url + "#import")
+                + _btn("Open Pack", run_url))
+    if st == "VALIDATED_CANDIDATE":
+        return (_btn("Review", run_url)
+                + _post_btn("Approve", "/design-skill-bridge/approve", rid, csrf, "tkbtn primary")
+                + _post_btn("Reject", "/design-skill-bridge/reject", rid, csrf)
+                + _post_btn("Send to Launch Kit", "/design-skill-bridge/send-to-launchkit", rid, csrf))
+    if st == "OWNER_APPROVED":
+        return (_btn("View Result", run_url)
+                + _post_btn("Send to Launch Kit", "/design-skill-bridge/send-to-launchkit", rid, csrf, "tkbtn primary"))
+    if st == "SENT_TO_LAUNCHKIT":
+        from urllib.parse import quote_plus as _q
+        return (_btn("Open Launch Kit", f"/launch-kit?q={_q(r.get('keyword',''))}", "tkbtn primary")
+                + _btn("View Result", run_url))
+    return _btn("Open", run_url)
+
+
+def management_table_html(runs, csrf):
+    """The Design Skill Bridge management table: 9 columns + filters + per-state
+    actions. Pure render — no network calls. Filtering is client-side JS."""
+    states = sorted({r["state"] for r in runs})
+    batches = sorted({r["batch"] for r in runs})
+    users = sorted({r["launched_by"] for r in runs})
+
+    def opts(vals):
+        return "".join(f'<option value="{_esc(v)}">{_esc(v)}</option>' for v in vals)
+
+    filters = (
+        '<div class="dsb-filters" style="display:flex;flex-wrap:wrap;gap:8px;'
+        'margin:8px 0;font-size:12.5px">'
+        '<input id="dsb-q" placeholder="🔎 Search keyword / run ID" '
+        'oninput="dsbFilter()" style="flex:1;min-width:180px">'
+        f'<select id="dsb-state" onchange="dsbFilter()"><option value="">State: all</option>{opts(states)}</select>'
+        f'<select id="dsb-batch" onchange="dsbFilter()"><option value="">Batch: all</option>{opts(batches)}</select>'
+        f'<select id="dsb-user" onchange="dsbFilter()"><option value="">Launched by: all</option>{opts(users)}</select>'
+        '<input id="dsb-date" type="date" onchange="dsbFilter()" title="Created on/after">'
+        '</div>')
+
+    def row(r):
+        rid = _esc(r["run_id"])
+        _, _, nexthint = _STATE_META.get(r["state"], ("", "", ""))
+        return (
+            f'<tr data-kw="{_esc((r["keyword"] or "").lower())}" '
+            f'data-rid="{rid.lower()}" data-state="{_esc(r["state"])}" '
+            f'data-batch="{_esc(r["batch"])}" data-user="{_esc(r["launched_by"])}" '
+            f'data-date="{_esc((r["created"] or "")[:10])}">'
+            f'<td><a href="/design-skill-bridge/run/{rid}">{rid}</a></td>'
+            f'<td>{_esc(r["keyword"]) or "—"}</td>'
+            f'<td>{_esc(r["batch"])}</td>'
+            f'<td class="note">{_esc(r["created"])}</td>'
+            f'<td>{_esc(r["target"])}</td>'
+            f'<td>{_esc(r["mode"])}</td>'
+            f'<td>{_state_pill(r["state"])}</td>'
+            f'<td>{_esc(r["launched_by"])}</td>'
+            f'<td class="note">{_esc(nexthint)}</td>'
+            f'<td>{_row_actions(r, csrf)}</td></tr>')
+
+    if runs:
+        body = "".join(row(r) for r in runs)
+    else:
+        body = ('<tr><td colspan="10" class="note">Chưa có run nào. Bắt đầu từ '
+                'trang Etsy bằng extension "Open in V8.2".</td></tr>')
+
+    js = (
+        '<script>'
+        'function dsbCopy(id){var t=document.getElementById(id);if(!t)return;'
+        't.style.display="block";t.select();document.execCommand("copy");'
+        't.style.display="none";}'
+        'function dsbFilter(){'
+        'var q=(document.getElementById("dsb-q").value||"").toLowerCase();'
+        'var st=document.getElementById("dsb-state").value;'
+        'var ba=document.getElementById("dsb-batch").value;'
+        'var us=document.getElementById("dsb-user").value;'
+        'var dt=document.getElementById("dsb-date").value;'
+        'var rows=document.querySelectorAll("#dsb-table tbody tr");'
+        'rows.forEach(function(r){'
+        'if(!r.dataset.rid)return;'
+        'var ok=true;'
+        'if(q&&!(r.dataset.kw.indexOf(q)>-1||r.dataset.rid.indexOf(q)>-1))ok=false;'
+        'if(st&&r.dataset.state!==st)ok=false;'
+        'if(ba&&r.dataset.batch!==ba)ok=false;'
+        'if(us&&r.dataset.user!==us)ok=false;'
+        'if(dt&&r.dataset.date<dt)ok=false;'
+        'r.style.display=ok?"":"none";});}'
+        '</script>')
+
+    return (
+        '<h2>📋 Bảng quản lý runs (' + str(len(runs)) + ')</h2>'
+        + filters +
+        '<div style="overflow-x:auto"><table id="dsb-table"><thead><tr>'
+        '<th>Run ID</th><th>Keyword</th><th>Batch</th><th>Created</th>'
+        '<th>Target</th><th>Mode</th><th>State</th><th>Launched by</th>'
+        '<th>Next action</th><th>Actions</th></tr></thead><tbody>'
+        + body + '</tbody></table></div>' + js)
 
 
 def keyword_context(kw):
@@ -471,8 +679,8 @@ def form_html(csrf, prefill_q="", runs=None):
         '<p class="tklead">Bắt đầu 1 thiết kế <b>từ trang Etsy</b> bằng extension '
         '(nút <b>"Open in V8.2"</b>). Trang này là <b>hộp thư</b>: kết quả GPT gửi '
         'về hiện ở đây → owner duyệt → <b>listing_seeds</b> sang Launch Kit.</p>'
-        # 1) the dashboard (primary)
-        + pending_html(runs or []) +
+        # 1) the management table (primary)
+        + management_table_html(runs or [], csrf) +
         # 2) the one clean process
         '<details class="archive" open><summary>▶ Quy trình DUY NHẤT (1 lối vào)</summary>'
         '<ol class="tklead">'
@@ -555,12 +763,18 @@ def result_html(v, run_id, csrf):
             f'<tr><td>IP</td><td>{_esc(sc.get("ip_status"))}</td></tr></table>')
     if v["ok"]:
         parts.append(
-            '<form method="post" action="/design-skill-bridge/approve" '
-            'style="display:inline">'
+            _post_btn("✅ Owner approve", "/design-skill-bridge/approve", run_id, csrf, "tkbtn primary")
+            + _post_btn("✖ Reject", "/design-skill-bridge/reject", run_id, csrf)
+            + _post_btn("🚀 Send to Launch Kit", "/design-skill-bridge/send-to-launchkit", run_id, csrf))
+    else:
+        # IMPORT_FAILED: offer a retry import box right here (WS1.2 routing)
+        parts.append(
+            '<h3 id="import">Retry import</h3>'
+            '<form method="post" action="/design-skill-bridge/import">'
             f'<input type="hidden" name="csrf" value="{csrf}">'
-            f'<input type="hidden" name="run_id" value="{_esc(run_id)}">'
-            '<button class="tkbtn primary" title="Owner only">✅ Owner approve →</button>'
-            '</form>')
+            '<textarea name="raw" rows="6" style="width:100%;font-family:ui-monospace,'
+            'monospace;font-size:12px" placeholder="Dán lại RESULT_JSON đã sửa"></textarea>'
+            '<p><button class="tkbtn primary">Import &amp; validate →</button></p></form>')
     parts.append('</article>')
     return "".join(parts)
 
@@ -580,15 +794,85 @@ def approved_html(run_id, seeds, csrf):
         '</form></article>')
 
 
+def work_html(run, csrf):
+    """PACK / WAITING_FOR_RESULT work page — the SEED + Open GPT + Import box.
+    WS1.1: a pack with no result opens HERE, never on the rejected result page."""
+    inp = run.get("input") or {}
+    rid = run["run_id"]
+    try:
+        prompt = build_prompt(inp) if inp.get("bridge_run_id") else ""
+    except Exception:  # noqa: BLE001
+        prompt = ""
+    return (
+        '<article class="md"><h1>🎨 Skill Pack — ' + _esc(rid) + '</h1>'
+        '<div style="background:#EEF2FF;border:1px solid #C7D0F5;border-radius:10px;'
+        'padding:8px 12px;color:#3730A3;font-weight:700;margin:8px 0">'
+        '⏳ Waiting for GPT result — chạy skill rồi import RESULT_JSON.</div>'
+        + _draft_banner() +
+        '<h2>SEED để dán vào ChatGPT (copy)</h2>'
+        '<textarea id="dsb-seed" readonly rows="7" style="width:100%;'
+        f'font-family:ui-monospace,monospace;font-size:12px">{_esc(prompt)}</textarea>'
+        '<p><button class="tkbtn" onclick="var t=document.getElementById(\'dsb-seed\');'
+        't.select();document.execCommand(\'copy\');this.textContent=\'✓ Copied\';return false;">'
+        '📋 Copy Prompt</button> '
+        f'<a class="tkbtn primary" href="{SKILL_URL}" target="_blank" rel="noopener">'
+        'Open GPT Skill ↗</a></p>'
+        '<h2 id="import">Import RESULT_JSON</h2>'
+        '<form method="post" action="/design-skill-bridge/import">'
+        f'<input type="hidden" name="csrf" value="{csrf}">'
+        '<textarea name="raw" rows="8" style="width:100%;font-family:ui-monospace,'
+        'monospace;font-size:12px" placeholder="Dán RESULT_JSON từ ChatGPT vào đây"></textarea>'
+        '<p><button class="tkbtn primary">Import &amp; validate →</button></p></form>'
+        '</article>')
+
+
+def error_html(run, csrf):
+    """IMPORT_FAILED / REJECTED page — View Error + Retry Import + Open Pack."""
+    rid = run["run_id"]
+    val = run.get("validation") or {}
+    rej = run.get("rejection") or {}
+    if rej.get("state") == "REJECTED":
+        head = ('<div style="background:#FDF2F0;border:1px solid #F3B7AE;border-radius:10px;'
+                'padding:8px 12px;color:#B91C1C;font-weight:700">✖ Rejected by owner '
+                f'({_esc(rej.get("owner") or "owner")}, {_esc(rej.get("at") or "")}).</div>')
+    else:
+        head = ('<div style="background:#FDF6EC;border:1px solid #F3D9A6;border-radius:10px;'
+                'padding:8px 12px;color:#B45309;font-weight:700">⚠ Import failed — '
+                'chưa validate được. Sửa RESULT_JSON và thử lại.</div>')
+    errs = val.get("errors") or []
+    errlist = ('<h3>Lỗi</h3><ul>' + "".join(
+        f'<li style="color:#B91C1C">{_esc(e)}</li>' for e in errs) + '</ul>') if errs else ""
+    return (
+        '<article class="md"><h1>🎨 Bridge run — ' + _esc(rid) + '</h1>'
+        + head + errlist + _draft_banner() +
+        '<h2 id="import">Retry import</h2>'
+        '<form method="post" action="/design-skill-bridge/import">'
+        f'<input type="hidden" name="csrf" value="{csrf}">'
+        '<textarea name="raw" rows="8" style="width:100%;font-family:ui-monospace,'
+        'monospace;font-size:12px" placeholder="Dán lại RESULT_JSON đã sửa"></textarea>'
+        '<p><button class="tkbtn primary">Import &amp; validate →</button> '
+        f'<a class="tkbtn" href="/design-skill-bridge">← Bảng quản lý</a></p></form>'
+        '</article>')
+
+
 def run_view_html(run, csrf):
-    """Render a stored run for the review page (owner opens a pending candidate)."""
+    """Open a run by its state (WS1.1 routing): PACK/WAITING → work page (NOT
+    rejected); IMPORT_FAILED/REJECTED → error page; candidate → review;
+    approved/sent → result + Launch Kit handoff."""
     if not run:
         return '<article class="md"><h1>🎨 Bridge run</h1><p>Run not found.</p></article>'
+    rid = run["run_id"]
+    state = _derive_state(run, _sent_run_ids())
     res = run.get("result") or {}
-    if (run.get("approval") or {}).get("state") == "OWNER_APPROVED":
-        return approved_html(run["run_id"], res.get("listing_seeds") or {}, csrf)
-    val = run.get("validation") or {}
-    v = {"ok": bool(val.get("ok")), "errors": val.get("errors", []),
-         "warnings": val.get("warnings", []), "result": res,
-         "state": val.get("state", "RESULT_IMPORTED")}
-    return result_html(v, run["run_id"], csrf)
+    if state in ("OWNER_APPROVED", "SENT_TO_LAUNCHKIT"):
+        return approved_html(rid, res.get("listing_seeds") or {}, csrf)
+    if state == "VALIDATED_CANDIDATE":
+        val = run.get("validation") or {}
+        v = {"ok": True, "errors": val.get("errors", []),
+             "warnings": val.get("warnings", []), "result": res,
+             "state": "VALIDATED_CANDIDATE"}
+        return result_html(v, rid, csrf)
+    if state in ("IMPORT_FAILED", "REJECTED"):
+        return error_html(run, csrf)
+    # PACK_CREATED / WAITING_FOR_RESULT — the WS1.1 fix: work page, not rejected
+    return work_html(run, csrf)

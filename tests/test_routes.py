@@ -154,14 +154,17 @@ def test_product_mode_preserved_import_to_workspace(client, monkeypatch):
 
 
 def test_home_daily_advanced_tiers(client):
-    """Scope Reduction: home leads with the Daily loop + an Advanced <details>;
+    """Scope Reduction: home leads with Build Queue + Trend Feeds/Execution Helpers + an Advanced <details>;
     every surface still links (hidden != removed)."""
     b = client.get("/").get_data(as_text=True)
-    assert "Daily — your everyday loop" in b
+    # V36+: the "Daily — your everyday loop" card was removed; home now leads
+    # with Build Queue + the split Trend Feeds / Execution Helpers shelves.
+    assert "Build Queue" in b
+    assert "Trend Feeds" in b and "Execution Helpers" in b
     assert "advtools" in b and "Advanced tools" in b
-    for href in ("/confirm", "/imports", "/research-queue", "/suppliers",
-                 "/team/calendar"):
-        assert href in b, href                       # daily loop, promoted
+    for href in ("/build-queue", "/design-skill-bridge", "/imports",
+                 "/research-queue"):
+        assert href in b, href                       # promoted daily surfaces
     for href in ("/trending", "/opportunities", "/spy", "/grade", "/launchpad",
                  "/profit", "/trackers", "/shops", "/listings", "/feedback"):
         assert href in b, href                       # demoted, still live

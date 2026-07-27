@@ -1776,8 +1776,13 @@ def build_app(password, secret):
     def design_skill_bridge_pack():
         _check_csrf()
         from src import design_skill_bridge as dsb
+        _u = current_user() or {}
+        data = dict(request.form)
+        if not data.get("launched_by"):
+            data["launched_by"] = (_u.get("display_name") or _u.get("email")
+                                   or "owner")
         try:
-            inp = dsb.create_pack(request.form)
+            inp = dsb.create_pack(data)
         except (SystemExit, Exception) as exc:  # noqa: BLE001
             return _tool_error("Design Skill Bridge", exc)
         return page("Design Skill Bridge", _bar() + dsb.pack_html(inp, _csrf()))
@@ -1814,6 +1819,19 @@ def build_app(password, secret):
         seeds = dsb.listing_seeds(run_id)
         return page("Design Skill Bridge",
                     _bar() + dsb.approved_html(run_id, seeds, _csrf()))
+
+    @app.route("/design-skill-bridge/reject", methods=["POST"])
+    @login_required
+    def design_skill_bridge_reject():
+        _check_csrf()
+        from src import design_skill_bridge as dsb
+        run_id = (request.form.get("run_id") or "").strip()[:60]
+        _u = current_user() or {}
+        if not auth.has_perm(_u.get("role", ""), "tasks.review"):
+            return _tool_error("Design Skill Bridge",
+                               ValueError("Chỉ Manager/Owner mới được reject."))
+        dsb.reject(run_id, owner=_u.get("display_name") or _u.get("email") or "")
+        return redirect("/design-skill-bridge")
 
     @app.route("/design-skill-bridge/send-to-launchkit", methods=["POST"])
     @login_required

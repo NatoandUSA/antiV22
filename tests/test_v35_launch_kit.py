@@ -107,7 +107,7 @@ def test_every_slot_has_ai_prompt_and_real_flags():
     for s in slots:
         assert s["prompt"] and "REAL PHOTO" not in s["prompt"].upper()
         if s["real_photo"]:
-            assert "comparison/mockup only" in s["ai_note"]
+            assert "real photo" in s["ai_note"].lower()
     assert sum(1 for s in slots if s["real_photo"]) >= 4
 
 
