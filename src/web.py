@@ -1793,8 +1793,10 @@ def build_app(password, secret):
         _check_csrf()
         from src import design_skill_bridge as dsb
         raw = (request.form.get("raw") or "")[:20000]
+        _u = current_user() or {}
+        operator = _u.get("display_name") or _u.get("email") or ""
         try:
-            run_id, v = dsb.import_pasted(raw)
+            run_id, v = dsb.import_pasted(raw, operator=operator)
         except (SystemExit, Exception) as exc:  # noqa: BLE001
             return _tool_error("Design Skill Bridge", exc)
         if not run_id:

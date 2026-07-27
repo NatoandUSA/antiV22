@@ -173,7 +173,8 @@ def _mode_label(inp, res):
     m = (inp or {}).get("mode")
     if m and m in _MODE_LABEL:
         return _MODE_LABEL[m]
-    route = ((res or {}).get("selected_concept") or {}).get("production_route")
+    route = (((res or {}).get("selected_concept") or {}).get("production_route")
+             or (res or {}).get("production_route"))
     if route and route.upper() in _MODE_LABEL:
         return _MODE_LABEL[route.upper()]
     return "—"
@@ -221,10 +222,11 @@ def list_runs(limit=200):
             "state": _derive_state(run, sent),
             "prompt": prompt,
             "keyword": inp.get("keyword") or seeds.get("main_keyword")
-            or res.get("keyword") or "",
+            or res.get("main_keyword") or res.get("keyword") or "",
             "batch": inp.get("batch") or "single-run",
             "created": _human_time(inp, mtime),
-            "target": seeds.get("target_product") or inp.get("target_product") or "—",
+            "target": seeds.get("target_product") or res.get("target_product")
+            or inp.get("target_product") or "—",
             "mode": _mode_label(inp, res),
             "launched_by": launched or "unknown",
             "mtime": mtime,
@@ -426,14 +428,31 @@ def import_result(run_id, raw_text):
     return v
 
 
-def import_pasted(raw):
+def import_pasted(raw, operator=""):
     """Import a pasted/POSTed RESULT_JSON with no pre-created run: read the
-    bridge_run_id out of the JSON, or mint one. Returns (run_id, validation)."""
+    bridge_run_id out of the JSON, or mint one. `operator` is the logged-in staff
+    who pasted it — recorded so the table's 'Launched by' shows who ran it.
+    Returns (run_id, validation)."""
     obj = extract_json(raw)
     if not isinstance(obj, dict):
         return None, {"ok": False, "errors": ["No RESULT_JSON found in the text."],
                       "warnings": [], "result": None, "state": "RESULT_IMPORTED"}
     run_id = str(obj.get("bridge_run_id") or new_run_id())[:60]
+    op = _clean(operator, 60)
+    if op:
+        # stub input so 'Launched by' is populated for paste-initiated runs
+        d = _run_dir(run_id)
+        stub = {}
+        p = d / "input.json"
+        if p.is_file():
+            try:
+                stub = json.loads(p.read_text(encoding="utf-8")) or {}
+            except ValueError:
+                stub = {}
+        stub.setdefault("bridge_run_id", run_id)
+        stub.setdefault("created_at", time.strftime("%Y-%m-%d %H:%M"))
+        stub["launched_by"] = op
+        _write(run_id, "input.json", json.dumps(stub, ensure_ascii=False, indent=2))
     return run_id, import_result(run_id, raw)
 
 
@@ -627,8 +646,8 @@ def management_table_html(runs, csrf):
     if runs:
         body = "".join(row(r) for r in runs)
     else:
-        body = ('<tr><td colspan="10" class="note">Chưa có run nào. Bấm '
-                '"➕ Bắt đầu 1 thiết kế" ở trên để tạo prompt.</td></tr>')
+        body = ('<tr><td colspan="10" class="note">Chưa có run nào. Dán '
+                'RESULT_JSON từ GPT vào ô trên → <b>Nhận kết quả</b>.</td></tr>')
 
     js = (
         '<script>'
@@ -740,18 +759,6 @@ def form_html(csrf, prefill_q="", runs=None):
         '</details>'
         # 2) dashboard
         + management_table_html(runs or [], csrf) +
-        # 3) short guide
-        '<details class="archive"><summary>▶ Cách dùng (ngắn)</summary>'
-        '<ol class="tklead">'
-        '<li>Mở <b>GPT Skill</b>, chạy thiết kế như bình thường (đính ảnh + Etsy URL '
-        '+ HeyEtsy ngay trong ChatGPT).</li>'
-        '<li>Copy khối <b>RESULT_JSON</b> GPT trả về → dán vào ô trên → <b>Nhận kết '
-        'quả</b>. Run hiện trong bảng ở trạng thái <b>Chờ owner duyệt</b>.</li>'
-        '<li>Owner mở run → <b>Approve</b> (sang Launch Kit) hoặc <b>Reject</b>. '
-        'Rác thì <b>🗑 Delete</b>.</li></ol>'
-        '<p class="note">Extension nay chỉ để <b>xuất bằng chứng</b> (CSV / JSON / '
-        'Send to agent). Cập nhật skill làm trong ChatGPT skill editor — bấm '
-        '<b>Copy skill instructions</b> để lấy đúng đoạn output cần dán.</p></details>'
         '<p class="note">🔒 ' + DRAFT_STAMP + ' — mọi kết quả là CANDIDATE cho tới khi '
         'owner duyệt.</p></article>')
 
