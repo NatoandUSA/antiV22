@@ -31,6 +31,33 @@ INDEX = BASE / "index.jsonl"
 SCHEMA_VERSION = "0.1"
 RESULT_SOURCE = "etsy-pod-redesign-v8.1-chatgpt-skill"
 
+# The canonical output contract we ask the ChatGPT Skill to emit so its result
+# pastes cleanly into this inbox. 22etsy cannot edit a ChatGPT Skill remotely
+# (skills live in ChatGPT); the owner updates the skill by pasting this into the
+# ChatGPT skill editor. The "Copy skill instructions" button copies this text.
+SKILL_OUTPUT_CONTRACT = (
+    "When you finish a design case, END the message with EXACTLY ONE fenced code "
+    "block labelled RESULT_JSON and nothing after it.\n\n"
+    "RESULT_JSON must be a single JSON object with ONLY these fields (use \"n/a\" "
+    "for anything you don't have — never invent, never guess numbers):\n\n"
+    "{\n"
+    '  "main_keyword":     "buyer-facing keyword",\n'
+    '  "concept_name":     "short name of the chosen concept",\n'
+    '  "buyer":            "who buys this + occasion",\n'
+    '  "hook":             "one line: why this design wins",\n'
+    '  "target_product":   "product to make (e.g. embroidered sweatshirt)",\n'
+    '  "production_route": "PRINTED POD | PHYSICAL EMBROIDERY | DIGITAL EMBROIDERY FILE | OTHER",\n'
+    '  "ip_status":        "GREEN | YELLOW | RED",\n'
+    '  "personalization":  "what the buyer customizes, or n/a",\n'
+    '  "evidence_classification": "strong | directional | weak",\n'
+    '  "notes":            "optional short note, or n/a"\n'
+    "}\n\n"
+    "Rules:\n"
+    "- No DST/PES/EXP/JEF/VP3 or 'machine-ready / production-ready' claims (design stage only).\n"
+    "- Output seeds only — do NOT write the final Etsy title/tags/description (Launch Kit owns that).\n"
+    "- If evidence is missing, still return the object with \"n/a\"; do not refuse."
+)
+
 STATES = ("DRAFT_INPUT", "PACK_CREATED", "RUN_IN_CHATGPT", "RESULT_IMPORTED",
           "VALIDATED_CANDIDATE", "OWNER_APPROVED", "SENT_TO_LAUNCHKIT",
           "REJECTED")
@@ -51,8 +78,15 @@ DRAFT_STAMP = "DRAFT ONLY — DO NOT PUBLISH"
 
 # ---- ids / io ---------------------------------------------------------------
 def new_run_id():
-    # app runtime (not a workflow script) so time is available and fine here
-    return "BR-" + time.strftime("%Y%m%d-%H%M%S")
+    # app runtime (not a workflow script) so time is available and fine here.
+    # Second-resolution ids can collide if two results are pasted in the same
+    # second; append a suffix until the run folder is free so nothing clobbers.
+    base = "BR-" + time.strftime("%Y%m%d-%H%M%S")
+    rid, n = base, 2
+    while _run_dir(rid).exists():
+        rid = f"{base}-{n}"
+        n += 1
+    return rid
 
 
 def _run_dir(run_id):
@@ -332,68 +366,49 @@ def _machine_claim_present(obj):
 
 
 def validate_result(raw_text, inp):
-    """Validate a pasted RESULT_JSON against the run's input. Returns a dict:
-    {ok, errors[], warnings[], result, state}. Never raises on bad input."""
-    errors, warnings = [], []
+    """Read a pasted RESULT_JSON. NO auto-reject: the ONLY hard failure is 'we
+    could not find any JSON in the text'. Everything else (missing fields, IP
+    flags, machine-claim wording) is surfaced as a WARNING for the owner to weigh
+    — the owner decides with Approve / Reject, not the machine. Never raises.
+
+    Returns {ok, errors[], warnings[], result, state}."""
+    warnings = []
     obj = extract_json(raw_text)
     if obj is None:
-        return {"ok": False, "errors": ["No valid JSON found in the pasted text."],
+        return {"ok": False,
+                "errors": ["Không đọc được JSON trong đoạn dán. Copy nguyên khối "
+                           "RESULT_JSON từ GPT rồi dán lại."],
                 "warnings": [], "result": None, "state": "RESULT_IMPORTED"}
 
     def g(d, k):
         return (d or {}).get(k)
 
-    if g(obj, "schema_version") != SCHEMA_VERSION:
-        errors.append(f"schema_version must be {SCHEMA_VERSION}.")
-    if RESULT_SOURCE not in str(g(obj, "source") or ""):
-        errors.append(f"source must be {RESULT_SOURCE}.")
-    # bridge_run_id: required only for a 22etsy-INITIATED run (inp present, SEED
-    # flow). An EXTENSION-INITIATED result (Etsy page → ChatGPT → send back) has
-    # no pre-created run, so a null/absent run id is fine — the importer mints one.
-    if inp:
-        if not g(obj, "bridge_run_id"):
-            errors.append("bridge_run_id is missing.")
-        elif g(obj, "bridge_run_id") != inp.get("bridge_run_id"):
-            errors.append("bridge_run_id does not match this run — wrong paste.")
-    if inp and inp.get("project_id") and g(obj, "project_id_or_opportunity_id") \
-            and g(obj, "project_id_or_opportunity_id") != inp["project_id"]:
-        errors.append("project/opportunity id mismatch.")
-
+    # Accept BOTH shapes: the flat inbox format (main_keyword/buyer/... at top
+    # level) and the older nested {selected_concept, listing_seeds}. Read fields
+    # from whichever is present; complain about none of it.
     sc = g(obj, "selected_concept") or {}
-    for f in ("name", "buyer", "hook", "production_route", "ip_status"):
-        if not g(sc, f):
-            errors.append(f"selected_concept.{f} is required.")
-    ip = str(g(sc, "ip_status") or "").upper()
-    safety_ip = str(g(g(obj, "safety") or {}, "ip_status") or "").upper()
-    if "RED" in (ip, safety_ip):
-        errors.append("RED IP risk — concept is blocked.")
-    if ip == "YELLOW" or safety_ip == "YELLOW":
-        warnings.append("YELLOW IP — CONFIRM FIRST / manager review before build.")
-
     seeds = g(obj, "listing_seeds") or {}
-    for f in ("target_product", "selected_concept", "buyer", "main_keyword",
-              "evidence_classification"):
-        if not g(seeds, f):
-            errors.append(f"listing_seeds.{f} is required.")
+    kw = g(obj, "main_keyword") or g(seeds, "main_keyword")
+    buyer = g(obj, "buyer") or g(sc, "buyer") or g(seeds, "buyer")
+    if not kw:
+        warnings.append("Thiếu main_keyword — nên bổ sung trước khi sang Launch Kit.")
+    if not buyer:
+        warnings.append("Thiếu buyer — nên bổ sung trước khi sang Launch Kit.")
 
-    # route must match the target mode we packed
-    if inp:
-        want = inp.get("production_route")
-        got = g(sc, "production_route") or g(seeds, "target_product")
-        if want and g(sc, "production_route") and want.lower() not in \
-                str(g(sc, "production_route")).lower():
-            warnings.append(
-                f"production_route '{g(sc, 'production_route')}' differs from the "
-                f"packed target route '{want}' — confirm the target product.")
+    ip = str(g(obj, "ip_status") or g(sc, "ip_status")
+             or g(g(obj, "safety") or {}, "ip_status") or "").upper()
+    if "RED" in ip:
+        warnings.append("⚠ IP = RED — rủi ro bản quyền cao. Cân nhắc kỹ trước khi duyệt.")
+    elif "YELLOW" in ip:
+        warnings.append("IP = YELLOW — cần CONFIRM FIRST / manager review.")
 
-    # machine-ready / DST-PES claims before CÓ ĐƠN are rejected
     if _machine_claim_present(obj):
-        errors.append("Machine-ready / DST-PES-EXP-JEF-VP3 / production-approved "
-                      "claim present — rejected before CÓ ĐƠN.")
+        warnings.append("Có từ ngữ 'machine-ready / DST-PES-EXP-JEF-VP3 / "
+                        "production-ready' — không nên claim trước khi CÓ ĐƠN.")
 
-    ok = not errors
-    return {"ok": ok, "errors": errors, "warnings": warnings, "result": obj,
-            "state": "VALIDATED_CANDIDATE" if ok else "RESULT_IMPORTED"}
+    # Everything parsed -> it's a candidate the owner can review. ok=True.
+    return {"ok": True, "errors": [], "warnings": warnings, "result": obj,
+            "state": "VALIDATED_CANDIDATE"}
 
 
 def import_result(run_id, raw_text):
@@ -426,10 +441,8 @@ def import_pasted(raw):
 def approve(run_id, owner=""):
     run = _load_run(run_id)
     if not run or not run.get("result"):
-        return {"ok": False, "error": "No validated result to approve."}
-    val = run.get("validation") or {}
-    if not val.get("ok"):
-        return {"ok": False, "error": "Result did not pass validation."}
+        return {"ok": False, "error": "No result to approve — paste a RESULT_JSON first."}
+    # No validation gate anymore: if there's a readable result, the OWNER decides.
     appr = {"owner": (owner or "")[:60], "at": time.strftime("%Y-%m-%d %H:%M"),
             "state": "OWNER_APPROVED"}
     _write(run_id, "approval.json", json.dumps(appr, ensure_ascii=False, indent=2))
@@ -453,13 +466,32 @@ def reject(run_id, owner=""):
 
 
 def listing_seeds(run_id):
-    """The approved listing_seeds packet for Launch Kit (never a finished listing)."""
+    """The approved seeds packet for Launch Kit (never a finished listing).
+    Accepts BOTH the flat inbox format and the older nested listing_seeds."""
     run = _load_run(run_id)
     if not run or not run.get("result"):
         return None
     if not (run.get("approval") or {}).get("state") == "OWNER_APPROVED":
         return None
-    return (run["result"] or {}).get("listing_seeds")
+    res = run["result"] or {}
+    seeds = res.get("listing_seeds")
+    if isinstance(seeds, dict) and seeds:
+        return seeds
+    # flat format: return the scalar fields as the seeds packet
+    return {k: v for k, v in res.items()
+            if not isinstance(v, (list, dict)) and k not in ("schema_version",)}
+
+
+def delete_run(run_id):
+    """Delete/archive a run: remove its folder and log the event. Housekeeping —
+    used to clear junk/old rows out of the inbox."""
+    import shutil
+    d = _run_dir(run_id)
+    if not d.is_dir():
+        return {"ok": False, "error": "Run not found."}
+    shutil.rmtree(d, ignore_errors=True)
+    _append_index({"ts": time.time(), "run_id": run_id, "state": "DELETED"})
+    return {"ok": True}
 
 
 def send_to_launchkit(run_id):
@@ -486,13 +518,11 @@ def _draft_banner():
 
 # state -> (label, colour, next-action hint)
 _STATE_META = {
-    "WAITING_FOR_RESULT": ("Waiting for GPT result", "#64748b",
-                           "Run in GPT → import RESULT_JSON"),
-    "PACK_CREATED": ("Skill Pack ready", "#64748b",
-                     "Run in GPT → import RESULT_JSON"),
-    "IMPORT_FAILED": ("Import failed", "#B45309", "View error → retry import"),
-    "REJECTED": ("Import failed", "#B45309", "Rejected — no action"),
-    "VALIDATED_CANDIDATE": ("Candidate ready", "#2563EB", "Owner review & approve"),
+    "WAITING_FOR_RESULT": ("Chưa có kết quả", "#64748b", "Xoá hoặc dán RESULT_JSON"),
+    "PACK_CREATED": ("Chưa có kết quả", "#64748b", "Xoá hoặc dán RESULT_JSON"),
+    "IMPORT_FAILED": ("Không đọc được JSON", "#B45309", "Dán lại RESULT_JSON đúng"),
+    "REJECTED": ("Owner rejected", "#6B7280", "Đã từ chối — có thể xoá"),
+    "VALIDATED_CANDIDATE": ("Chờ owner duyệt", "#2563EB", "Review → Approve / Reject"),
     "OWNER_APPROVED": ("Owner approved", "#15803D", "Send to Launch Kit"),
     "SENT_TO_LAUNCHKIT": ("Sent to Launch Kit", "#7C3AED", "Open Launch Kit"),
 }
@@ -516,34 +546,42 @@ def _post_btn(label, action, run_id, csrf, cls="tkbtn"):
             f'{label}</button></form>')
 
 
+def _del_btn(rid, csrf):
+    """Delete/archive button with a confirm — housekeeping, always available."""
+    return (f'<form method="post" action="/design-skill-bridge/delete" '
+            f'style="display:inline;margin:1px" onsubmit="return confirm('
+            f"'Xoá run {rid}? Không khôi phục được.'"');">'
+            f'<input type="hidden" name="csrf" value="{csrf}">'
+            f'<input type="hidden" name="run_id" value="{rid}">'
+            f'<button class="tkbtn" style="padding:3px 8px;font-size:11.5px;'
+            f'color:#B91C1C">🗑 Delete</button></form>')
+
+
 def _row_actions(r, csrf):
     st = r["state"]
     rid = _esc(r["run_id"])
     run_url = f"/design-skill-bridge/run/{rid}"
-    if st in ("PACK_CREATED", "WAITING_FOR_RESULT"):
-        return (_btn("Open Pack", run_url)
-                + f'<button class="tkbtn" style="padding:3px 8px;font-size:11.5px;'
-                f'margin:1px" onclick=" dsbCopy(\'p-{rid}\');return false;">Copy Prompt</button>'
-                + _btn("Open GPT Skill", SKILL_URL, "tkbtn")
-                + _btn("Import RESULT_JSON", run_url + "#import")
-                + f'<textarea id="p-{rid}" style="display:none">{_esc(r.get("prompt",""))}</textarea>')
-    if st in ("IMPORT_FAILED", "REJECTED"):
-        return (_btn("View Error", run_url)
-                + _btn("Retry Import", run_url + "#import")
-                + _btn("Open Pack", run_url))
+    delete = _del_btn(rid, csrf)
     if st == "VALIDATED_CANDIDATE":
+        # owner decision = exactly 2 buttons (Approve / Reject), plus Review + Delete
         return (_btn("Review", run_url)
-                + _post_btn("Approve", "/design-skill-bridge/approve", rid, csrf, "tkbtn primary")
-                + _post_btn("Reject", "/design-skill-bridge/reject", rid, csrf)
-                + _post_btn("Send to Launch Kit", "/design-skill-bridge/send-to-launchkit", rid, csrf))
+                + _post_btn("✔ Approve", "/design-skill-bridge/approve", rid, csrf, "tkbtn primary")
+                + _post_btn("✖ Reject", "/design-skill-bridge/reject", rid, csrf)
+                + delete)
     if st == "OWNER_APPROVED":
-        return (_btn("View Result", run_url)
-                + _post_btn("Send to Launch Kit", "/design-skill-bridge/send-to-launchkit", rid, csrf, "tkbtn primary"))
+        return (_btn("View", run_url)
+                + _post_btn("Send to Launch Kit", "/design-skill-bridge/send-to-launchkit", rid, csrf, "tkbtn primary")
+                + delete)
     if st == "SENT_TO_LAUNCHKIT":
         from urllib.parse import quote_plus as _q
         return (_btn("Open Launch Kit", f"/launch-kit?q={_q(r.get('keyword',''))}", "tkbtn primary")
-                + _btn("View Result", run_url))
-    return _btn("Open", run_url)
+                + _btn("View", run_url) + delete)
+    if st == "IMPORT_FAILED":
+        return (_btn("Retry Import", run_url + "#import") + delete)
+    if st == "REJECTED":
+        return (_btn("View", run_url) + delete)
+    # WAITING/PACK/other legacy rows: nothing to run — just view or delete
+    return (_btn("View", run_url) + delete)
 
 
 def management_table_html(runs, csrf):
@@ -671,69 +709,49 @@ def _copy_text(kw, data):
 
 
 def form_html(csrf, prefill_q="", runs=None):
-    # V37.1: this page IS the manual Design Workspace. The browser extension is
-    # now an evidence exporter only (it has NO "Open in V8.2" / "Send RESULT"
-    # buttons anymore). A design is started HERE: enter keyword + evidence → get
-    # a prompt → run the ChatGPT Skill by hand → paste RESULT_JSON back below.
-    pf = _esc(prefill_q or "")
+    # V37.2: this page is a THIN DESIGN INBOX. It does NOT generate a prompt (the
+    # ChatGPT Skill already has its own). Its only job: receive the GPT result,
+    # let the owner Approve/Reject, and hand approved seeds to Launch Kit.
+    contract = _esc(SKILL_OUTPUT_CONTRACT)
     return (
-        '<article class="md"><h1>🎨 Design Skill Bridge — Xưởng thiết kế</h1>'
-        '<p class="tklead">Nơi làm thiết kế <b>thủ công</b> với ChatGPT Skill '
-        '(Etsy POD Redesign V8.2). <b>①</b> nhập keyword + bằng chứng → lấy prompt · '
-        '<b>②</b> mở GPT Skill, dán prompt + đính <b>ảnh thật</b> + Etsy URL/HeyEtsy, '
-        'chạy · <b>③</b> dán <b>RESULT_JSON</b> trả về vào ô Import. Owner duyệt → '
-        '<b>listing_seeds</b> sang Launch Kit.</p>'
-        # 1) START A DESIGN — manual entry, replaces the old extension "Open in V8.2"
-        '<details class="archive" open><summary>➕ Bắt đầu 1 thiết kế</summary>'
-        '<form method="post" action="/design-skill-bridge/pack">'
-        f'<input type="hidden" name="csrf" value="{csrf}">'
-        f'<p><label><b>Keyword</b><br><input name="keyword" value="{pf}" '
-        'placeholder="vd: nurse embroidery sweatshirt" '
-        'style="width:100%;padding:7px;border:1px solid #ddd;border-radius:8px">'
-        '</label></p>'
-        '<p><label><b>Etsy listing URL</b> (tuỳ chọn)<br><input name="etsy_url" '
-        'placeholder="https://www.etsy.com/listing/..." '
-        'style="width:100%;padding:7px;border:1px solid #ddd;border-radius:8px">'
-        '</label></p>'
-        '<p><label><b>HeyEtsy evidence</b> (tuỳ chọn — dán số liệu thật)<br>'
-        '<textarea name="heyetsy" rows="2" style="width:100%;padding:7px;border:1px '
-        'solid #ddd;border-radius:8px"></textarea></label></p>'
-        '<p><label><b>Mode</b> '
-        '<select name="mode" style="padding:6px;border:1px solid #ddd;border-radius:8px">'
-        '<option value="POD">POD (in / printed)</option>'
-        '<option value="EMBROIDERY">Embroidery (thêu vật lý)</option>'
-        '<option value="DIGITAL_EMBROIDERY">Digital embroidery file</option>'
-        '<option value="OTHER">Other physical product</option>'
-        '</select></label></p>'
-        '<p><button class="tkbtn primary">Tạo prompt →</button> '
-        f'<a class="tkbtn" href="{SKILL_URL}" target="_blank" rel="noopener">'
-        'Mở GPT Skill ↗</a></p></form></details>'
-        # 2) the management table (dashboard)
-        + management_table_html(runs or [], csrf) +
-        # 3) manual import (paste the JSON GPT returned)
+        '<article class="md"><h1>🎨 Design Inbox</h1>'
+        '<p class="tklead">Nơi <b>nhận kết quả</b> từ ChatGPT Skill (Etsy POD '
+        'Redesign) và đưa vào Launch Kit. Bạn chạy skill trong ChatGPT như bình '
+        'thường, rồi <b>dán RESULT_JSON</b> vào đây → owner <b>Approve/Reject</b> → '
+        'seeds sang Launch Kit. Trang này KHÔNG tạo prompt (skill tự lo phần đó).</p>'
+        # skill launch + update-contract buttons
+        f'<p><a class="tkbtn primary" href="{SKILL_URL}" target="_blank" '
+        'rel="noopener">Mở GPT Skill ↗</a> '
+        '<button class="tkbtn" onclick="var t=document.getElementById(\'dsb-contract\');'
+        't.style.display=\'block\';t.select();document.execCommand(\'copy\');'
+        't.style.display=\'none\';this.textContent=\'✓ Đã copy hướng dẫn skill\';'
+        'return false;" title="Copy đoạn hướng dẫn output để dán vào ChatGPT skill '
+        'editor khi cần cập nhật skill">📋 Copy skill instructions</button>'
+        f'<textarea id="dsb-contract" style="display:none">{contract}</textarea></p>'
+        # 1) paste-in box (the ONLY entry)
         '<details class="archive" open><summary>📥 Dán RESULT_JSON từ GPT vào đây'
         '</summary>'
         '<form method="post" action="/design-skill-bridge/import">'
         f'<input type="hidden" name="csrf" value="{csrf}">'
         '<textarea name="raw" rows="6" style="width:100%;font-family:ui-monospace,'
         'monospace;font-size:12px" placeholder="Dán nguyên khối RESULT_JSON GPT trả '
-        'về (echo bridge_run_id để khớp đúng run)."></textarea>'
-        '<p><button class="tkbtn primary">Import &amp; validate →</button></p></form>'
+        'về. Không tự động chấm điểm — chỉ lưu để owner duyệt."></textarea>'
+        '<p><button class="tkbtn primary">Nhận kết quả →</button></p></form>'
         '</details>'
-        # 4) the clean manual process
-        '<details class="archive"><summary>▶ Quy trình thủ công (3 bước)</summary>'
+        # 2) dashboard
+        + management_table_html(runs or [], csrf) +
+        # 3) short guide
+        '<details class="archive"><summary>▶ Cách dùng (ngắn)</summary>'
         '<ol class="tklead">'
-        '<li><b>Tạo prompt:</b> nhập keyword (+ Etsy URL/HeyEtsy nếu có) ở trên → '
-        '<b>Tạo prompt</b>. Trang Pack hiện SEED để copy.</li>'
-        '<li><b>Chạy GPT thủ công:</b> mở <b>GPT Skill</b>, dán SEED, <b>đính ảnh '
-        'thiết kế thật</b> + Etsy URL + HeyEtsy, gõ Start. Thiếu bằng chứng → '
-        '<b>INTAKE BLOCKED</b>, KHÔNG bịa.</li>'
-        '<li><b>Nhập kết quả:</b> copy khối <b>RESULT_JSON</b> GPT trả về → dán vào '
-        'ô Import ở trên → run hiện trong bảng.</li>'
-        '<li>Owner mở run → <b>duyệt</b> → Launch Kit.</li></ol>'
+        '<li>Mở <b>GPT Skill</b>, chạy thiết kế như bình thường (đính ảnh + Etsy URL '
+        '+ HeyEtsy ngay trong ChatGPT).</li>'
+        '<li>Copy khối <b>RESULT_JSON</b> GPT trả về → dán vào ô trên → <b>Nhận kết '
+        'quả</b>. Run hiện trong bảng ở trạng thái <b>Chờ owner duyệt</b>.</li>'
+        '<li>Owner mở run → <b>Approve</b> (sang Launch Kit) hoặc <b>Reject</b>. '
+        'Rác thì <b>🗑 Delete</b>.</li></ol>'
         '<p class="note">Extension nay chỉ để <b>xuất bằng chứng</b> (CSV / JSON / '
-        'Send to agent) — không còn mở GPT hay gửi RESULT. Mọi thao tác GPT làm thủ '
-        'công tại trang này.</p></details>'
+        'Send to agent). Cập nhật skill làm trong ChatGPT skill editor — bấm '
+        '<b>Copy skill instructions</b> để lấy đúng đoạn output cần dán.</p></details>'
         '<p class="note">🔒 ' + DRAFT_STAMP + ' — mọi kết quả là CANDIDATE cho tới khi '
         'owner duyệt.</p></article>')
 
@@ -765,15 +783,15 @@ def pack_html(inp, csrf):
 
 
 def result_html(v, run_id, csrf):
-    parts = ['<article class="md"><h1>🎨 Bridge result — ' + _esc(run_id) + '</h1>']
+    parts = ['<article class="md"><h1>🎨 Design result — ' + _esc(run_id) + '</h1>']
     if v["ok"]:
         parts.append('<div style="background:#EDF7F0;border:1px solid #A6DBB9;'
                      'border-radius:10px;padding:8px 12px;color:#15803d;'
-                     'font-weight:700">✅ Validated — CANDIDATE. Chờ owner duyệt.</div>')
+                     'font-weight:700">✅ Đã nhận — CANDIDATE. Chờ owner duyệt.</div>')
     else:
         parts.append('<div style="background:#FDF2F0;border:1px solid #F3B7AE;'
                      'border-radius:10px;padding:8px 12px;color:#B91C1C;'
-                     'font-weight:700">❌ Rejected — chưa import được.</div>')
+                     'font-weight:700">❌ Không đọc được JSON — dán lại RESULT_JSON.</div>')
     parts.append(_draft_banner())
     if v["errors"]:
         parts.append('<h3>Lỗi</h3><ul>' + "".join(
@@ -792,10 +810,12 @@ def result_html(v, run_id, csrf):
             f'<tr><td>Route</td><td>{_esc(sc.get("production_route"))}</td></tr>'
             f'<tr><td>IP</td><td>{_esc(sc.get("ip_status"))}</td></tr></table>')
     if v["ok"]:
+        # owner decision = 2 buttons (Approve / Reject), plus Delete housekeeping.
+        # No direct "Send to Launch Kit" here — that only appears AFTER approval.
         parts.append(
-            _post_btn("✅ Owner approve", "/design-skill-bridge/approve", run_id, csrf, "tkbtn primary")
+            _post_btn("✔ Owner approve", "/design-skill-bridge/approve", run_id, csrf, "tkbtn primary")
             + _post_btn("✖ Reject", "/design-skill-bridge/reject", run_id, csrf)
-            + _post_btn("🚀 Send to Launch Kit", "/design-skill-bridge/send-to-launchkit", run_id, csrf))
+            + _del_btn(_esc(run_id), csrf))
     else:
         # IMPORT_FAILED: offer a retry import box right here (WS1.2 routing)
         parts.append(
@@ -873,7 +893,7 @@ def error_html(run, csrf):
     errlist = ('<h3>Lỗi</h3><ul>' + "".join(
         f'<li style="color:#B91C1C">{_esc(e)}</li>' for e in errs) + '</ul>') if errs else ""
     return (
-        '<article class="md"><h1>🎨 Bridge run — ' + _esc(rid) + '</h1>'
+        '<article class="md"><h1>🎨 Design run — ' + _esc(rid) + '</h1>'
         + head + errlist + _draft_banner() +
         '<h2 id="import">Retry import</h2>'
         '<form method="post" action="/design-skill-bridge/import">'
@@ -882,7 +902,8 @@ def error_html(run, csrf):
         'monospace;font-size:12px" placeholder="Dán lại RESULT_JSON đã sửa"></textarea>'
         '<p><button class="tkbtn primary">Import &amp; validate →</button> '
         f'<a class="tkbtn" href="/design-skill-bridge">← Bảng quản lý</a></p></form>'
-        '</article>')
+        + _del_btn(_esc(rid), csrf)
+        + '</article>')
 
 
 def run_view_html(run, csrf):
@@ -890,7 +911,7 @@ def run_view_html(run, csrf):
     rejected); IMPORT_FAILED/REJECTED → error page; candidate → review;
     approved/sent → result + Launch Kit handoff."""
     if not run:
-        return '<article class="md"><h1>🎨 Bridge run</h1><p>Run not found.</p></article>'
+        return '<article class="md"><h1>🎨 Design run</h1><p>Run not found.</p></article>'
     rid = run["run_id"]
     state = _derive_state(run, _sent_run_ids())
     res = run.get("result") or {}

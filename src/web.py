@@ -1845,6 +1845,20 @@ def build_app(password, secret):
         from urllib.parse import quote_plus as _qpl
         return redirect(f"/launch-kit?q={_qpl(out.get('keyword', ''))}")
 
+    @app.route("/design-skill-bridge/delete", methods=["POST"])
+    @login_required
+    def design_skill_bridge_delete():
+        _check_csrf()
+        from src import design_skill_bridge as dsb
+        run_id = (request.form.get("run_id") or "").strip()[:60]
+        _u = current_user() or {}
+        # owner/manager only — same gate as approve/reject
+        if not auth.has_perm(_u.get("role", ""), "tasks.review"):
+            return _tool_error("Design Skill Bridge",
+                               ValueError("Chỉ Manager/Owner mới được xoá."))
+        dsb.delete_run(run_id)
+        return redirect("/design-skill-bridge")
+
 
     @app.route("/training")
     @login_required

@@ -40,7 +40,8 @@ def _good_result(run_id, **over):
 def test_page_renders_without_gemini_key(monkeypatch):
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     html = b.form_html(csrf="T")
-    assert "Design Skill Bridge" in html and "Gemini" not in html
+    # V37.2: page is the thin "Design Inbox"; no Gemini, no "Bridge" naming.
+    assert "Design Inbox" in html and "Gemini" not in html and "Bridge" not in html
 
 
 def test_skill_url_in_pack_page(sandbox):
@@ -74,27 +75,57 @@ def test_import_extracts_json_from_fenced_block(sandbox):
     assert v["ok"] and v["result"]["selected_concept"]["name"] == "NICU grad"
 
 
-def test_import_rejects_wrong_run_id(sandbox):
+def test_no_autoreject_on_run_id_mismatch(sandbox):
+    # V37.2: NO auto-reject. A run_id mismatch is no longer an error — the owner
+    # decides. The only hard failure is "no JSON found" (tested below).
     inp = _pack()
     v = b.import_result(inp["bridge_run_id"], _good_result("BR-WRONG-0000"))
-    assert not v["ok"]
-    assert any("run_id" in e for e in v["errors"])
+    assert v["ok"] and v["errors"] == []
 
 
-def test_import_rejects_red_ip(sandbox):
+def test_red_ip_is_warning_not_reject(sandbox):
+    # V37.2: RED IP is surfaced as a WARNING, not an auto-reject.
     inp = _pack()
-    bad = _good_result(inp["bridge_run_id"], safety={"ip_status": "RED"})
+    bad = _good_result(inp["bridge_run_id"], safety={"ip_status": "RED"},
+                       ip_status="RED")
     v = b.import_result(inp["bridge_run_id"], bad)
-    assert not v["ok"] and any("RED" in e for e in v["errors"])
+    assert v["ok"] and any("RED" in w for w in v["warnings"])
 
 
-def test_import_rejects_machine_file_claim_before_codo(sandbox):
+def test_machine_file_claim_is_warning_not_reject(sandbox):
+    # V37.2: machine-file wording warns, never blocks import.
     inp = _pack()
     r = json.loads(_good_result(inp["bridge_run_id"]).split("\n", 1)[1].rsplit("\n", 2)[0])
     r["artifacts"] = ["ready DST file, machine-ready"]
     raw = "```RESULT_JSON\n" + json.dumps(r) + "\n```"
     v = b.import_result(inp["bridge_run_id"], raw)
-    assert not v["ok"] and any("achine" in e for e in v["errors"])
+    assert v["ok"] and any("achine" in w for w in v["warnings"])
+
+
+def test_only_hard_failure_is_no_json(sandbox):
+    inp = _pack()
+    v = b.import_result(inp["bridge_run_id"], "no json here at all")
+    assert not v["ok"] and v["errors"]
+
+
+def test_flat_format_result_is_accepted_and_seeds_flat(sandbox):
+    # The new lean skill emits a FLAT object (main_keyword/buyer/... at top level).
+    flat = '```RESULT_JSON\n{"main_keyword":"nurse gift","buyer":"nurses",' \
+           '"ip_status":"GREEN","target_product":"sweatshirt"}\n```'
+    run_id, v = b.import_pasted(flat)
+    assert v["ok"]
+    b.approve(run_id, owner="Alex")
+    seeds = b.listing_seeds(run_id)
+    assert seeds["main_keyword"] == "nurse gift"
+
+
+def test_delete_run_removes_it(sandbox):
+    inp = _pack()
+    b.import_result(inp["bridge_run_id"], _good_result(inp["bridge_run_id"]))
+    assert any(r["run_id"] == inp["bridge_run_id"] for r in b.list_runs())
+    out = b.delete_run(inp["bridge_run_id"])
+    assert out["ok"]
+    assert not any(r["run_id"] == inp["bridge_run_id"] for r in b.list_runs())
 
 
 def test_candidate_until_owner_approval(sandbox):
@@ -139,14 +170,15 @@ def test_mgmt_table_renders_nine_columns(sandbox):
         assert col in html, col
 
 
-def test_pack_run_shows_skill_pack_ready_and_actions(sandbox):
+def test_waiting_run_shows_view_and_delete(sandbox):
+    # V37.2: a run with no result is housekeeping only — View + Delete, no
+    # prompt/pack actions (the page no longer generates prompts).
     _pack()
     runs = b.list_runs()
     assert runs and runs[0]["state"] in ("PACK_CREATED", "WAITING_FOR_RESULT")
     html = b.management_table_html(runs, csrf="T")
-    assert "Skill Pack ready" in html or "Waiting for GPT result" in html
-    for action in ("Open Pack", "Copy Prompt", "Open GPT Skill", "Import RESULT_JSON"):
-        assert action in html, action
+    assert "View" in html and "Delete" in html
+    assert "Copy Prompt" not in html
 
 
 def test_pack_run_link_opens_work_page_not_rejected(sandbox):
@@ -200,13 +232,21 @@ def test_filters_render(sandbox):
         assert f in html, f
 
 
-def test_candidate_and_approved_actions(sandbox):
+def test_candidate_actions_are_two_decisions_plus_delete(sandbox):
+    # V37.2: a candidate shows exactly the owner's 2 decision buttons
+    # (Approve / Reject) + Review + Delete. "Send to Launch Kit" only appears
+    # AFTER approval, never on a raw candidate.
     inp = _pack()
     b.import_result(inp["bridge_run_id"], _good_result(inp["bridge_run_id"]))
     html = b.management_table_html(b.list_runs(), csrf="T")
     assert b.list_runs()[0]["state"] == "VALIDATED_CANDIDATE"
-    for a in ("Review", "Approve", "Reject", "Send to Launch Kit"):
+    for a in ("Review", "Approve", "Reject", "Delete"):
         assert a in html, a
+    assert "Send to Launch Kit" not in html
+    # after approval the handoff button appears
+    b.approve(inp["bridge_run_id"], owner="Alex")
+    html2 = b.management_table_html(b.list_runs(), csrf="T")
+    assert "Send to Launch Kit" in html2
 
 
 def test_no_network_on_render(sandbox, monkeypatch):
