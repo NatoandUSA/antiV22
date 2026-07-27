@@ -333,6 +333,17 @@ def import_result(run_id, raw_text):
     return v
 
 
+def import_pasted(raw):
+    """Import a pasted/POSTed RESULT_JSON with no pre-created run: read the
+    bridge_run_id out of the JSON, or mint one. Returns (run_id, validation)."""
+    obj = extract_json(raw)
+    if not isinstance(obj, dict):
+        return None, {"ok": False, "errors": ["No RESULT_JSON found in the text."],
+                      "warnings": [], "result": None, "state": "RESULT_IMPORTED"}
+    run_id = str(obj.get("bridge_run_id") or new_run_id())[:60]
+    return run_id, import_result(run_id, raw)
+
+
 # ---- 3) approve + handoff ---------------------------------------------------
 def approve(run_id, owner=""):
     run = _load_run(run_id)
@@ -406,39 +417,88 @@ def pending_html(runs):
             f'</tr>{rows}</table></details>')
 
 
+def keyword_context(kw):
+    """Pull the keyword's market data from the base so the copy block carries
+    useful (third-party, directional) numbers. Returns a compact line or ''."""
+    kw = (kw or "").strip()
+    if not kw:
+        return ""
+    try:
+        import csv
+        from pathlib import Path as _P
+        p = _P("keyword_data.csv")
+        if not p.is_file():
+            return ""
+        with p.open(encoding="utf-8-sig") as f:
+            for r in csv.DictReader(f):
+                if (r.get("keyword") or "").strip().lower() == kw.lower():
+                    def n(k):
+                        return (r.get(k) or "").strip()
+                    parts = []
+                    if n("etsy_listings"):
+                        parts.append(f"etsy_listings={n('etsy_listings')}")
+                    if n("views_24h"):
+                        parts.append(f"views_24h={n('views_24h')}")
+                    if n("avg_price"):
+                        parts.append(f"avg_price=${n('avg_price')}")
+                    if n("conversion_rate"):
+                        parts.append(f"conversion={n('conversion_rate')}")
+                    if n("momentum"):
+                        parts.append(f"momentum={n('momentum')}")
+                    if n("tm_risk"):
+                        parts.append(f"tm_risk={n('tm_risk')}")
+                    return " · ".join(parts)
+    except Exception:  # noqa: BLE001
+        pass
+    return ""
+
+
+def _copy_text(kw, data):
+    kw = (kw or "").strip() or "<gõ keyword vào ô trên>"
+    return ("ETSY POD REDESIGN V8.2 — new case.\n"
+            f"Keyword: {kw}\n"
+            f"Market data (third-party, directional): {data or 'n/a'}\n"
+            "Đính kèm ngay dưới tin nhắn này: ảnh thiết kế chính + Etsy listing "
+            "URL + HeyEtsy. Start.")
+
+
 def form_html(csrf, prefill_q="", runs=None):
-    opts = "".join(
-        f'<option value="{m}">{_ROUTE_BY_MODE[m]}</option>' for m in MODES)
+    q = (prefill_q or "").strip()
+    copytext = _copy_text(q, keyword_context(q))
     return (
         '<article class="md"><h1>🎨 Design Skill Bridge</h1>'
+        '<p class="tklead">1 keyword sẵn data → mở <b>ChatGPT Skill V8.2</b> → '
+        'import <b>RESULT_JSON</b> về → owner duyệt → <b>listing_seeds</b> sang '
+        'Launch Kit. Không gọi API. Skill trả listing_seeds; Launch Kit tạo listing cuối.</p>'
+        # 1) the dashboard
         + pending_html(runs or []) +
-        '<p class="tklead">Chuẩn bị <b>Skill Pack</b> → chạy <b>ChatGPT Skill '
-        '(Etsy POD Redesign V8.1)</b> bằng tay → dán <b>RESULT_JSON</b> về đây → '
-        'validate → owner duyệt → gửi <b>listing_seeds</b> sang Launch Kit. '
-        'Không gọi API — chạy thủ công trong ChatGPT. Skill trả '
-        '<b>listing_seeds</b>, <b>Launch Kit</b> mới tạo listing cuối.</p>'
-        + _draft_banner() +
-        '<form method="post" action="/design-skill-bridge/pack">'
+        # 2) ready keyword + data to copy
+        '<h2>1 · Keyword sẵn để copy</h2>'
+        '<form method="get" action="/design-skill-bridge" style="margin:0 0 8px">'
+        f'<input name="q" value="{_esc(q)}" placeholder="Gõ keyword rồi Enter…" '
+        'style="width:66%"> <button class="tkbtn">Chuẩn bị data</button></form>'
+        f'<textarea id="dsb-copy" readonly rows="4" style="width:100%;'
+        f'font-family:ui-monospace,monospace;font-size:12.5px">{_esc(copytext)}</textarea>'
+        '<p><button class="tkbtn" onclick="var t=document.getElementById(\'dsb-copy\');'
+        't.select();document.execCommand(\'copy\');this.textContent=\'✓ Đã copy\';'
+        'return false;">📋 Copy</button></p>'
+        # 3) open the skill
+        '<h2>2 · Mở ChatGPT Skill</h2>'
+        f'<p><a class="tkbtn primary" href="{SKILL_URL}" target="_blank" '
+        'rel="noopener">Open ChatGPT Skill V8.2 ↗</a> '
+        '<span class="note">Trong GPT: dán nội dung vừa copy + đính kèm ảnh thiết kế '
+        '+ Etsy URL + HeyEtsy → Start.</span></p>'
+        # 4) import the JSON back
+        '<h2>3 · Import JSON từ GPT</h2>'
+        '<form method="post" action="/design-skill-bridge/import">'
         f'<input type="hidden" name="csrf" value="{csrf}">'
-        '<p><label>Keyword<br><input name="keyword" style="width:100%" '
-        f'value="{_esc(prefill_q)}"></label></p>'
-        '<p><label>Reference title (tuỳ chọn)<br>'
-        '<input name="title" style="width:100%"></label></p>'
-        '<p><label>Etsy listing URL (tuỳ chọn)<br>'
-        '<input name="etsy_url" style="width:100%"></label></p>'
-        '<p><label>HeyEtsy evidence — dán số (tuỳ chọn, third-party)<br>'
-        '<textarea name="heyetsy" rows="3" style="width:100%"></textarea></label></p>'
-        '<p><label>Target product<br><input name="target_product" '
-        'style="width:100%" placeholder="vd: sweatshirt, tote, cap"></label></p>'
-        f'<p><label>Mode / route<br><select name="mode">{opts}</select></label></p>'
-        '<p><label>Placement (tuỳ chọn)<br><input name="placement" '
-        'style="width:100%" placeholder="vd: left chest, center chest"></label></p>'
-        '<p><label>Personalization (tuỳ chọn)<br><input name="personalization" '
-        'style="width:100%"></label></p>'
-        '<p><label>Image reference note (tuỳ chọn — bạn upload ảnh vào GPT chat)<br>'
-        '<input name="image_ref" style="width:100%"></label></p>'
-        '<p><button class="tkbtn primary">Create Skill Pack →</button></p>'
-        '</form></article>')
+        '<textarea name="raw" rows="6" style="width:100%;font-family:ui-monospace,'
+        'monospace;font-size:12px" placeholder="Dán RESULT_JSON từ ChatGPT vào đây '
+        '(hoặc dùng nút &quot;↑ Send RESULT to agent&quot; của extension trên trang '
+        'ChatGPT — tự về đây)."></textarea>'
+        '<p><button class="tkbtn primary">Import &amp; validate →</button></p></form>'
+        '<p class="note">🔒 ' + DRAFT_STAMP + ' — mọi kết quả là CANDIDATE cho tới khi '
+        'owner duyệt.</p></article>')
 
 
 def pack_html(inp, csrf):

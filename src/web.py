@@ -1787,12 +1787,14 @@ def build_app(password, secret):
     def design_skill_bridge_import():
         _check_csrf()
         from src import design_skill_bridge as dsb
-        run_id = (request.form.get("run_id") or "").strip()[:60]
         raw = (request.form.get("raw") or "")[:20000]
         try:
-            v = dsb.import_result(run_id, raw)
+            run_id, v = dsb.import_pasted(raw)
         except (SystemExit, Exception) as exc:  # noqa: BLE001
             return _tool_error("Design Skill Bridge", exc)
+        if not run_id:
+            return page("Design Skill Bridge",
+                        _bar() + dsb.result_html(v, "-", _csrf()))
         return page("Design Skill Bridge", _bar() + dsb.result_html(v, run_id, _csrf()))
 
     @app.route("/design-skill-bridge/approve", methods=["POST"])
@@ -2436,18 +2438,14 @@ def build_app(password, secret):
             import json as _j
             raw = _j.dumps(raw)
         from src import design_skill_bridge as dsb
-        obj = dsb.extract_json(raw)
-        if not isinstance(obj, dict):
-            return _cors(_json_resp(
-                {"ok": False, "error": "no RESULT_JSON found in payload"}, 400), origin)
-        # 22etsy-initiated runs carry a bridge_run_id; extension-initiated ones
-        # (Etsy page → ChatGPT → send back) do not — mint one so both import.
-        run_id = obj.get("bridge_run_id") or dsb.new_run_id()
         try:
-            v = dsb.import_result(str(run_id)[:60], raw)
+            run_id, v = dsb.import_pasted(raw)
         except Exception:  # noqa: BLE001
             app.logger.exception("design-result import failed")
             return _cors(_json_resp({"ok": False, "error": "import failed"}, 500), origin)
+        if not run_id:
+            return _cors(_json_resp(
+                {"ok": False, "error": "no RESULT_JSON found in payload"}, 400), origin)
         return _cors(_json_resp(
             {"ok": v["ok"], "run_id": run_id, "errors": v["errors"],
              "warnings": v["warnings"], "state": v["state"]}), origin)
