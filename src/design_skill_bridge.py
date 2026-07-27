@@ -463,40 +463,39 @@ def _copy_text(kw, data):
 
 
 def form_html(csrf, prefill_q="", runs=None):
-    q = (prefill_q or "").strip()
-    copytext = _copy_text(q, keyword_context(q))
+    # V37: this page is the INBOX. A design starts from the ETSY PAGE via the
+    # extension ("Open in V8.2") — there is only ONE entry, no second "open GPT"
+    # button here. This page shows what came back and lets the owner approve.
     return (
-        '<article class="md"><h1>🎨 Design Skill Bridge</h1>'
-        '<p class="tklead">1 keyword sẵn data → mở <b>ChatGPT Skill V8.2</b> → '
-        'import <b>RESULT_JSON</b> về → owner duyệt → <b>listing_seeds</b> sang '
-        'Launch Kit. Không gọi API. Skill trả listing_seeds; Launch Kit tạo listing cuối.</p>'
-        # 1) the dashboard
+        '<article class="md"><h1>🎨 Design Skill Bridge — Hộp thư</h1>'
+        '<p class="tklead">Bắt đầu 1 thiết kế <b>từ trang Etsy</b> bằng extension '
+        '(nút <b>"Open in V8.2"</b>). Trang này là <b>hộp thư</b>: kết quả GPT gửi '
+        'về hiện ở đây → owner duyệt → <b>listing_seeds</b> sang Launch Kit.</p>'
+        # 1) the dashboard (primary)
         + pending_html(runs or []) +
-        # 2) ready keyword + data to copy
-        '<h2>1 · Keyword sẵn để copy</h2>'
-        '<form method="get" action="/design-skill-bridge" style="margin:0 0 8px">'
-        f'<input name="q" value="{_esc(q)}" placeholder="Gõ keyword rồi Enter…" '
-        'style="width:66%"> <button class="tkbtn">Chuẩn bị data</button></form>'
-        f'<textarea id="dsb-copy" readonly rows="4" style="width:100%;'
-        f'font-family:ui-monospace,monospace;font-size:12.5px">{_esc(copytext)}</textarea>'
-        '<p><button class="tkbtn" onclick="var t=document.getElementById(\'dsb-copy\');'
-        't.select();document.execCommand(\'copy\');this.textContent=\'✓ Đã copy\';'
-        'return false;">📋 Copy</button></p>'
-        # 3) open the skill
-        '<h2>2 · Mở ChatGPT Skill</h2>'
-        f'<p><a class="tkbtn primary" href="{SKILL_URL}" target="_blank" '
-        'rel="noopener">Open ChatGPT Skill V8.2 ↗</a> '
-        '<span class="note">Trong GPT: dán nội dung vừa copy + đính kèm ảnh thiết kế '
-        '+ Etsy URL + HeyEtsy → Start.</span></p>'
-        # 4) import the JSON back
-        '<h2>3 · Import JSON từ GPT</h2>'
+        # 2) the one clean process
+        '<details class="archive" open><summary>▶ Quy trình DUY NHẤT (1 lối vào)</summary>'
+        '<ol class="tklead">'
+        '<li><b>Cài 1 lần:</b> mở chat V8.2 của bạn trong ChatGPT → bấm extension '
+        '<b>"Set this chat for V8.2"</b>. Đặt Agent URL + token trong popup extension.</li>'
+        '<li>Trên <b>listing Etsy</b> (bật overlay HeyEtsy) → extension <b>"Open in '
+        'V8.2"</b>: tự lấy ẢNH thật + HeyEtsy + URL, mở chat V8.2 đã lưu, chèn sẵn '
+        'bundle + đính ảnh. Xem lại → Send.</li>'
+        '<li>Skill trả thiết kế + khối <b>RESULT_JSON</b>. (Thiếu bằng chứng → '
+        '<b>INTAKE BLOCKED</b>, KHÔNG bịa.)</li>'
+        '<li>Bấm extension <b>"↑ Send RESULT to agent"</b> → run hiện ở mục trên.</li>'
+        '<li>Owner mở run → <b>duyệt</b> → Launch Kit.</li></ol>'
+        '<p class="note">Không mở GPT từ trang này nữa — chỉ 1 lối vào là extension '
+        'trên trang Etsy (có ảnh + HeyEtsy thật).</p></details>'
+        # 3) manual import fallback
+        '<details class="archive"><summary>📥 Import RESULT_JSON thủ công (dự phòng)</summary>'
         '<form method="post" action="/design-skill-bridge/import">'
         f'<input type="hidden" name="csrf" value="{csrf}">'
         '<textarea name="raw" rows="6" style="width:100%;font-family:ui-monospace,'
-        'monospace;font-size:12px" placeholder="Dán RESULT_JSON từ ChatGPT vào đây '
-        '(hoặc dùng nút &quot;↑ Send RESULT to agent&quot; của extension trên trang '
-        'ChatGPT — tự về đây)."></textarea>'
+        'monospace;font-size:12px" placeholder="Dán RESULT_JSON từ ChatGPT nếu nút '
+        'extension không dùng được."></textarea>'
         '<p><button class="tkbtn primary">Import &amp; validate →</button></p></form>'
+        '</details>'
         '<p class="note">🔒 ' + DRAFT_STAMP + ' — mọi kết quả là CANDIDATE cho tới khi '
         'owner duyệt.</p></article>')
 
