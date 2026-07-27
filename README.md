@@ -1,6 +1,6 @@
-# Etsy Product Manager V35.6
+# Etsy Product Manager V37.0
 
-**Current release V35.6 — refinements to the multi-layer Opportunity Inbox and the
+**Current release V37.0 — refinements to the multi-layer Opportunity Inbox and the
 L0 risk / product-fit gate (CAUTION cap, product vocab, real-data validation), built
 on the V28.0 EXECUTION-engine repositioning + Confirm & Assign daily loop.**
 YTuong/HeyEtsy is the **research engine** (trending, hot listings, shops, tags);

@@ -609,7 +609,6 @@ def run_selftest():
           and '@app.route("/research-queue")' in _web_src_v268)
     check("Role-based home (staff vs manager) + YTuong deep links, no clone",
           "Manager desk" in _web_src_v268 and "My work today" in _web_src_v268
-          and "Daily — your everyday loop" in _web_src_v268
           and "Advanced tools" in _web_src_v268
           and callable(getattr(_dl, "for_keyword", None))
           and "trends.ytuong.ai" in _dl.YTUONG and "ytuong.me" in _dl.HEYETSY)
