@@ -38,9 +38,17 @@ JEWELRY_NOUNS = {"necklace", "bracelet", "ring", "pendant", "earring", "earrings
 ACRYLIC_NOUNS = {"acrylic", "ornament", "plaque", "keepsake", "nightlight"}
 DIGITAL_SIGNS = {"svg", "png", "clipart", "clip art", "sublimation", "printable",
                  "digital", "download", "cricut", "cut file", "vector", "dxf", "pdf"}
-POLICY_SIGNS = {"spell", "spells", "psychic", "reading", "tarot", "witchcraft",
+POLICY_SIGNS = {"spell", "spells", "psychic", "tarot", "witchcraft",
                 "hex", "curse", "manifest", "manifestation", "voodoo", "ritual",
                 "coven", "clairvoyant", "fortune telling"}
+# CONTEXT-REQUIRED policy words: ambiguous terms that are spiritual ONLY with a
+# psychic co-signal. "reading" alone is the huge book/reader niche (reading
+# teacher, book lover, "i love reading") - it must NOT go to policy review just
+# for the word. Same pattern as trademark CONTEXT_REQUIRED. (V37 false-positive fix.)
+POLICY_CONTEXT = {"reading"}
+POLICY_COSIGNALS = {"psychic", "tarot", "palm", "aura", "medium", "spiritual",
+                    "fortune", "oracle", "clairvoyant", "spirit", "astrology",
+                    "zodiac", "witch", "occult", "energy", "crystal"}
 SHOP_SUFFIXES = ("studio", "studios", "shop", "store", "co", "designs", "design",
                  "prints", "boutique", "atelier", "creations", "crafts", "arts")
 GENERIC = {"gift", "gifts", "custom", "personalized", "cute", "trendy", "new",
@@ -110,8 +118,11 @@ def classify(keyword, mode=None):
         return {"status": TRADEMARK_RISK, "launchable": False,
                 "product_type": "", "reason": f"trademark/brand: {why}"}
 
-    # 2. policy / spiritual niche
-    if words & POLICY_SIGNS:
+    # 2. policy / spiritual niche. Unambiguous signs always flag; context-required
+    # words ("reading") flag ONLY with a psychic co-signal, so the book/reader
+    # niche is no longer sent to policy review by mistake.
+    if (words & POLICY_SIGNS
+            or (words & POLICY_CONTEXT and words & POLICY_COSIGNALS)):
         return {"status": POLICY_RISK, "launchable": False, "product_type": "",
                 "reason": "spiritual/spell niche — Etsy policy review"}
 
