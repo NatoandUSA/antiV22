@@ -589,8 +589,8 @@ def management_table_html(runs, csrf):
     if runs:
         body = "".join(row(r) for r in runs)
     else:
-        body = ('<tr><td colspan="10" class="note">Chưa có run nào. Bắt đầu từ '
-                'trang Etsy bằng extension "Open in V8.2".</td></tr>')
+        body = ('<tr><td colspan="10" class="note">Chưa có run nào. Bấm '
+                '"➕ Bắt đầu 1 thiết kế" ở trên để tạo prompt.</td></tr>')
 
     js = (
         '<script>'
@@ -671,39 +671,69 @@ def _copy_text(kw, data):
 
 
 def form_html(csrf, prefill_q="", runs=None):
-    # V37: this page is the INBOX. A design starts from the ETSY PAGE via the
-    # extension ("Open in V8.2") — there is only ONE entry, no second "open GPT"
-    # button here. This page shows what came back and lets the owner approve.
+    # V37.1: this page IS the manual Design Workspace. The browser extension is
+    # now an evidence exporter only (it has NO "Open in V8.2" / "Send RESULT"
+    # buttons anymore). A design is started HERE: enter keyword + evidence → get
+    # a prompt → run the ChatGPT Skill by hand → paste RESULT_JSON back below.
+    pf = _esc(prefill_q or "")
     return (
-        '<article class="md"><h1>🎨 Design Skill Bridge — Hộp thư</h1>'
-        '<p class="tklead">Bắt đầu 1 thiết kế <b>từ trang Etsy</b> bằng extension '
-        '(nút <b>"Open in V8.2"</b>). Trang này là <b>hộp thư</b>: kết quả GPT gửi '
-        'về hiện ở đây → owner duyệt → <b>listing_seeds</b> sang Launch Kit.</p>'
-        # 1) the management table (primary)
+        '<article class="md"><h1>🎨 Design Skill Bridge — Xưởng thiết kế</h1>'
+        '<p class="tklead">Nơi làm thiết kế <b>thủ công</b> với ChatGPT Skill '
+        '(Etsy POD Redesign V8.2). <b>①</b> nhập keyword + bằng chứng → lấy prompt · '
+        '<b>②</b> mở GPT Skill, dán prompt + đính <b>ảnh thật</b> + Etsy URL/HeyEtsy, '
+        'chạy · <b>③</b> dán <b>RESULT_JSON</b> trả về vào ô Import. Owner duyệt → '
+        '<b>listing_seeds</b> sang Launch Kit.</p>'
+        # 1) START A DESIGN — manual entry, replaces the old extension "Open in V8.2"
+        '<details class="archive" open><summary>➕ Bắt đầu 1 thiết kế</summary>'
+        '<form method="post" action="/design-skill-bridge/pack">'
+        f'<input type="hidden" name="csrf" value="{csrf}">'
+        f'<p><label><b>Keyword</b><br><input name="keyword" value="{pf}" '
+        'placeholder="vd: nurse embroidery sweatshirt" '
+        'style="width:100%;padding:7px;border:1px solid #ddd;border-radius:8px">'
+        '</label></p>'
+        '<p><label><b>Etsy listing URL</b> (tuỳ chọn)<br><input name="etsy_url" '
+        'placeholder="https://www.etsy.com/listing/..." '
+        'style="width:100%;padding:7px;border:1px solid #ddd;border-radius:8px">'
+        '</label></p>'
+        '<p><label><b>HeyEtsy evidence</b> (tuỳ chọn — dán số liệu thật)<br>'
+        '<textarea name="heyetsy" rows="2" style="width:100%;padding:7px;border:1px '
+        'solid #ddd;border-radius:8px"></textarea></label></p>'
+        '<p><label><b>Mode</b> '
+        '<select name="mode" style="padding:6px;border:1px solid #ddd;border-radius:8px">'
+        '<option value="POD">POD (in / printed)</option>'
+        '<option value="EMBROIDERY">Embroidery (thêu vật lý)</option>'
+        '<option value="DIGITAL_EMBROIDERY">Digital embroidery file</option>'
+        '<option value="OTHER">Other physical product</option>'
+        '</select></label></p>'
+        '<p><button class="tkbtn primary">Tạo prompt →</button> '
+        f'<a class="tkbtn" href="{SKILL_URL}" target="_blank" rel="noopener">'
+        'Mở GPT Skill ↗</a></p></form></details>'
+        # 2) the management table (dashboard)
         + management_table_html(runs or [], csrf) +
-        # 2) the one clean process
-        '<details class="archive" open><summary>▶ Quy trình DUY NHẤT (1 lối vào)</summary>'
-        '<ol class="tklead">'
-        '<li><b>Cài 1 lần:</b> mở chat V8.2 của bạn trong ChatGPT → bấm extension '
-        '<b>"Set this chat for V8.2"</b>. Đặt Agent URL + token trong popup extension.</li>'
-        '<li>Trên <b>listing Etsy</b> (bật overlay HeyEtsy) → extension <b>"Open in '
-        'V8.2"</b>: tự lấy ẢNH thật + HeyEtsy + URL, mở chat V8.2 đã lưu, chèn sẵn '
-        'bundle + đính ảnh. Xem lại → Send.</li>'
-        '<li>Skill trả thiết kế + khối <b>RESULT_JSON</b>. (Thiếu bằng chứng → '
-        '<b>INTAKE BLOCKED</b>, KHÔNG bịa.)</li>'
-        '<li>Bấm extension <b>"↑ Send RESULT to agent"</b> → run hiện ở mục trên.</li>'
-        '<li>Owner mở run → <b>duyệt</b> → Launch Kit.</li></ol>'
-        '<p class="note">Không mở GPT từ trang này nữa — chỉ 1 lối vào là extension '
-        'trên trang Etsy (có ảnh + HeyEtsy thật).</p></details>'
-        # 3) manual import fallback
-        '<details class="archive"><summary>📥 Import RESULT_JSON thủ công (dự phòng)</summary>'
+        # 3) manual import (paste the JSON GPT returned)
+        '<details class="archive" open><summary>📥 Dán RESULT_JSON từ GPT vào đây'
+        '</summary>'
         '<form method="post" action="/design-skill-bridge/import">'
         f'<input type="hidden" name="csrf" value="{csrf}">'
         '<textarea name="raw" rows="6" style="width:100%;font-family:ui-monospace,'
-        'monospace;font-size:12px" placeholder="Dán RESULT_JSON từ ChatGPT nếu nút '
-        'extension không dùng được."></textarea>'
+        'monospace;font-size:12px" placeholder="Dán nguyên khối RESULT_JSON GPT trả '
+        'về (echo bridge_run_id để khớp đúng run)."></textarea>'
         '<p><button class="tkbtn primary">Import &amp; validate →</button></p></form>'
         '</details>'
+        # 4) the clean manual process
+        '<details class="archive"><summary>▶ Quy trình thủ công (3 bước)</summary>'
+        '<ol class="tklead">'
+        '<li><b>Tạo prompt:</b> nhập keyword (+ Etsy URL/HeyEtsy nếu có) ở trên → '
+        '<b>Tạo prompt</b>. Trang Pack hiện SEED để copy.</li>'
+        '<li><b>Chạy GPT thủ công:</b> mở <b>GPT Skill</b>, dán SEED, <b>đính ảnh '
+        'thiết kế thật</b> + Etsy URL + HeyEtsy, gõ Start. Thiếu bằng chứng → '
+        '<b>INTAKE BLOCKED</b>, KHÔNG bịa.</li>'
+        '<li><b>Nhập kết quả:</b> copy khối <b>RESULT_JSON</b> GPT trả về → dán vào '
+        'ô Import ở trên → run hiện trong bảng.</li>'
+        '<li>Owner mở run → <b>duyệt</b> → Launch Kit.</li></ol>'
+        '<p class="note">Extension nay chỉ để <b>xuất bằng chứng</b> (CSV / JSON / '
+        'Send to agent) — không còn mở GPT hay gửi RESULT. Mọi thao tác GPT làm thủ '
+        'công tại trang này.</p></details>'
         '<p class="note">🔒 ' + DRAFT_STAMP + ' — mọi kết quả là CANDIDATE cho tới khi '
         'owner duyệt.</p></article>')
 
@@ -718,8 +748,8 @@ def pack_html(inp, csrf):
         'rel="noopener">Open ChatGPT Skill ↗</a> — trong GPT: dán SEED, <b>đính kèm '
         'ảnh thiết kế</b>, dán Etsy URL + HeyEtsy, gõ Start. (Ảnh chỉ upload ở GPT, '
         'KHÔNG upload vào 22etsy.)</li>'
-        '<li>Gửi khối <b>RESULT_JSON</b> về đây — nút "Send result to agent" của '
-        'extension, hoặc dán vào ô Import bên dưới.</li></ol>'
+        '<li>Copy khối <b>RESULT_JSON</b> GPT trả về → dán vào ô <b>Import</b> bên '
+        'dưới (hoặc ô Import ở trang Bảng quản lý).</li></ol>'
         '<h2>SEED để dán vào ChatGPT (copy)</h2>'
         '<textarea readonly rows="7" style="width:100%;font-family:ui-monospace,monospace;'
         f'font-size:12px">{_esc(inp["_prompt"])}</textarea>'
