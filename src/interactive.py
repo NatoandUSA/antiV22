@@ -1671,7 +1671,14 @@ def photo_prompts(kw, mode=None):
     mode = _mode_for(kw, mode)
     product = "Embroidered Sweatshirt" if mode == "embroidery" else "Printed T-Shirt"
     from src import photo_brief
-    slots = photo_brief.build(kw, product=product, mode=mode, pers=True)
+    # V37.4: pull rival-review buyer worries (Evidence Router) so slots can carry
+    # "prove this" shooting guidance. Best-effort; never blocks the prompt set.
+    try:
+        from src import feed_evidence_router as _fer
+        _ev = _fer.evidence_for_keyword(kw) if kw else None
+    except Exception:  # noqa: BLE001
+        _ev = None
+    slots = photo_brief.build(kw, product=product, mode=mode, pers=True, evidence=_ev)
     label = MODE_LABEL.get(mode, mode)
     L = [f"# Photo prompt set — {kw}", "",
          f"_{len(slots)} listing images for a **{product}** ({label}). "
@@ -1696,6 +1703,10 @@ def photo_prompts(kw, mode=None):
               f"_{s['purpose']}_", ""]
         if s.get("ai_note"):
             L += [f"> ⚠️ {s['ai_note']}", ""]
+        if s.get("prove"):
+            for _pn in s["prove"]:
+                L += [f"> 🔎 **Prove this (from rival reviews):** {_pn}"]
+            L += [""]
         # V35.2: the warning must TRAVEL WITH the copied prompt - a note above
         # the code block dies the moment staff hit Copy.
         body = s["prompt"]
@@ -2172,6 +2183,40 @@ def pattern_miner(kw="", mode=None):
     L += ["", "## \U0001F94A Exploitable gaps — your opening"]
     for g in r["gaps"]:
         L.append(f"- {g}")
+    # V37.4 buyer VOICE from the Evidence Router (Etsy Reviews + HeyEtsy Detail).
+    # Qualitative only — capped evidence, never a market-score boost.
+    ev = r.get("review_evidence") or {}
+    if ev.get("has_evidence"):
+        nl = len(ev.get("listings") or [])
+        L += ["", "## \U0001F5E3 Buyer voice — from Etsy reviews (evidence lane)",
+              f"_From **{nl} matching listing(s)** with third-party listing "
+              "evidence. Single-listing evidence caps at **CONFIRM_FIRST** — strong "
+              "competitor proof, not keyword-market proof. Reviews do **not** change "
+              "the market score._"]
+        recip = ", ".join(f"{x['value']} ×{x['count']}"
+                          for x in ev.get("recipient_nouns", [])[:6])
+        if recip:
+            L.append(f"- **Who buyers buy for:** {recip}")
+        occ = ", ".join(f"{x['value']} ×{x['count']}"
+                        for x in ev.get("occasion_nouns", [])[:6])
+        if occ:
+            L.append(f"- **Occasions mentioned:** {occ}")
+        var = ", ".join(f"{x['value']} ×{x['count']}"
+                        for x in ev.get("top_mentioned_variants", [])[:6])
+        if var:
+            L.append(f"- **Top mentioned variants** (mentioned/reviewed, not "
+                     f"proven-converting): {var}")
+        comp = ev.get("complaints") or {}
+        if comp:
+            L.append("- **Buyer worries to beat:** "
+                     + ", ".join(f"{k} ({n})" for k, n in comp.items()))
+        if ev.get("photo_expectation_signals"):
+            L.append(f"- **Reviews show photos ×{ev['photo_expectation_signals']}** "
+                     "— real photo proof matters in this niche.")
+        rkw = ev.get("review_derived_keywords") or []
+        if rkw:
+            L.append("- **Review-derived long-tails** (→ Keyword Lab re-rank, "
+                     "confirm first): " + ", ".join(f"“{k}”" for k in rkw[:5]))
     # next step -> keyword lab
     seed = ", ".join(r["seed_words"][:8])
     L += ["", "## \U0001F3AF Your better angle & next step",

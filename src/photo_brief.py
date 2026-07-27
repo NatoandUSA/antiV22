@@ -29,9 +29,67 @@ def _rules(mode):
     return EMB_RULES if (mode or "").lower().startswith("emb") else POD_RULES
 
 
-def build(keyword, product="Embroidered Sweatshirt", mode="embroidery", pers=True):
+# V37.4: turn rival-review complaints (from the Evidence Router) into concrete
+# "what to PROVE with this photo" guidance, mapped to the slots that can answer
+# each worry. Each entry = (slot-name substrings that match, note). Buyer worries
+# come straight from real Etsy reviews of competing listings.
+def _proof_notes(evidence):
+    if not evidence or not evidence.get("has_evidence"):
+        return []
+    notes = []
+    comp = evidence.get("complaints") or {}
+    if comp.get("material"):
+        notes.append((("macro", "print detail", "fabric"),
+                      f"Rival reviews flag thin / low quality ×{comp['material']} — "
+                      "shoot a dense close-up that proves fabric weight and stitch "
+                      "coverage; show thickness, not just the design."))
+    if comp.get("size"):
+        notes.append((("size chart", "fabric"),
+                      f"Buyers mention sizing ×{comp['size']} — show the garment "
+                      "measured flat with your blank's REAL numbers, not stock ones."))
+    if comp.get("shipping"):
+        notes.append((("care", "how to order"),
+                      f"Rivals get shipping complaints ×{comp['shipping']} — state a "
+                      "realistic dispatch time and 'made to order' clearly."))
+    if comp.get("accuracy") or comp.get("personalization"):
+        n = (comp.get("accuracy", 0) + comp.get("personalization", 0))
+        notes.append((("personalization",),
+                      f"Reviews mention wrong / misspelled personalization ×{n} — "
+                      "show the exact preview the buyer gets and a 'we confirm "
+                      "spelling before we make it' step."))
+    if evidence.get("photo_expectation_signals"):
+        notes.append((("hero", "front flat"),
+                      f"Buyers post their own photos ×{evidence['photo_expectation_signals']} "
+                      "— your real photos must match reality; shoot true-to-life."))
+    top_recip = None
+    recs = evidence.get("recipient_nouns") or []
+    if recs:
+        top_recip = recs[0].get("value")
+    if top_recip:
+        notes.append((("gift", "occasion"),
+                      f"Top buyer buys for **{top_recip}** — stage the gift scene for "
+                      f"a {top_recip} (age-appropriate props, gift wrap)."))
+    variants = evidence.get("top_mentioned_variants") or []
+    if variants:
+        tv = variants[0].get("value")
+        if tv:
+            notes.append((("color", "variant"),
+                          f"Most-mentioned variant is **{tv}** — put it first in the "
+                          "color grid and the hero."))
+    return notes
+
+
+def build(keyword, product="Embroidered Sweatshirt", mode="embroidery", pers=True,
+          evidence=None):
     """Return an ordered list of image slots, each:
-    {n, slot, purpose, real_photo (bool), prompt, ai_note (real slots only)}."""
+    {n, slot, purpose, real_photo (bool), prompt, ai_note (real slots only),
+     prove (optional list of review-driven 'prove this' notes)}.
+
+    `evidence` (optional) is the Evidence Router's evidence_for_keyword() dict; when
+    present, buyer worries from rival reviews are attached to the matching slots as
+    `prove` notes. It never changes the prompts themselves and never overrides the
+    real-photo honesty rule.
+    """
     kw = (keyword or "your niche").strip()
     prod = product or "sweatshirt"
     rules = _rules(mode)
@@ -114,6 +172,7 @@ def build(keyword, product="Embroidered Sweatshirt", mode="embroidery", pers=Tru
          f"on a model showing the {made} '{kw}' design and texture up close, "
          "bright even light, smooth studio background, photorealistic."),
     ]
+    proof = _proof_notes(evidence)
     out = []
     for i, (slot, purpose, real, prompt) in enumerate(slots, 1):
         d = {"n": i, "slot": slot, "purpose": purpose,
@@ -123,6 +182,12 @@ def build(keyword, product="Embroidered Sweatshirt", mode="embroidery", pers=Tru
             # slots the prompt is a SHOT BRIEF the staff shoot + review, not an
             # "AI for review only" caveat.
             d["ai_note"] = REAL_NOTE
+        # attach review-driven "prove this" notes to the slots that can answer
+        # each buyer worry (matched by slot name, case-insensitive substring)
+        sl = slot.lower()
+        pv = [note for subs, note in proof if any(s in sl for s in subs)]
+        if pv:
+            d["prove"] = pv
         out.append(d)
     return out
 

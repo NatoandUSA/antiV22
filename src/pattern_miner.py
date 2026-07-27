@@ -311,4 +311,15 @@ def mine(keyword=None):
     # 9. keyword-expansion seed = the strongest content subject words
     res["seed_words"] = [w for w, pct in content if pct >= 25][:8] or \
                         [w for w, _ in content[:6]]
+
+    # 10. V37.4 buyer VOICE from the Evidence Router (HeyEtsy Detail + Etsy
+    # Reviews lanes). Purely qualitative — recipient/occasion nouns, mentioned
+    # variants, complaints, photo-proof signals — for the "why buyers buy" view
+    # and the Keyword Lab. It NEVER touches the market/demand math. Honest-null:
+    # absent lanes leave res["review_evidence"] with has_evidence=False.
+    try:
+        from src import feed_evidence_router as _fer
+        res["review_evidence"] = _fer.evidence_for_keyword(keyword or kw)
+    except Exception:  # noqa: BLE001 — evidence is additive, never blocks mining
+        res["review_evidence"] = {"has_evidence": False}
     return res

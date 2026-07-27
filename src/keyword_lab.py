@@ -102,6 +102,20 @@ def generate(keyword=None, limit=14):
     for a in adj:
         add(f"personalized {a} embroidered {product}", f"adjacent buyer: {a}")
 
+    # (a1) V37.4 review-derived buyer-language long-tails from the Evidence Router.
+    # Real buyer/recipient nouns (granddaughter, niece...) mined from Etsy reviews
+    # of matching listings. Per CF006 these are CONFIRM_FIRST candidates: they
+    # re-rank through the full engine like any other and never auto-build, even at
+    # 4+ words. bucket forced to "research" so they are NOT pre-checked.
+    ev = pat.get("review_evidence") or {}
+    for rk in (ev.get("review_derived_keywords") or []):
+        rk = re.sub(r"\s+", " ", str(rk)).strip().lower()
+        if rk and rk not in seen and len(rk.split()) >= 3:
+            seen.add(rk)
+            cands.append({
+                "keyword": rk, "bucket": "research",
+                "angle": "review buyer language · \U0001F52C confirm first (review-derived)"})
+
     # (a2) competitor TAGS from the capture (HeyEtsy overlay): the winners'
     # actual Etsy tags, 3+ words only - real buyer language, not guesses
     for t, n_uses in (pat.get("top_tags") or [])[:10]:

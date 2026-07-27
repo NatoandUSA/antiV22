@@ -72,6 +72,36 @@ def test_pages_render(client, route):
     assert client.get(route).status_code == 200
 
 
+def test_team_command_center(client):
+    body = client.get("/team").get_data(as_text=True)
+    assert "Team Command Center" in body
+    assert "Test Owner" in body          # signed-in user shown
+    assert "OWNER" in body               # role shown
+    for section in ("My open", "Today control board", "Process pipeline",
+                    "Team activity"):
+        assert section in body, f"missing section: {section}"
+    # every one of the 10 module destinations is still linked (no route removed)
+    for href in ("/me/tasks", "/research-queue", "/imports", "/team/calendar",
+                 "/admin/tasks", "/admin/reviews", "/admin/activity",
+                 "/admin/users", "/team/feedback", "/me"):
+        assert f'href="{href}"' in body, f"missing module link: {href}"
+    # the command-center alias serves the same page
+    assert client.get("/team/command-center").status_code == 200
+
+
+def test_team_subpages_polish(client):
+    # My Tasks renders (grouped view)
+    assert "My Tasks" in client.get("/me/tasks").get_data(as_text=True)
+    # Activity Log now exposes a filter form + CSV export, and the params work
+    al = client.get("/admin/activity").get_data(as_text=True)
+    assert "All users" in al and "All events" in al
+    assert client.get("/admin/activity?type=SPY_SEARCH").status_code == 200
+    assert client.get("/admin/activity?kw=nurse").status_code == 200
+    assert client.get("/admin/activity/export").status_code == 200
+    # Review Queue still renders
+    assert client.get("/admin/reviews").status_code == 200
+
+
 def test_security_xss_neutralized_and_headers(client):
     from src import saved
     # /grade result must not echo an executable tag from the title/keyword

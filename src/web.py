@@ -2410,17 +2410,35 @@ def build_app(password, secret):
             # extension lands in its proper lane instead of the keyword ingester.
             from src import ytx_import
             from src import supplier_trend as _st
+            from src import feed_evidence_router as _fer
             hdrs = payload.get("headers") or []
             n_rows = len(payload.get("rows") or [])
             lane = None
-            if _st.looks_like_supplier(hdrs):
+            # V37.4 Feed Center Evidence Router: the granular v3.4.0 exports go to
+            # their own validated lanes FIRST (before the generic etsy detector),
+            # so raw Detail never lands in proof and reviews never land in spy.
+            if _fer.looks_like_heyetsy_detail(hdrs):
+                lane = "listing_detail"
+            elif _fer.looks_like_etsy_reviews(hdrs):
+                lane = "listing_reviews"
+            elif _st.looks_like_supplier(hdrs):
                 lane = "supplier"
             elif _st.looks_like_pinterest(hdrs):
                 lane = "pinterest"
             elif (not _st.has_keyword_col(hdrs)
                   and _st.looks_like_etsy_listings(hdrs)):
                 lane = "etsy"
-            if lane:
+            if lane == "listing_detail":
+                _fer.save_detail(hdrs, payload.get("rows") or [],
+                                 source_hint=payload.get("view"))
+                summary = {"type": lane, "view": str(payload.get("view") or lane),
+                           "rows_received": n_rows}
+            elif lane == "listing_reviews":
+                _fer.save_reviews(hdrs, payload.get("rows") or [],
+                                  source_hint=payload.get("view"))
+                summary = {"type": lane, "view": str(payload.get("view") or lane),
+                           "rows_received": n_rows}
+            elif lane:
                 _st.save_payload(payload, source=lane)
                 summary = {"type": lane, "view": str(payload.get("view") or lane),
                            "rows_received": n_rows}
@@ -2513,6 +2531,7 @@ def build_app(password, secret):
         try:
             from src import ytx_import
             from src import supplier_trend as st
+            from src import feed_evidence_router as fer
             kind_req = (request.form.get("kind") or "auto").lower()
 
             def _looks_amazon(h):
@@ -2558,7 +2577,13 @@ def build_app(password, secret):
                 headers_seen = hf
                 kf = kind_req
                 if kf == "auto":
-                    if _looks_product(hf):
+                    # V37.4 evidence lanes first: granular HeyEtsy Detail / Etsy
+                    # Reviews (v3.4.0) route to validated lanes, not proof/spy.
+                    if fer.looks_like_heyetsy_detail(hf):
+                        kf = "listing_detail"
+                    elif fer.looks_like_etsy_reviews(hf):
+                        kf = "listing_reviews"
+                    elif _looks_product(hf):
                         kf = "proof"               # Alura/EverBee product export
                     elif st.looks_like_supplier(hf):
                         kf = "supplier"
@@ -2572,7 +2597,11 @@ def build_app(password, secret):
                         kf = "etsy"                # listings/spy -> Pattern Miner + proof
                     else:
                         kf = "keywords"
-                if kf == "proof":
+                if kf == "listing_detail":
+                    fer.save_detail(hf, p1.get("rows") or [], source_hint=fn)
+                elif kf == "listing_reviews":
+                    fer.save_reviews(hf, p1.get("rows") or [], source_hint=fn)
+                elif kf == "proof":
                     from src import etsy_proof as ep
                     ep.save_export(hf, p1.get("rows") or [], mode_p,
                                    source="product-export")
@@ -2601,6 +2630,8 @@ def build_app(password, secret):
                 dest = f"/supplier-trends{modeq}"
             elif "pinterest" in lanes:
                 dest = f"/pinterest-trends{modeq}"
+            elif any(k in lanes for k in ("listing_detail", "listing_reviews")):
+                dest = "/imports"   # evidence lanes -> Feed/Import Center, not Inbox
             else:
                 dest = f"/inbox{modeq}"
             act = " · ".join(f"{k}:{v}" for k, v in lanes.items())
@@ -3324,6 +3355,57 @@ def build_app(password, secret):
             notice = ('<div class="notice warn">Could not extract a keyword from that '
                       'URL automatically. Please enter the product keyword/title '
                       'manually below, then import.</div>')
+        # V37.4 evidence card: read-only view of the HeyEtsy Detail / Etsy Reviews
+        # lanes. Capped evidence only — never a publish or ranking action here.
+        evcard = ""
+        try:
+            from src import feed_evidence_router as _fer
+            ev = _fer.recent_evidence(12)
+
+            def _money(n):
+                if n is None:
+                    return "n/a"
+                return f"${n/1000:.1f}K" if n >= 1000 else f"${n:.0f}"
+
+            def _num(n):
+                return "n/a" if n is None else f"{n:,.0f}"
+
+            def _act_pill(a):
+                cls = {"CONFIRM_FIRST": "lvl-warn", "REVIEW": "lvl-info",
+                       "WATCH": "pr-low"}.get(a, "pr-low")
+                return f'<span class="pill {cls}">{_h_esc(a)}</span>'
+
+            def _ev_row(r):
+                title = _h_esc((r.get("title") or r.get("listing_id") or "?")[:70])
+                shop = _h_esc(r.get("shop") or "—")
+                conv = ("n/a" if r.get("conversion_rate") is None
+                        else f'{r["conversion_rate"] * 100:.1f}%')
+                buys = _h_esc(r.get("top_recipient") or "—")
+                revn = r.get("review_count") or 0
+                return (f'<tr><td><b>{title}</b><br><span style="color:var(--ink-faint);'
+                        f'font-size:11px">{shop} · id {_h_esc(r.get("listing_id"))}</span></td>'
+                        f'<td>{_num(r.get("estimated_sold"))}</td>'
+                        f'<td>{_money(r.get("estimated_revenue_usd"))}</td>'
+                        f'<td>{conv}</td>'
+                        f'<td>{revn}</td>'
+                        f'<td>{buys}</td>'
+                        f'<td>{_act_pill(r.get("max_action"))}</td></tr>')
+            if ev:
+                evrows = "".join(_ev_row(r) for r in ev)
+                evcard = (
+                    '<h2>🗣 Listing evidence (v3.4.0 lanes)</h2>'
+                    '<p class="tklead">HeyEtsy Detail &amp; Etsy Reviews land here as '
+                    '<b>validated, capped</b> evidence. Single-listing evidence is '
+                    '<b>CONFIRM_FIRST</b> — strong competitor proof, not keyword-market '
+                    'proof; PROVEN needs 2+ shops. Reviews feed Pattern Miner / Keyword '
+                    'Lab and never change the market score.</p>'
+                    '<table><tr><th>Listing</th><th>Est. sold</th><th>Est. rev</th>'
+                    '<th>Conv</th><th>Reviews</th><th>Buys&nbsp;for</th>'
+                    '<th>Max action</th></tr>' + evrows + '</table>'
+                    '<p style="font-size:11px;color:var(--ink-faint)">Estimates are '
+                    'third-party (HeyEtsy), not Etsy internal sales.</p>')
+        except Exception:  # noqa: BLE001 — the card is additive, never breaks the page
+            evcard = ""
         return page("YTuong Import Center", _bar()
                     + _stage_nav("feed", (request.args.get("q") or "").strip()[:80],
                                  request.args.get("mode") or "")
@@ -3332,7 +3414,7 @@ def build_app(password, secret):
                     'Import a finding here and the dashboard turns it into an '
                     'execution plan — product-fit check, product mode, and a spot in '
                     'the Research Queue. Nothing is auto-published.</p>'
-                    + notice + openbar + form + table + '</article>')
+                    + notice + openbar + form + table + evcard + '</article>')
 
     @app.route("/imports/add", methods=["POST"])
     @login_required
@@ -3493,44 +3575,196 @@ def build_app(password, secret):
                 f'{_csrf_field()}{extra}'
                 f'<button class="cbtn" type="submit">{label}</button></form>')
 
+    # ---- Team Command Center (V37.4) --------------------------------------
+    # Maps task_type -> the workflow stage it belongs to, for the pipeline strip.
+    _TCC_STAGE_MAP = {
+        "KEYWORD_RESEARCH": "RESEARCH", "SPY_RESEARCH": "PATTERN",
+        "COMPETITOR_AUDIT": "PATTERN", "TRADEMARK_CHECK": "BUILD",
+        "SUPPLIER_CHECK": "BUILD", "LISTING_DRAFT": "BUILD", "PDF_EXPORT": "BUILD",
+        "DESIGN_BRIEF": "DESIGN", "FIRST_IMAGE": "PHOTO", "MOCKUP": "PHOTO",
+        "FEEDBACK_DAY3": "LEARN", "FEEDBACK_DAY7": "LEARN",
+        "MANAGER_REVIEW": "REVIEW", "FIX_REQUIRED": "REVIEW",
+    }
+    _TCC_STAGES = ["FEED", "RESEARCH", "RANK", "PATTERN", "KEYWORD", "BUILD",
+                   "DESIGN", "PHOTO", "ADS", "LEARN", "REVIEW"]
+
     @app.route("/team")
+    @app.route("/team/command-center")
     @login_required
     def team_hub():
+        from datetime import date as _date, datetime as _dt
+        from src import tasks as tk, activity as av, toolfeedback as tfb
         u = current_user()
-        cards = ['<a class="toolcard" href="/me/tasks"><b>✅ My Tasks</b>'
-                 '<span>What you\'re assigned</span></a>',
-                 '<a class="toolcard" href="/research-queue"><b>🧭 Research Queue</b>'
-                 '<span>Ideas from import → review → manual publish</span></a>',
-                 '<a class="toolcard" href="/imports"><b>📥 YTuong Import Center</b>'
-                 '<span>Turn a YTuong finding into a candidate + task</span></a>',
-                 '<a class="toolcard" href="/team/calendar"><b>📅 Team Calendar</b>'
-                 '<span>Tasks by due date — today / week / overdue</span></a>']
-        if auth.has_perm(u["role"], "tasks.assign"):
-            cards.append('<a class="toolcard" href="/admin/tasks"><b>📋 Team Tasks</b>'
-                         '<span>Assign + track everyone\'s work</span></a>')
+        is_mgr = auth.has_perm(u["role"], "tasks.assign")
+        by_id = {x["user_id"]: x for x in auth.list_users()}
+        # scope: managers see everyone's tasks; members see their own
+        all_tasks = (tk.list_tasks() if is_mgr
+                     else tk.list_tasks(assigned_to=u["user_id"]))
+        mine = tk.my_open(u["user_id"])
+        today = _date.today().isoformat()
+
+        def _due_today(t):
+            return ((t.get("due_date") or "")[:10] == today
+                    and t["status"] in tk.OPEN_STATUSES)
+        overdue = [t for t in all_tasks if tk.is_overdue(t)]
+        due_today = [t for t in all_tasks if _due_today(t)]
+        blocked = [t for t in all_tasks if t["status"] == "BLOCKED"]
+        researching = [t for t in all_tasks if t["status"] == "IN_PROGRESS"]
+        review_q = tk.review_queue()
+        my_overdue = [t for t in mine if tk.is_overdue(t)]
+        my_today = [t for t in mine if _due_today(t)]
+        try:
+            fb_open = tfb.counts().get("open", 0)
+        except Exception:  # noqa: BLE001
+            fb_open = 0
+        try:
+            active_today = av.summary_today().get("active_users", 0)
+        except Exception:  # noqa: BLE001
+            active_today = 0
+        try:
+            from src.timestamp import tz as _tz
+            now_str = _dt.now(_tz()).strftime("%a %d %b %Y · %H:%M ICT")
+        except Exception:  # noqa: BLE001
+            now_str = today
+
+        def _esc(s):
+            return _h_esc("" if s is None else str(s))
+
+        # ---- header ----
+        header = (
+            '<article class="md"><h1>🛰️ Team Command Center</h1>'
+            f'<p class="tklead">Signed in as <b>{_esc(u["display_name"])}</b> '
+            f'· <b>{_esc(u["role"])}</b> · {_esc(now_str)}. '
+            'One control room: who owns what, what is due or stuck, and the next '
+            'action. Nothing here auto-publishes.</p></article>')
+
+        # ---- KPI strip ----
+        kpis = [("My open", len(mine), "/me/tasks"),
+                ("My due today", len(my_today), "/me/tasks"),
+                ("My overdue", len(my_overdue), "/me/tasks")]
+        if is_mgr:
+            kpis += [("Team overdue", len(overdue), "/admin/tasks"),
+                     ("Needs review", len(review_q), "/admin/reviews"),
+                     ("Blocked", len(blocked), "/admin/tasks"),
+                     ("Active today", active_today, "/admin/activity"),
+                     ("Feedback open", fb_open, "/team/feedback")]
+        kpi_html = "".join(
+            f'<a href="{href}" style="flex:1 1 120px;min-width:110px;text-decoration:none;'
+            'border:1px solid var(--line);border-radius:12px;padding:10px 12px;'
+            'background:var(--paper)">'
+            f'<div style="font-size:22px;font-weight:800;color:var(--ink)">{val}</div>'
+            f'<div style="font-size:11px;color:var(--ink-soft);text-transform:uppercase;'
+            f'letter-spacing:.03em">{_esc(label)}</div></a>'
+            for label, val, href in kpis)
+        kpi_strip = ('<div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 14px">'
+                     + kpi_html + '</div>')
+
+        # ---- Today Control Board ----
+        def _task_line(t, tag=""):
+            who = by_id.get(t.get("assigned_to_user_id"), {}).get("display_name", "—")
+            kw = t.get("related_keyword") or t.get("task_type") or ""
+            od = ' style="color:#99271F;font-weight:700"' if tk.is_overdue(t) else ""
+            due = (t.get("due_date") or "")[:10] or "—"
+            return (f'<li{od}>{_esc(t["title"])} '
+                    f'<span style="color:var(--ink-faint);font-size:11px">· {_esc(who)} '
+                    f'· {_esc(kw)} · due {_esc(due)} · {_esc(t["status"])}</span></li>')
+
+        def _board_col(title, items, href, empty):
+            body = ("".join(_task_line(t) for t in items[:6])
+                    if items else f'<li style="color:var(--ink-faint)">{empty}</li>')
+            return (f'<div style="flex:1 1 240px;min-width:220px;border:1px solid '
+                    'var(--line);border-radius:12px;padding:10px 12px">'
+                    f'<div style="font-weight:700;font-size:13px;margin-bottom:4px">'
+                    f'{_esc(title)} <a href="{href}" style="font-size:11px;'
+                    f'font-weight:500">open →</a></div>'
+                    f'<ul style="margin:0;padding-left:16px;font-size:12.5px">{body}</ul></div>')
+        board_cols = [
+            _board_col("🔴 Overdue", overdue if is_mgr else my_overdue,
+                       "/admin/tasks" if is_mgr else "/me/tasks", "None overdue."),
+            _board_col("📌 Due today", due_today if is_mgr else my_today,
+                       "/me/tasks", "Nothing due today."),
+        ]
+        if is_mgr:
+            board_cols.append(_board_col("🔍 Needs review", review_q,
+                                         "/admin/reviews", "Review queue clear."))
+        board_cols.append(_board_col("⛔ Blocked", blocked if is_mgr else
+                                     [t for t in mine if t["status"] == "BLOCKED"],
+                                     "/admin/tasks" if is_mgr else "/me/tasks",
+                                     "Nothing blocked."))
+        board = ('<h2>Today control board</h2>'
+                 '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">'
+                 + "".join(board_cols) + '</div>')
+
+        # ---- Process pipeline (open task counts by stage) ----
+        pcount = {s: 0 for s in _TCC_STAGES}
+        for t in all_tasks:
+            if t["status"] in tk.OPEN_STATUSES:
+                stg = _TCC_STAGE_MAP.get(t.get("task_type"))
+                if stg:
+                    pcount[stg] += 1
+        chips = "".join(
+            '<span style="border:1px solid var(--line);border-radius:9px;'
+            'padding:3px 9px;font-size:11.5px;'
+            + ("background:var(--accent-bg);color:var(--accent);font-weight:700"
+               if pcount[s] else "color:var(--ink-faint)") + '">'
+            f'{s} {pcount[s]}</span>' for s in _TCC_STAGES)
+        pipeline = ('<h2>Process pipeline</h2>'
+                    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">'
+                    + chips + '</div>'
+                    '<p style="font-size:11px;color:var(--ink-faint)">Open tasks by '
+                    'workflow stage. Feed / Rank / Keyword / Ads have no task type yet.</p>')
+
+        # ---- Activity timeline ----
+        try:
+            events = (av.list_events(limit=12) if is_mgr
+                      else av.list_events(user_id=u["user_id"], limit=12))
+        except Exception:  # noqa: BLE001
+            events = []
+        ev_rows = "".join(
+            f'<tr><td style="white-space:nowrap;font-size:11px">{_esc((e.get("timestamp") or "")[:16].replace("T"," "))}</td>'
+            f'<td>{_esc(e.get("user_email"))}</td>'
+            f'<td>{_esc(e.get("event_type"))}</td>'
+            f'<td>{_esc(e.get("action") or e.get("keyword") or "")}</td></tr>'
+            for e in events)
+        timeline = ('<h2>Team activity</h2><table><tr><th>When</th><th>Who</th>'
+                    '<th>Action</th><th>Detail</th></tr>'
+                    + (ev_rows or '<tr><td colspan="4">No recent activity.</td></tr>')
+                    + '</table>') if is_mgr or events else ""
+
+        # ---- module cards (all 10 destinations kept; counts added) ----
+        def _card(href, title, sub):
+            return (f'<a class="toolcard" href="{href}"><b>{title}</b>'
+                    f'<span>{sub}</span></a>')
+        cards = [
+            _card("/me/tasks", "✅ My Tasks",
+                  f"{len(mine)} open · {len(my_overdue)} overdue"),
+            _card("/research-queue", "🧭 Research Queue",
+                  "Ideas from import → review → manual publish"),
+            _card("/imports", "📥 Feed / Import Center",
+                  "Turn a YTuong/HeyEtsy finding into a candidate"),
+            _card("/team/calendar", "📅 Team Calendar",
+                  f"{len(due_today)} due today · {len(overdue)} overdue"),
+        ]
+        if is_mgr:
+            cards.append(_card("/admin/tasks", "📋 Team Tasks",
+                               f"{len(researching)} in flight · {len(blocked)} blocked"))
         if auth.has_perm(u["role"], "tasks.review"):
-            cards.append('<a class="toolcard" href="/admin/reviews"><b>🔍 Review Queue</b>'
-                         '<span>Approve / reject submitted work</span></a>')
+            cards.append(_card("/admin/reviews", "🔍 Review Queue",
+                               f"{len(review_q)} awaiting owner review"))
         if auth.has_perm(u["role"], "logs.view_all"):
-            cards.append('<a class="toolcard" href="/admin/activity"><b>📈 Activity Log</b>'
-                         '<span>Who did what in the dashboard</span></a>')
+            cards.append(_card("/admin/activity", "📈 Activity Log",
+                               f"{active_today} active today"))
         if auth.has_perm(u["role"], "users.manage"):
-            cards.append('<a class="toolcard" href="/admin/users"><b>👥 User Management</b>'
-                         '<span>Create / edit / disable team members</span></a>')
-        from src import toolfeedback as tfb
-        if auth.has_perm(u["role"], "logs.view_all"):
-            n = tfb.counts()["open"]
-            badge = f' — {n} open' if n else ''
-            cards.append('<a class="toolcard" href="/team/feedback"><b>💬 Tool Feedback</b>'
-                         f'<span>Review what the team suggests{badge}</span></a>')
-        else:
-            cards.append('<a class="toolcard" href="/team/feedback"><b>💬 Tool Feedback</b>'
-                         '<span>Suggest an improvement / report a bug</span></a>')
-        cards.append('<a class="toolcard" href="/me"><b>👤 My Profile</b>'
-                     '<span>Your role + recent activity</span></a>')
-        return page("Team", _bar() + '<article class="md"><h1>👥 Team</h1>'
-                    f'<p>Signed in as <b>{_h_esc(u["display_name"])}</b> ({u["role"]}).'
-                    '</p></article><div class="toolgrid">' + "".join(cards) + '</div>')
+            cards.append(_card("/admin/users", "👥 User Management",
+                               f"{len(by_id)} team members"))
+        cards.append(_card("/team/feedback", "💬 Tool Feedback",
+                            (f"{fb_open} open" if fb_open else "Suggest an improvement")))
+        cards.append(_card("/me", "👤 My Profile", "Your role + recent activity"))
+        grid = '<div class="toolgrid">' + "".join(cards) + '</div>'
+
+        return page("Team Command Center", _bar()
+                    + header + '<article class="md">' + kpi_strip + board
+                    + pipeline + timeline + '</article>' + grid)
 
     @app.route("/team/calendar")
     @login_required
@@ -3677,19 +3911,44 @@ def build_app(password, secret):
     @login_required
     def my_tasks():
         from src import tasks as tk
+        from datetime import date as _date, timedelta as _td
         u = current_user()
+        by_id = {x["user_id"]: x for x in auth.list_users()}
         rows = tk.list_tasks(assigned_to=u["user_id"])
-        overdue = [t for t in rows if tk.is_overdue(t)]
-        oid = {t["task_id"] for t in overdue}
-        due_soon = [t for t in rows if tk.is_due_soon(t)
-                    and t["status"] in ("TODO", "IN_PROGRESS", "BLOCKED")]
-        skip = oid | {t["task_id"] for t in due_soon}
+        today = _date.today().isoformat()
+        week_end = (_date.today() + _td(days=7)).isoformat()
+
+        def _dd(t):
+            return (t.get("due_date") or "")[:10]
+        # Each task lands in exactly ONE group (first match wins, in this order).
+        seen = set()
+
+        def take(pred):
+            out = []
+            for t in rows:
+                if t["task_id"] in seen:
+                    continue
+                if pred(t):
+                    out.append(t)
+                    seen.add(t["task_id"])
+            return out
+        # submitted work is grouped as "waiting" first — it's out of the member's
+        # hands, so it must not fall into Today/This-week just because it has a due
+        # date (READY_FOR_REVIEW is itself an OPEN status).
+        awaiting = take(lambda t: t["status"] == "READY_FOR_REVIEW")
+        overdue = take(tk.is_overdue)
+        today_b = take(lambda t: t["status"] in tk.OPEN_STATUSES and _dd(t) == today)
+        week_b = take(lambda t: t["status"] in tk.OPEN_STATUSES
+                      and today < _dd(t) <= week_end)
+        open_rest = take(lambda t: t["status"] in ("TODO", "IN_PROGRESS", "BLOCKED"))
+        done_recent = [t for t in rows if t["status"] in ("DONE", "APPROVED")][:8]
         buckets = [
             ("🔴 Overdue", overdue),
-            ("🟠 Due soon", due_soon),
-            ("⚪ To do", [t for t in rows if t["status"] == "TODO" and t["task_id"] not in skip]),
-            ("🔵 In progress", [t for t in rows if t["status"] in ("IN_PROGRESS", "BLOCKED") and t["task_id"] not in skip]),
-            ("🕓 Awaiting review", [t for t in rows if t["status"] == "READY_FOR_REVIEW" and t["task_id"] not in oid]),
+            ("📌 Today", today_b),
+            ("🗓 This week", week_b),
+            ("🕓 Awaiting review", awaiting),
+            ("⚪ Open (no date)", open_rest),
+            ("✅ Recently done", done_recent),
         ]
 
         def card(t):
@@ -3730,7 +3989,11 @@ def build_app(password, secret):
                     '<div class="tkhead"><b>' + _h_esc(t["title"]) + '</b>'
                     f'<span class="pill pr-{(t["priority"] or "medium").lower()}">{_h_esc(t["priority"])}</span></div>'
                     f'<div class="note">{_h_esc(t.get("task_type") or "")}'
+                    + (f' · stage {_h_esc(_TCC_STAGE_MAP.get(t.get("task_type")))}'
+                       if _TCC_STAGE_MAP.get(t.get("task_type")) else "")
                     + (f' · {_h_esc(t.get("related_keyword"))}' if t.get("related_keyword") else "")
+                    + (f' · from {_h_esc(by_id.get(t.get("assigned_by_user_id"), {}).get("display_name"))}'
+                       if by_id.get(t.get("assigned_by_user_id")) else "")
                     + duehtml + '</div>'
                     + (f'<div class="tkguide">🎯 {_h_esc(guide)}</div>' if guide else "")
                     + rev + report + '</div>')
@@ -3945,12 +4208,23 @@ def build_app(password, secret):
     @require_perm("tasks.review")
     def reviews():
         from src import tasks as tk
-        rows = tk.review_queue()
-        items = ""
         by_id = {u["user_id"]: u for u in auth.list_users()}
+
+        def _urg(t):
+            # overdue first, then priority, then soonest due
+            return (0 if tk.is_overdue(t) else 1,
+                    {"URGENT": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}.get(t.get("priority"), 2),
+                    (t.get("due_date") or "9999-99-99"))
+        rows = sorted(tk.review_queue(), key=_urg)
+        items = ""
         from urllib.parse import quote_plus as _qp_r
         for t in rows:
             who = by_id.get(t["assigned_to_user_id"], {}).get("display_name", "—")
+            prio = (t.get("priority") or "medium").lower()
+            due = (t.get("due_date") or "")[:10]
+            meta = (f'<span class="pill pr-{prio}">{_h_esc(t.get("priority") or "MEDIUM")}</span>'
+                    + (f' · <span class="due{" od" if tk.is_overdue(t) else ""}">due '
+                       f'{_h_esc(due)}</span>' if due else ""))
             rep = (t.get("work_report") or "").strip()
             report_html = (f'<div class="tkreported"><b>📝 {_h_esc(who)} reported:</b> '
                            f'{_h_esc(rep)}</div>' if rep else
@@ -3965,10 +4239,10 @@ def build_app(password, secret):
             b_ok, b_fix, b_no = (("✅ List", "🔧 Fix", "⛔ Decline")
                                  if is_listing
                                  else ("Approve", "Needs fix", "Reject"))
-            items += ('<div class="saveditem"><div class="sihead">'
+            items += (f'<div class="saveditem pr-{prio}"><div class="sihead">'
                       f'<b>{_h_esc(t["title"])}</b> '
                       f'<span class="pill">{_h_esc(t["task_type"])}</span></div>'
-                      f'<div class="note">{_h_esc(who)} · {kw_html}</div>'
+                      f'<div class="note">{_h_esc(who)} · {kw_html} · {meta}</div>'
                       + report_html
                       + '<form method="post" action="/admin/reviews/act" class="toolbar">'
                       f'<input type="hidden" name="task_id" value="{t["task_id"]}">'
@@ -4080,20 +4354,38 @@ def build_app(password, secret):
     def admin_activity():
         f_user = request.args.get("user") or None
         f_type = request.args.get("type") or None
+        f_kw = request.args.get("kw") or ""
         rows = activity.list_events(
             user_id=int(f_user) if (f_user or "").isdigit() else None,
-            event_type=f_type, keyword=request.args.get("kw") or None, limit=300)
+            event_type=f_type, keyword=f_kw or None, limit=300)
+        # filter form (the params already worked; this exposes them in the UI)
+        uopts = '<option value="">All users</option>' + "".join(
+            f'<option value="{x["user_id"]}"'
+            + (" selected" if str(x["user_id"]) == (f_user or "") else "")
+            + f'>{_h_esc(x["display_name"])}</option>' for x in auth.list_users())
+        topts = '<option value="">All events</option>' + "".join(
+            f'<option{" selected" if et == (f_type or "") else ""}>{et}</option>'
+            for et in sorted(activity.EVENT_TYPES))
+        filt = ('<form method="get" action="/admin/activity" class="toolbar">'
+                f'<select name="user">{uopts}</select>'
+                f'<select name="type">{topts}</select>'
+                f'<input name="kw" placeholder="keyword contains…" value="{_h_esc(f_kw)}">'
+                '<button class="primary" type="submit">Filter</button> '
+                '<a class="cbtn" href="/admin/activity">Clear</a> '
+                '<a class="cbtn" href="/admin/activity/export">⬇ Export CSV</a></form>')
         body = "".join(
             '<tr><td>' + _h_esc(r["timestamp"]) + '</td><td>' + _h_esc(r["user_email"])
             + '</td><td>' + _h_esc(r["user_role"]) + '</td><td>' + _h_esc(r["event_type"])
             + '</td><td>' + _h_esc(r.get("keyword") or r.get("module") or "")
             + '</td><td>' + ("✓" if r["success"] else "✗") + '</td></tr>' for r in rows)
         return page("Activity Log", _bar() + '<article class="md"><h1>📈 Activity Log</h1>'
-                    '<p><a class="cbtn" href="/admin/activity/export">Export CSV</a> · '
-                    'showing the latest 300 events (dashboard actions only — no '
-                    'keystrokes, screens, or private data).</p>'
+                    + filt +
+                    '<p class="note">Latest 300 matching events (dashboard actions '
+                    'only — no keystrokes, screens, or private data).</p>'
                     '<table><tr><th>When</th><th>User</th><th>Role</th><th>Event</th>'
-                    '<th>Detail</th><th>OK</th></tr>' + body + '</table></article>')
+                    '<th>Detail</th><th>OK</th></tr>'
+                    + (body or '<tr><td colspan="6">No events match.</td></tr>')
+                    + '</table></article>')
 
     @app.route("/admin/activity/export")
     @require_perm("logs.view_all")
