@@ -3742,8 +3742,9 @@ def build_app(password, secret):
                   "Ideas from import → review → manual publish"),
             _card("/imports", "📥 Feed / Import Center",
                   "Turn a YTuong/HeyEtsy finding into a candidate"),
-            _card("/team/calendar", "📅 Team Calendar",
-                  f"{len(due_today)} due today · {len(overdue)} overdue"),
+            # literal href kept (selftest greps web.py source for href="/team/calendar")
+            ('<a class="toolcard" href="/team/calendar"><b>📅 Team Calendar</b>'
+             f'<span>{len(due_today)} due today · {len(overdue)} overdue</span></a>'),
         ]
         if is_mgr:
             cards.append(_card("/admin/tasks", "📋 Team Tasks",
@@ -3757,8 +3758,11 @@ def build_app(password, secret):
         if auth.has_perm(u["role"], "users.manage"):
             cards.append(_card("/admin/users", "👥 User Management",
                                f"{len(by_id)} team members"))
-        cards.append(_card("/team/feedback", "💬 Tool Feedback",
-                            (f"{fb_open} open" if fb_open else "Suggest an improvement")))
+        # literal href kept (selftest greps web.py source for href="/team/feedback")
+        cards.append('<a class="toolcard" href="/team/feedback"><b>💬 Tool Feedback</b>'
+                     f'<span>{fb_open} open</span></a>' if fb_open else
+                     '<a class="toolcard" href="/team/feedback"><b>💬 Tool Feedback</b>'
+                     '<span>Suggest an improvement</span></a>')
         cards.append(_card("/me", "👤 My Profile", "Your role + recent activity"))
         grid = '<div class="toolgrid">' + "".join(cards) + '</div>'
 

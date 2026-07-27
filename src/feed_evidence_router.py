@@ -597,7 +597,7 @@ def _title_head_keyword(title):
     """The first clause of an Etsy title = its strongest phrase."""
     if not title:
         return None
-    head = re.split(r"[:,\-|]", title, 1)[0].strip().lower()
+    head = re.split(r"[:,\-|]", title, maxsplit=1)[0].strip().lower()
     head = re.sub(r"\s+", " ", head)
     return head or None
 
