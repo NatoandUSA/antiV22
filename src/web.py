@@ -1793,10 +1793,11 @@ def build_app(password, secret):
         _check_csrf()
         from src import design_skill_bridge as dsb
         raw = (request.form.get("raw") or "")[:20000]
+        keyword = (request.form.get("keyword") or "")[:120]
         _u = current_user() or {}
         operator = _u.get("display_name") or _u.get("email") or ""
         try:
-            run_id, v = dsb.import_pasted(raw, operator=operator)
+            run_id, v = dsb.import_pasted(raw, operator=operator, keyword=keyword)
         except (SystemExit, Exception) as exc:  # noqa: BLE001
             return _tool_error("Design Skill Bridge", exc)
         if not run_id:
@@ -1860,6 +1861,16 @@ def build_app(password, secret):
                                ValueError("Chỉ Manager/Owner mới được xoá."))
         dsb.delete_run(run_id)
         return redirect("/design-skill-bridge")
+
+    @app.route("/design-skill-bridge/set-keyword", methods=["POST"])
+    @login_required
+    def design_skill_bridge_set_keyword():
+        _check_csrf()
+        from src import design_skill_bridge as dsb
+        run_id = (request.form.get("run_id") or "").strip()[:60]
+        keyword = (request.form.get("keyword") or "")[:120]
+        dsb.set_keyword(run_id, keyword)
+        return redirect(f"/design-skill-bridge/run/{run_id}")
 
 
     @app.route("/training")

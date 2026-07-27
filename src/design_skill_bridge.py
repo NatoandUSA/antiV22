@@ -390,10 +390,11 @@ def validate_result(raw_text, inp):
     # from whichever is present; complain about none of it.
     sc = g(obj, "selected_concept") or {}
     seeds = g(obj, "listing_seeds") or {}
-    kw = g(obj, "main_keyword") or g(seeds, "main_keyword")
+    kw = (g(obj, "main_keyword") or g(seeds, "main_keyword")
+          or (inp or {}).get("keyword"))
     buyer = g(obj, "buyer") or g(sc, "buyer") or g(seeds, "buyer")
     if not kw:
-        warnings.append("Thiếu main_keyword — nên bổ sung trước khi sang Launch Kit.")
+        warnings.append("Thiếu main_keyword — nhập ô 'Main keyword' trước khi sang Launch Kit.")
     if not buyer:
         warnings.append("Thiếu buyer — nên bổ sung trước khi sang Launch Kit.")
 
@@ -428,19 +429,20 @@ def import_result(run_id, raw_text):
     return v
 
 
-def import_pasted(raw, operator=""):
+def import_pasted(raw, operator="", keyword=""):
     """Import a pasted/POSTed RESULT_JSON with no pre-created run: read the
-    bridge_run_id out of the JSON, or mint one. `operator` is the logged-in staff
-    who pasted it — recorded so the table's 'Launched by' shows who ran it.
-    Returns (run_id, validation)."""
+    bridge_run_id out of the JSON, or mint one. `operator` = the logged-in staff
+    who pasted it (shown under 'Launched by'). `keyword` = the owner-supplied main
+    keyword (the GPT Skill returns a concept, not a keyword). Returns (run_id, v)."""
     obj = extract_json(raw)
     if not isinstance(obj, dict):
         return None, {"ok": False, "errors": ["No RESULT_JSON found in the text."],
                       "warnings": [], "result": None, "state": "RESULT_IMPORTED"}
     run_id = str(obj.get("bridge_run_id") or new_run_id())[:60]
     op = _clean(operator, 60)
-    if op:
-        # stub input so 'Launched by' is populated for paste-initiated runs
+    kw = _clean(keyword, 120)
+    if op or kw:
+        # stub input so 'Launched by' + main keyword persist for paste-initiated runs
         d = _run_dir(run_id)
         stub = {}
         p = d / "input.json"
@@ -451,9 +453,25 @@ def import_pasted(raw, operator=""):
                 stub = {}
         stub.setdefault("bridge_run_id", run_id)
         stub.setdefault("created_at", time.strftime("%Y-%m-%d %H:%M"))
-        stub["launched_by"] = op
+        if op:
+            stub["launched_by"] = op
+        if kw:
+            stub["keyword"] = kw
         _write(run_id, "input.json", json.dumps(stub, ensure_ascii=False, indent=2))
     return run_id, import_result(run_id, raw)
+
+
+def set_keyword(run_id, keyword):
+    """Set/replace the main keyword on an existing run (owner fixes it on the
+    result page). Persists into input.json so the table + Launch Kit see it."""
+    run = _load_run(run_id)
+    if not run:
+        return {"ok": False, "error": "Run not found."}
+    inp = run.get("input") or {}
+    inp["keyword"] = _clean(keyword, 120)
+    inp.setdefault("bridge_run_id", run_id)
+    _write(run_id, "input.json", json.dumps(inp, ensure_ascii=False, indent=2))
+    return {"ok": True}
 
 
 # ---- 3) approve + handoff ---------------------------------------------------
@@ -495,10 +513,17 @@ def listing_seeds(run_id):
     res = run["result"] or {}
     seeds = res.get("listing_seeds")
     if isinstance(seeds, dict) and seeds:
-        return seeds
-    # flat format: return the scalar fields as the seeds packet
-    return {k: v for k, v in res.items()
-            if not isinstance(v, (list, dict)) and k not in ("schema_version",)}
+        out = dict(seeds)
+    else:
+        # flat format: return the scalar fields as the seeds packet
+        out = {k: v for k, v in res.items()
+               if not isinstance(v, (list, dict)) and k not in ("schema_version",)}
+    # the GPT concept has no keyword — fill it from the owner-supplied input
+    if not out.get("main_keyword"):
+        kw = (run.get("input") or {}).get("keyword")
+        if kw:
+            out["main_keyword"] = kw
+    return out
 
 
 def delete_run(run_id):
@@ -747,11 +772,17 @@ def form_html(csrf, prefill_q="", runs=None):
         'return false;" title="Copy đoạn hướng dẫn output để dán vào ChatGPT skill '
         'editor khi cần cập nhật skill">📋 Copy skill instructions</button>'
         f'<textarea id="dsb-contract" style="display:none">{contract}</textarea></p>'
-        # 1) paste-in box (the ONLY entry)
+        # 1) paste-in box (the ONLY entry). Main keyword is a 22etsy-side field —
+        # the GPT Skill returns a concept, NOT a keyword — so the owner sets it here.
         '<details class="archive" open><summary>📥 Dán RESULT_JSON từ GPT vào đây'
         '</summary>'
         '<form method="post" action="/design-skill-bridge/import">'
         f'<input type="hidden" name="csrf" value="{csrf}">'
+        '<p><label><b>Main keyword</b> (buyer search term — dùng cho Launch Kit)<br>'
+        '<input name="keyword" placeholder="vd: bridal shower gift" '
+        'style="width:100%;padding:7px;border:1px solid #ddd;border-radius:8px">'
+        '</label></p>'
+        '<label><b>RESULT_JSON</b> từ GPT</label>'
         '<textarea name="raw" rows="6" style="width:100%;font-family:ui-monospace,'
         'monospace;font-size:12px" placeholder="Dán nguyên khối RESULT_JSON GPT trả '
         'về. Không tự động chấm điểm — chỉ lưu để owner duyệt."></textarea>'
@@ -817,10 +848,23 @@ def result_html(v, run_id, csrf):
             f'<tr><td>Route</td><td>{_esc(sc.get("production_route"))}</td></tr>'
             f'<tr><td>IP</td><td>{_esc(sc.get("ip_status"))}</td></tr></table>')
     if v["ok"]:
+        # Main keyword — owner-supplied (GPT returns a concept, not a keyword).
+        cur_kw = _esc(((_load_run(run_id) or {}).get("input") or {}).get("keyword")
+                      or res.get("main_keyword") or "")
+        parts.append(
+            '<h3>Main keyword (cho Launch Kit)</h3>'
+            '<form method="post" action="/design-skill-bridge/set-keyword" '
+            'style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'
+            f'<input type="hidden" name="csrf" value="{csrf}">'
+            f'<input type="hidden" name="run_id" value="{_esc(run_id)}">'
+            f'<input name="keyword" value="{cur_kw}" placeholder="vd: bridal shower gift" '
+            'style="flex:1;min-width:220px;padding:7px;border:1px solid #ddd;border-radius:8px">'
+            '<button class="tkbtn">💾 Lưu keyword</button></form>')
         # owner decision = 2 buttons (Approve / Reject), plus Delete housekeeping.
         # No direct "Send to Launch Kit" here — that only appears AFTER approval.
         parts.append(
-            _post_btn("✔ Owner approve", "/design-skill-bridge/approve", run_id, csrf, "tkbtn primary")
+            '<h3>Quyết định</h3>'
+            + _post_btn("✔ Owner approve", "/design-skill-bridge/approve", run_id, csrf, "tkbtn primary")
             + _post_btn("✖ Reject", "/design-skill-bridge/reject", run_id, csrf)
             + _del_btn(_esc(run_id), csrf))
     else:
