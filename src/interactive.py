@@ -1485,10 +1485,22 @@ def draft_listing(kw):
 
 
 def _mode_for(kw, mode=None):
-    """Resolve pod/embroidery for a keyword (explicit mode wins)."""
+    """Resolve pod/embroidery for a keyword.
+
+    A craft word IN the keyword is authoritative over a mismatched UI toggle:
+    you cannot sell an "embroidery raccoon sweatshirt" with printed
+    ("no vinyl/transfers") copy, nor a "dtf tee" with stitch copy. So an explicit
+    craft token in the keyword wins; otherwise the passed mode wins; otherwise we
+    auto-detect from the keyword."""
+    import re as _re
+    k = (kw or "").lower()
+    if _re.search(r"\bembroider", k):          # embroidery/embroidered/embroider
+        return "embroidery"
+    if _re.search(r"\b(dtg|dtf|sublimat\w*|screen[\s-]?print\w*|vinyl)\b", k):
+        return "pod"
     if mode in ("pod", "embroidery"):
         return mode
-    return "embroidery" if matches_mode((kw or "").lower(), "embroidery") else "pod"
+    return "embroidery" if matches_mode(k, "embroidery") else "pod"
 
 
 def tags_with_sources(kw, limit=13, mode=None):

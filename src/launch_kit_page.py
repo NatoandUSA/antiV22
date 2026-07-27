@@ -95,26 +95,29 @@ Questions? Message us — we answer within 24 hours.
 details and sizing numbers, then DELETE this line]"""
 
 
-def _personalization(kw):
-    return """PERSONALIZATION — what to enter (copy into Etsy's personalization field settings):
+def _personalization(kw, mode="embroidery"):
+    made = "stitched" if mode == "embroidery" else "printed"
+    cant = "stitch" if mode == "embroidery" else "print"
+    return f"""PERSONALIZATION — what to enter (copy into Etsy's personalization field settings):
 
 Instructions shown to the buyer:
-"Type the name exactly as you want it stitched (max 12 characters, letters and spaces only). Example: Ms. Johnson — Double-check spelling: we stitch exactly what you type!"
+"Type the name exactly as you want it {made} (max 12 characters, letters and spaces only). Example: Ms. Johnson — Double-check spelling: we {cant} exactly what you type!"
 
 • Character limit to set in Etsy: 12
 • What we accept: letters, spaces, periods, hyphens
-• What we can't stitch: emojis, special symbols, extra-long text
+• What we can't {cant}: emojis, special symbols, extra-long text
 • Buyer example 1: Ms. Johnson
 • Buyer example 2: Coach Emma
 • If the buyer leaves it blank: we message once, then ship the non-personalized version after 48h."""
 
 
-def _how_to_order(kw):
+def _how_to_order(kw, mode="embroidery"):
     t = kw.strip().title()
+    make = "stitch" if mode == "embroidery" else "print"
     return f"""HOW TO ORDER YOUR {t.upper()} (buyer guide — paste in FAQ or first listing photo caption):
 
 1. Pick your SIZE (S–3XL — size chart is in the photos) and garment COLOR.
-2. In the Personalization box, type the name EXACTLY as you want it — max 12 characters. We stitch what you type!
+2. In the Personalization box, type the name EXACTLY as you want it — max 12 characters. We {make} what you type!
 3. (Optional) Want to see it first? Add a note "preview please" and we'll message a mockup for approval before we make it.
 4. Add to cart and check out. You'll get a tracking number as soon as it ships.
 5. Check your Etsy messages after ordering — if anything about the name looks off, we'll contact you there."""
@@ -122,6 +125,7 @@ def _how_to_order(kw):
 
 def _policies(kw, mode):
     made = "embroidery" if mode == "embroidery" else "print"
+    verb = "stitch" if mode == "embroidery" else "print"
     return f"""NOTES & POLICIES (paste into your listing's bottom section / shop policies):
 
 PRODUCTION TIME
@@ -139,7 +143,7 @@ CARE
 
 RETURNS ON PERSONALIZED ITEMS
 • Personalized orders are made just for you and can't be resold, so returns/exchanges are only for damaged or defective items — send us a photo within 48h of delivery and we'll remake or refund.
-• Wrong name typed by the buyer: we stitch what was entered, but message us — we'll offer a discounted remake."""
+• Wrong name typed by the buyer: we {verb} what was entered, but message us — we'll offer a discounted remake."""
 
 
 _TAG_SRC = {  # label + chip class per tag source (V35.4: show WHY each tag)
@@ -491,8 +495,8 @@ def build(kw, mode=None, sent=False):
     price_note = ("Price: [SET FROM YOUR REAL COST — target ≥35–40% net "
                   "margin after Etsy fees]")
     desc = _description(kw, mode, price_note)
-    pers = _personalization(kw)
-    order = _how_to_order(kw)
+    pers = _personalization(kw, mode)
+    order = _how_to_order(kw, mode)
     policy = _policies(kw, mode)
     tags_csv = ", ".join(tags[:13])
     tag_note = ("" if len(tags) >= 13 else

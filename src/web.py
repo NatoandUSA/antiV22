@@ -689,8 +689,8 @@ def build_app(password, secret):
             # SECTION 2 — EXECUTION HELPERS: turn one pick into a listing.
             '<h2 class="grouph">🛠 Execution Helpers — biến 1 pick thành listing</h2>'
             '<div class="toolgrid">'
-            '<a class="toolcard" href="/design-analyzer"><b>🎨 Design Analyzer</b>'
-            '<span>Ảnh → vì sao thắng/yếu · Font/Quote/Layout/Color · redesign GỐC + SEO</span></a>'
+            '<a class="toolcard" href="/design-skill-bridge"><b>🎨 Design Skill Bridge</b>'
+            '<span>Ảnh + evidence → chạy ChatGPT Skill (V8.1) → import RESULT_JSON → owner duyệt → listing_seeds</span></a>'
             f'<a class="toolcard" href="/launch-kit?mode={active}"><b>🚀 Launch Kit</b>'
             '<span>One winner → verdict, edge, listing, photos &amp; ads on one page</span></a>'
             f'<a class="toolcard" href="/photo-brief?mode={active}"><b>📸 Photo prompt set</b>'
@@ -1749,46 +1749,81 @@ def build_app(password, secret):
         from urllib.parse import quote_plus as _qp2
         return redirect(f"/launch-kit?q={_qp2(q)}&mode={mode}&sent=1")
 
-    @app.route("/design-analyzer", methods=["GET", "POST"])
+    @app.route("/design-skill-bridge", methods=["GET"])
+    @app.route("/design-analyzer", methods=["GET"])   # V37 legacy alias
     @login_required
-    def design_analyzer():
-        # V35.7: image -> Gemini vision analysis (trademark read + safe original
-        # redesign prompts + Etsy SEO pack), layered with our own trademark.check
-        # + product_fit.producibility gates. Draft-only; 'recreate' is analysis-only.
-        from src import design_analyzer as da
-        if request.method == "POST":
-            _check_csrf()
-            f = request.files.get("image")
-            img = f.read() if f else b""
-            title = _no_tags((request.form.get("title") or "").strip())[:300]
-            link = (request.form.get("link") or "").strip()[:500]
-            mode = "embroidery" if request.form.get("emb") == "1" else None
-            try:
-                res = da.analyze(img, title=title, link=link, mode=mode)
-            except (SystemExit, Exception) as exc:  # noqa: BLE001
-                return _tool_error("Design Analyzer", exc)
-            return page("Design Analyzer", _bar() + da.result_html(res, _csrf()))
+    def design_skill_bridge():
+        # V37: manual ChatGPT bridge for Etsy POD Redesign V8.1. Replaces the
+        # retired Gemini Design Analyzer. No model API on this path.
+        from src import design_skill_bridge as dsb
         q, _m = _kw_mode()
-        return page("Design Analyzer", _bar() + da.form_html(_csrf(), prefill_q=q or ""))
-
-
-    @app.route("/design-analyzer/redesign", methods=["POST"])
-    @login_required
-    def design_analyzer_redesign():
-        # V35.9: generate the SAFE redesign as an image (Nano Banana), gated on the
-        # IP verdict. HIGH -> refused; MEDIUM -> needs the 'verified' tick.
-        _check_csrf()
-        from src import design_analyzer as da
-        prompt = (request.form.get("prompt") or "").strip()[:4000]
-        ip_level = (request.form.get("ip_level") or "LOW").strip()
-        confirmed = request.form.get("confirmed") == "1"
         try:
-            res = da.generate_redesign_gated(prompt, ip_level=ip_level,
-                                             confirmed=confirmed)
+            runs = dsb.list_runs()
+        except Exception:  # noqa: BLE001
+            runs = []
+        return page("Design Skill Bridge",
+                    _bar() + dsb.form_html(_csrf(), prefill_q=q or "", runs=runs))
+
+    @app.route("/design-skill-bridge/run/<run_id>")
+    @login_required
+    def design_skill_bridge_run(run_id):
+        from src import design_skill_bridge as dsb
+        run = dsb.get_run((run_id or "").strip()[:60])
+        return page("Design Skill Bridge", _bar() + dsb.run_view_html(run, _csrf()))
+
+    @app.route("/design-skill-bridge/pack", methods=["POST"])
+    @login_required
+    def design_skill_bridge_pack():
+        _check_csrf()
+        from src import design_skill_bridge as dsb
+        try:
+            inp = dsb.create_pack(request.form)
         except (SystemExit, Exception) as exc:  # noqa: BLE001
-            return _tool_error("Redesign", exc)
-        return page("Design Analyzer - Redesign",
-                    _bar() + da.redesign_result_html(res, prompt))
+            return _tool_error("Design Skill Bridge", exc)
+        return page("Design Skill Bridge", _bar() + dsb.pack_html(inp, _csrf()))
+
+    @app.route("/design-skill-bridge/import", methods=["POST"])
+    @login_required
+    def design_skill_bridge_import():
+        _check_csrf()
+        from src import design_skill_bridge as dsb
+        run_id = (request.form.get("run_id") or "").strip()[:60]
+        raw = (request.form.get("raw") or "")[:20000]
+        try:
+            v = dsb.import_result(run_id, raw)
+        except (SystemExit, Exception) as exc:  # noqa: BLE001
+            return _tool_error("Design Skill Bridge", exc)
+        return page("Design Skill Bridge", _bar() + dsb.result_html(v, run_id, _csrf()))
+
+    @app.route("/design-skill-bridge/approve", methods=["POST"])
+    @login_required
+    def design_skill_bridge_approve():
+        _check_csrf()
+        from src import design_skill_bridge as dsb
+        run_id = (request.form.get("run_id") or "").strip()[:60]
+        _u = current_user() or {}
+        # owner/manager only — reuse the review permission as the approval gate
+        if not auth.has_perm(_u.get("role", ""), "tasks.review"):
+            return _tool_error("Design Skill Bridge",
+                               ValueError("Chỉ Manager/Owner mới được duyệt."))
+        res = dsb.approve(run_id, owner=_u.get("display_name") or _u.get("email") or "")
+        if not res.get("ok"):
+            return _tool_error("Design Skill Bridge", ValueError(res.get("error", "")))
+        seeds = dsb.listing_seeds(run_id)
+        return page("Design Skill Bridge",
+                    _bar() + dsb.approved_html(run_id, seeds, _csrf()))
+
+    @app.route("/design-skill-bridge/send-to-launchkit", methods=["POST"])
+    @login_required
+    def design_skill_bridge_send():
+        _check_csrf()
+        from src import design_skill_bridge as dsb
+        run_id = (request.form.get("run_id") or "").strip()[:60]
+        out = dsb.send_to_launchkit(run_id)
+        if not out.get("ok"):
+            return _tool_error("Design Skill Bridge", ValueError(out.get("error", "")))
+        from urllib.parse import quote_plus as _qpl
+        return redirect(f"/launch-kit?q={_qpl(out.get('keyword', ''))}")
 
 
     @app.route("/training")
@@ -2276,7 +2311,8 @@ def build_app(password, secret):
     ALLOWED_IMPORT_ORIGINS = {"https://trends.ytuong.ai", "https://ytuong.me",
                               "https://heyetsy.com", "https://www.etsy.com",
                               "https://www.pinterest.com", "https://www.amazon.com",
-                              "https://www.alibaba.com"}
+                              "https://www.alibaba.com",
+                              "https://chatgpt.com", "https://chat.openai.com"}
     # regional subdomains (vn.pinterest.com, m.alibaba.com...) share the capture UX
     ALLOWED_IMPORT_SUFFIXES = (".pinterest.com", ".alibaba.com", ".amazon.com")
 
@@ -2377,6 +2413,44 @@ def build_app(password, secret):
         except Exception:  # noqa: BLE001
             pass
         return _cors(_json_resp({"ok": True, **summary}), origin)
+
+    @app.route("/api/design-result", methods=["POST", "OPTIONS"])
+    def api_design_result():
+        # V37: the 22Etsy Exporter posts a pasted/extracted RESULT_JSON straight
+        # from the ChatGPT skill. We read the bridge_run_id OUT of the JSON and
+        # route to the Design Skill Bridge importer (validate + CANDIDATE). Owner
+        # approval still happens inside 22etsy — this only saves the copy-paste.
+        origin = request.headers.get("Origin", "")
+        if request.method == "OPTIONS":
+            return _cors(Response(status=204), origin)
+        token = os.getenv("YTX_IMPORT_TOKEN", "").strip()
+        if not token:
+            return _cors(_json_resp(
+                {"ok": False, "error": "import disabled: set YTX_IMPORT_TOKEN"}, 503), origin)
+        if not hmac.compare_digest(request.headers.get("X-Import-Token", ""), token):
+            return _cors(_json_resp(
+                {"ok": False, "error": "bad or missing X-Import-Token"}, 401), origin)
+        body = request.get_json(force=True, silent=True) or {}
+        raw = body.get("raw") or body.get("result") or ""
+        if isinstance(raw, dict):
+            import json as _j
+            raw = _j.dumps(raw)
+        from src import design_skill_bridge as dsb
+        obj = dsb.extract_json(raw)
+        if not isinstance(obj, dict):
+            return _cors(_json_resp(
+                {"ok": False, "error": "no RESULT_JSON found in payload"}, 400), origin)
+        # 22etsy-initiated runs carry a bridge_run_id; extension-initiated ones
+        # (Etsy page → ChatGPT → send back) do not — mint one so both import.
+        run_id = obj.get("bridge_run_id") or dsb.new_run_id()
+        try:
+            v = dsb.import_result(str(run_id)[:60], raw)
+        except Exception:  # noqa: BLE001
+            app.logger.exception("design-result import failed")
+            return _cors(_json_resp({"ok": False, "error": "import failed"}, 500), origin)
+        return _cors(_json_resp(
+            {"ok": v["ok"], "run_id": run_id, "errors": v["errors"],
+             "warnings": v["warnings"], "state": v["state"]}), origin)
 
     @app.route("/import-file", methods=["POST"])
     @login_required
@@ -3326,7 +3400,7 @@ def build_app(password, secret):
         cur = request.path
         links = [("/", "🏠 Home"), ("/build-queue", "🎯 Build"),
                  ("/research-queue", "🧭 Research"),
-                 ("/design-analyzer", "🎨 Design"), ("/launch-kit", "🚀 Launch Kit")]
+                 ("/design-skill-bridge", "🎨 Design"), ("/launch-kit", "🚀 Launch Kit")]
         links += ([("/admin/reviews", "✅ Review"), ("/team", "👥 Team")]
                   if is_mgr else [("/me/tasks", "✅ My work")])
         links += [("/training", "📚 Guide")]

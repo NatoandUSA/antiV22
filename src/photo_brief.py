@@ -19,8 +19,10 @@ EMB_RULES = ("bold clean shapes, flat solid colors, max 6 thread colors, no "
 POD_RULES = ("crisp high-contrast print-ready art, sharp edges, no ultra-fine "
              "detail, clean vector-like shapes")
 
-AI_NOTE = ("AI version for comparison/mockup only — the PUBLISHED image must be "
-           "the real photo (policy + trust).")
+REAL_NOTE = ("📸 REAL-PHOTO slot — generate the prompt above as an AI REFERENCE "
+             "to plan the shot and check framing/composition, keep it as a "
+             "reference, and a human reviews it. The PUBLISHED image must be the "
+             "real photo of the actual product / sew-out — not the AI render.")
 
 
 def _rules(mode):
@@ -117,7 +119,10 @@ def build(keyword, product="Embroidered Sweatshirt", mode="embroidery", pers=Tru
         d = {"n": i, "slot": slot, "purpose": purpose,
              "real_photo": real, "prompt": prompt}
         if real:
-            d["ai_note"] = AI_NOTE
+            # every slot carries a full, listing-matched prompt; on real-photo
+            # slots the prompt is a SHOT BRIEF the staff shoot + review, not an
+            # "AI for review only" caveat.
+            d["ai_note"] = REAL_NOTE
         out.append(d)
     return out
 
@@ -153,8 +158,9 @@ def runner(keyword, product="Embroidered Sweatshirt", mode="embroidery",
          "",
          "THE 12 SLOTS:"]
     for s in slots:
-        tag = (" [AI draft for comparison only - published image must be a real "
-               "photo]" if s.get("real_photo") else "")
+        tag = (" [REAL-PHOTO slot — the AI render is a REFERENCE to plan the "
+               "shot; a human reviews it and the PUBLISHED image must be a real "
+               "photo of the actual product]" if s.get("real_photo") else "")
         L.append(f"{s['n']}. {s['slot']}{tag}: {s['prompt']}")
     L += ["", "Begin with image 1 now."]
     return "\n".join(L)

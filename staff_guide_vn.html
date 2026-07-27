@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>GEA — Hướng dẫn dùng Toolkit V36 (bản đầy đủ + có gì mới)</title>
+<title>GEA — Hướng dẫn dùng Toolkit V37 (bản đầy đủ + có gì mới)</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 :root{--orange:#F1641E;--orange-dark:#D24C0C;--gold:#F0A429;--ink:#2B2926;--muted:#7A736B;--bg:#FBF9F6;--surface:#fff;--border:#EBE4DA;--success:#1F8A4C;--blue:#3B82F6;--purple:#8B5CF6;--red:#B91C1C;--amber:#E5850B}
@@ -73,8 +73,8 @@ ol.actions li:before{counter-increment:a;content:counter(a);position:absolute;le
 <header class="head">
   <div class="logo">GEA</div>
   <div>
-    <h1>Hướng dẫn dùng Toolkit — bản V36 (đầy đủ + có gì mới)</h1>
-    <div class="sub">Bắt đầu ở 🎯 Build Queue mỗi ngày · quy trình đầy đủ ① đến ⑨ + 🎨 Design Analyzer · bấm từng bước ở thanh trên · dùng để dạy nhân viên</div>
+    <h1>Hướng dẫn dùng Toolkit — bản V37 (đầy đủ + có gì mới)</h1>
+    <div class="sub">Bắt đầu ở 🎯 Build Queue mỗi ngày · quy trình đầy đủ ① đến ⑨ + 🎨 Design Skill Bridge · bấm từng bước ở thanh trên · dùng để dạy nhân viên</div>
   </div>
 </header>
 
@@ -85,7 +85,7 @@ ol.actions li:before{counter-increment:a;content:counter(a);position:absolute;le
 <div id="panels"></div>
 
 <div class="foot">
-  Global Etsy Academy • Toolkit V36 • Số liệu thị trường phải verify LIVE trên tool — không bịa "GO".<br>
+  Global Etsy Academy • Toolkit V37 • Số liệu thị trường phải verify LIVE trên tool — không bịa "GO".<br>
   🔒 Không tự đăng · Ảnh hero/macro/số đo phải THẬT · Thiết kế GỐC · Kiểm nhãn hiệu · Đo lợi nhuận thật.<br>
   Tài liệu nội bộ Team 4 — không chia sẻ ra ngoài.
 </div>
@@ -94,7 +94,7 @@ ol.actions li:before{counter-increment:a;content:counter(a);position:absolute;le
 <script>
 const STEPS=[
 {
- n:'🆕',key:'MỚI',isnew:true,name:'Có gì mới (→ V36) + Luật vàng',
+ n:'🆕',key:'MỚI',isnew:true,name:'Có gì mới (→ V37) + Luật vàng',
  where:'Đọc trước khi bắt đầu',
  goal:'Nắm nhanh những thay đổi quan trọng của tool và các luật an toàn KHÔNG BAO GIỜ được phá.',
  actions:[
@@ -107,13 +107,13 @@ const STEPS=[
   '<b>Từ đa nghĩa trùng brand nay chỉ CẢNH BÁO, không chặn cứng.</b> "frozen / converse / mario / cars / jordan..." nay gắn cờ <span class="pill p-verify">CAUTION</span> = "phải tự tra nhãn hiệu trước khi làm". Hành động cuối bị hạ xuống <span class="pill p-confirm">CONFIRM FIRST</span>.',
   '<b>Brand viết liền nay bị bắt đúng:</b> superbowl, starwars, babyyoda → vẫn <span class="pill p-blocked">BLOCKED</span>.',
   '<b>Nhận thêm nhiều loại sản phẩm:</b> jacket, leggings, joggers, dress, water bottle, koozie, wallet... (trước bị bỏ sót).',
-  '<b>CÔNG CỤ MỚI 🎨 Design Analyzer:</b> thả 1 ảnh thiết kế → đọc rủi ro nhãn hiệu + prompt thiết kế GỐC an toàn (thường + thêu) + gói SEO Etsy (title/13 tag/mô tả). Xem thẻ 🎨.'
+  '<b>CÔNG CỤ MỚI 🎨 Design Skill Bridge:</b> 22etsy tạo <b>Skill Pack</b> → nhân viên mở <b>ChatGPT Skill (Etsy POD Redesign V8.1)</b>, upload ảnh + dán prompt → copy <b>RESULT_JSON</b> → import về 22etsy → <b>owner duyệt</b> → gửi <b>listing_seeds</b> sang Launch Kit. Skill KHÔNG tạo listing cuối — Launch Kit mới tạo title/tag/mô tả. Xem thẻ 🎨.'
  ],
- screen:{bar:'⚖️ 5 LUẬT VÀNG — không bao giờ phá',body:'1) KHÔNG tự đăng. Người thật + Manager ký mới đăng. (PUBLISH_AUTOMATION = false)\n2) Ảnh HERO / macro mũi chỉ / số đo / sew-out phải là ẢNH THẬT. AI chỉ để mockup/đồ hoạ.\n3) Thiết kế GỐC. Không copy art/mockup của đối thủ. Prompt "Recreate" CHỈ để phân tích.\n4) Trung thực dữ liệu: thiếu số thì nói thiếu, KHÔNG bịa "GO".\n5) Thấy cờ CAUTION (nghi nhãn hiệu) → tự tra USPTO (tmsearch.uspto.gov) TRƯỚC khi làm.'},
+ screen:{bar:'⚖️ 5 LUẬT VÀNG — không bao giờ phá',body:'1) KHÔNG tự đăng. Người thật + Manager ký mới đăng. (PUBLISH_AUTOMATION = false)\n2) Ảnh HERO / macro mũi chỉ / số đo / sew-out phải là ẢNH THẬT. AI chỉ để mockup/đồ hoạ.\n3) Thiết kế GỐC. Không copy art/mockup/chữ/bố cục/màu của đối thủ. Ảnh mẫu chỉ để hiểu cấu trúc + hook thương mại, KHÔNG để tạo sản phẩm bán.\n4) Trung thực dữ liệu: thiếu số thì nói thiếu, KHÔNG bịa "GO".\n5) Thấy cờ CAUTION (nghi nhãn hiệu) → tự tra USPTO (tmsearch.uspto.gov) TRƯỚC khi làm.'},
  read:'Điểm thị trường KHÔNG phải quan toà. Mỗi keyword đi qua 4 lớp và Inbox hiện <b>Hành động cuối (Final Action)</b>. Nhân viên đọc Hành động cuối + rủi ro trước, không nhìn 1 con số.',
  wrong:'Thấy điểm cao hoặc thấy tên gợi ý là làm ngay; dùng ảnh AI cho hero; sao chép y hệt thiết kế đối thủ.',
  right:'Đọc Hành động cuối + kiểm nhãn hiệu + chờ ảnh thật + Manager ký. Luôn tự làm bản GỐC.',
- ck:['Đã hiểu 5 luật vàng','Biết CAUTION = phải tự tra nhãn hiệu','Biết mở 🎯 Build Queue mỗi ngày','Biết có 🎨 Design Analyzer']
+ ck:['Đã hiểu 5 luật vàng','Biết CAUTION = phải tự tra nhãn hiệu','Biết mở 🎯 Build Queue mỗi ngày','Biết có 🎨 Design Skill Bridge']
 },
 {
  n:'🎯',key:'BUILD QUEUE',isnew:true,name:'BUILD QUEUE — "làm cái này tiếp theo" (mở mỗi sáng)',
@@ -226,20 +226,21 @@ const STEPS=[
  gate:true
 },
 {
- n:'🎨',key:'DESIGN',isnew:true,name:'DESIGN ANALYZER — ảnh mẫu → thiết kế GỐC an toàn + SEO',
- where:'Trang chủ → Advanced → 🎨 Design Analyzer',
- goal:'Từ 1 ẢNH thiết kế, tool nói: <b>vì sao THẮNG / vì sao YẾU</b>, <b>mổ xẻ Font · Quote · Layout · Color</b>, <b>cách làm TỐT HƠN</b> (bản GỐC, không sao chép) + rủi ro nhãn hiệu + prompt Safe Redesign + gói SEO. Chạy trên Gemini (miễn phí).',
+ n:'🎨',key:'DESIGN',isnew:true,name:'DESIGN SKILL BRIDGE — ảnh mẫu → chạy ChatGPT Skill → import RESULT_JSON',
+ where:'Trang chủ → 🎨 Design Skill Bridge (thanh trên → 🎨 Design)',
+ goal:'Từ 1 ảnh + evidence, 22etsy tạo <b>Skill Pack</b> để chạy <b>Etsy POD Redesign V8.1</b> trong ChatGPT. Skill chọn 1 hướng thiết kế GỐC an toàn, trả <b>RESULT_JSON</b>; 22etsy validate + owner duyệt + đưa <b>listing_seeds</b> sang Launch Kit. KHÔNG gọi API — chạy thủ công.',
  actions:[
-  'Thả ảnh thiết kế (PNG/JPG ≤ 7MB). Tuỳ chọn: dán title gốc + link.',
-  'Bật <b>Embroidery-safe mode</b> nếu làm hàng THÊU (bản đơn giản, ≤6 màu, không gradient).',
-  'Bấm <b>Analyze design</b>. Đọc theo thứ tự: <b>Verdict</b> → <b>🏆 Vì sao thắng</b> → <b>⚠ Điểm yếu</b> → <b>🎨 Mổ xẻ 4 yếu tố</b> → <b>🔧 Cách làm tốt hơn</b>.',
-  'Lấy prompt <b>Safe Redesign</b> (đã áp dụng sẵn các cải thiện) → tạo bản GỐC. Nếu OK: bấm <b>Tạo ảnh redesign</b>. TUYỆT ĐỐI không dùng prompt "Recreate" để sản xuất.'
+  '<b>Tạo Skill Pack:</b> điền keyword, target product, mode, placement, personalization; dán Etsy URL + HeyEtsy evidence nếu có. Bấm <b>Create Skill Pack</b>.',
+  '<b>Mở ChatGPT Skill</b> (nút Open ChatGPT Skill ↗). Trong GPT chat: upload ảnh + evidence, dán prompt đã copy, chạy Skill.',
+  '<b>Copy RESULT_JSON</b> ở cuối câu trả lời của GPT → quay lại 22etsy, dán vào ô <b>Import &amp; validate</b>.',
+  'Nếu validate PASS → nhân viên báo <b>Owner/Manager duyệt</b>. RED IP = bỏ; YELLOW IP = confirm trước.',
+  'Sau khi duyệt → bấm <b>Send listing_seeds to Launch Kit</b>. Launch Kit mới tạo title/13 tag/mô tả cuối.'
  ],
- screen:{bar:'🎨 Design Analyzer · kết quả',body:'Verdict: ✅ OK to design | IP: LOW | Stitch: STITCH_SAFE\n\n🏆 VÌ SAO THẮNG: người mua rõ (dog mom) · câu hài đọc được ở thumbnail\n⚠ ĐIỂM YẾU: ngách khá đông · hook chưa đủ mạnh\n🎨 MỔ XẺ:  Font — sans đậm, nên tăng weight\n          Quote — chơi chữ, nên cụ thể hơn\n          Layout — canh giữa, thêm khoảng trống\n          Color — 2 màu, tăng tương phản áo tối\n🔧 CÁCH LÀM TỐT HƠN: chọn giống hiếm hơn · hook 3 từ · 2 màu tương phản cao\n\n✅ SAFE REDESIGN (Standard + Embroidery) · SEO (title/13 tag/mô tả, EN+VI)'},
- read:'<b>Vì sao thắng/yếu</b> = lý do THƯƠNG MẠI (ai mua, có đọc được ở thumbnail không) — không phải "đẹp/xấu". <b>4 yếu tố (Font·Quote·Layout·Color)</b> là 4 cần gạt để chỉnh: mỗi ô ghi "hiện tại → nên sửa". <b>Cách làm tốt hơn</b> = mình làm bản GỐC XỊN HƠN, KHÔNG sao chép. <b>Data-driven:</b> luôn đối chiếu ngách này với Inbox (bước ②) — có cầu thật không? Verdict IP lấy mức THẬN TRỌNG HƠN giữa AI và blocklist shop; báo HIGH thì phải nghe.',
- wrong:'Dùng prompt "Recreate" tạo lại y hệt đối thủ rồi bán → VI PHẠM BẢN QUYỀN. Hoặc chỉ khen "đẹp" mà không đọc điểm yếu + cách cải thiện.',
- right:'Đọc vì sao thắng/yếu → sửa theo 4 yếu tố → làm bản GỐC TỐT HƠN bằng prompt Safe Redesign. Đối chiếu cầu ở Inbox trước khi làm. HIGH/Skip → bỏ.',
- ck:['Đọc được vì sao THẮNG và YẾU','Hiểu 4 cần gạt Font·Quote·Layout·Color','Có ≥1 cách làm TỐT HƠN (không sao chép)','Đã đối chiếu cầu ở Inbox','Dùng Safe Redesign, KHÔNG dùng Recreate']
+ screen:{bar:'🎨 Design Skill Bridge · flow',body:'22etsy tạo Skill Pack (prompt + brief)\n → mở ChatGPT Skill (V8.1): upload ảnh/evidence + dán prompt\n → GPT trả RESULT_JSON (selected_concept + listing_seeds + IP)\n → dán RESULT_JSON về 22etsy → VALIDATE\n     ✓ đúng bridge_run_id · IP không RED · không có claim máy (DST/PES) trước CÓ ĐƠN\n → trạng thái CANDIDATE (🔒 DRAFT ONLY — DO NOT PUBLISH)\n → OWNER DUYỆT → gửi listing_seeds sang Launch Kit'},
+ read:'Skill chỉ trả <b>listing_seeds</b> (target product, buyer, main keyword, vocabulary, personalization, ràng buộc sản xuất) — <b>KHÔNG</b> phải listing cuối. <b>Launch Kit</b> mới tạo title/tag/mô tả và chạy các cổng. Kết quả import là <b>CANDIDATE</b> cho tới khi owner duyệt; mọi bản xem trước ghi <b>DRAFT ONLY — DO NOT PUBLISH</b>. Ảnh mẫu chỉ để hiểu cấu trúc + hook; giữ lại motivation trừu tượng, KHÔNG giữ chữ/typography/bố cục/màu của đối thủ.',
+ wrong:'Coi RESULT_JSON là listing sẵn để đăng; bỏ qua bước owner duyệt; dùng ảnh mẫu để tạo lại y hệt rồi bán → VI PHẠM BẢN QUYỀN.',
+ right:'Chạy Skill → import → validate → owner duyệt → listing_seeds sang Launch Kit. Bản GỐC, không sao chép. RED IP → bỏ.',
+ ck:['Đã tạo Skill Pack + copy prompt','Đã chạy ChatGPT Skill + copy RESULT_JSON','Đã import + validate PASS','Owner đã duyệt (không tự đăng)','Đã gửi listing_seeds sang Launch Kit']
 },
 {
  n:'⑦',key:'PHOTO',name:'PHOTO STUDIO — ảnh thật cho slot bắt buộc',
