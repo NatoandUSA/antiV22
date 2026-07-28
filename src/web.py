@@ -2444,6 +2444,19 @@ def build_app(password, secret):
                            "rows_received": n_rows}
             else:
                 summary = ytx_import.ingest(payload)
+            # V37.5 Phase A (capture-only, ZERO ranking effect): if the extension
+            # tagged this send with a Focus Keyword, record the pulled listings into
+            # the exact-keyword evidence lane. Nothing reads this into Rank yet
+            # (Phase B, behind an owner decision + config flag).
+            try:
+                _focus = _fer.clean_text(payload.get("focusKeyword")
+                                         or payload.get("focus_keyword"))
+                if _focus and (payload.get("rows") or []):
+                    _fer.record_focus_evidence(_focus, hdrs,
+                                               payload.get("rows") or [],
+                                               source_hint=payload.get("view"))
+            except Exception:  # noqa: BLE001 - capture is additive, never blocks ingest
+                pass
         except ValueError as exc:
             return _cors(_json_resp({"ok": False, "error": str(exc)}, 400), origin)
         except Exception:  # noqa: BLE001

@@ -913,3 +913,184 @@ def listing_evidence_action(detail, extra_shop_spread=0):
     return {"max_action": "CONFIRM_FIRST", "shop_spread": spread,
             "reason": "single-listing third-party evidence; strong competitor proof, "
                       "not keyword-market proof. Route to Pattern Miner."}
+
+
+# ============================================================================
+# V37.5 Phase A -- Exact-keyword loop-evidence lane (CAPTURE ONLY).
+#
+# When staff run the live loop (push a keyword to Etsy -> pull the 5-10 real
+# winning listings -> Send), the extension tags the payload with a Focus Keyword.
+# This lane records those pulled listings keyed to the EXACT focus keyword, and
+# flags which ones actually prove the exact keyword (exact-token match + selling
+# + organic). It is PURE DATA: nothing here feeds Rank / build_proof (that is
+# Phase B, behind an owner decision + config flag). Zero ranking effect.
+# ============================================================================
+EXACT_DIR = IMPORTS / "etsy_exact_proof"
+
+# Local capture-bar defaults (Phase B moves these into config/engine.json). Used
+# only by the read-only summary; the capture itself records everything honestly.
+EXACT_MIN_SHOPS = 2       # distinct shops before the exact keyword is "proven-ready"
+EXACT_MIN_LISTINGS = 3    # exact-matching, selling, organic listings required
+EXACT_MIN_SAMPLE = 5      # listings pulled before the bar is even evaluated
+
+
+def _canon_kw(keyword):
+    """Order-independent canonical form: sorted, singularized, stop-stripped
+    tokens. 'Personalized Nurse Sweatshirt' -> 'nurse personalized sweatshirt'."""
+    toks = sorted({_singular(t) for t in _tokens(keyword)})
+    return " ".join(toks)
+
+
+def _kw_slug(canon):
+    s = re.sub(r"[^a-z0-9]+", "_", canon).strip("_")
+    return s or hashlib.sha1((canon or "").encode("utf-8")).hexdigest()[:12]
+
+
+def _exact_match(focus_keyword, title, tags):
+    """True when EVERY token of the focus keyword appears in the listing's title
+    or tags (singularized). This is the exact-vs-group test: 'personalized
+    birthday age shirt' matches a listing titled with all four words, but NOT a
+    generic 'birthday shirt' listing (missing 'personalized'/'age')."""
+    ftoks = {_singular(t) for t in _tokens(focus_keyword)}
+    if not ftoks:
+        return False
+    hay = {_singular(t) for t in _tokens(f"{title or ''} {tags or ''}")}
+    return ftoks <= hay
+
+
+def _normalize_search_rows(headers, rows):
+    """Map an Etsy-search / listing-batch table to per-listing dicts. Honest
+    nulls; K/M parsed; ad flag detected. Deduped by listing_id/url/title."""
+    idx = {
+        "title": _ci(headers, "title", "product", "name", "listing",
+                     exclude=("shop", "seller", "id")),
+        "listing_id": _ci(headers, "listing_id", "listing id"),
+        "shop": _ci(headers, "shop", "seller", exclude=("id", "sales", "review")),
+        "sold": _ci(headers, "he_sold", "estimated_sold", "estimated sold",
+                    "total sales", "sold", exclude=("revenue", "24", "$")),
+        "sold24": _ci(headers, "sold_24h", "sold 24h"),
+        "revenue": _ci(headers, "he_revenue", "estimated_revenue", "revenue",
+                       exclude=("id",)),
+        "price": _ci(headers, "price", exclude=("was", "compare")),
+        "tags": _ci(headers, "tags", exclude=("count", "categor")),
+        "ad": _ci(headers, "promoted", "advert", "is_ad", "sponsored"),
+        "url": _ci(headers, "url", "link", "heyetsy"),
+    }
+    seen, out = set(), []
+    for row in (rows or []):
+        title = clean_text(_row_get(row, idx["title"]))
+        if not title:
+            continue
+        lid = clean_text(_row_get(row, idx["listing_id"]))
+        url = clean_text(_row_get(row, idx["url"]))
+        key = (lid or url or title).lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        raw_tags = clean_text(_row_get(row, idx["tags"])) or ""
+        ad_cell = clean_text(_row_get(row, idx["ad"]))
+        is_ad = bool(ad_cell) and ad_cell.strip().lower() in (
+            "1", "true", "yes", "y", "ad", "promoted", "sponsored")
+        out.append({
+            "listing_id": lid or key,
+            "title": title,
+            "shop": clean_text(_row_get(row, idx["shop"])),
+            "sold": parse_market_number(_row_get(row, idx["sold"])),
+            "sold_24h": parse_market_number(_row_get(row, idx["sold24"])),
+            "revenue_usd": parse_market_number(_row_get(row, idx["revenue"])),
+            "price_usd": parse_market_number(_row_get(row, idx["price"])),
+            "tags": raw_tags,
+            "is_ad": is_ad,
+            "url": url,
+        })
+    return out
+
+
+def record_focus_evidence(focus_keyword, headers, rows, source_hint=None):
+    """CAPTURE the pulled listings for an exact focus keyword. Writes/merges
+    data/imports/etsy_exact_proof/{slug}.json. Pure data -- never feeds Rank.
+
+    Each stored listing carries exact_match (exact keyword tokens present),
+    selling (real sold), and is_ad. Latest send wins per listing_id. Returns the
+    stored payload, or None when nothing usable was captured."""
+    focus = clean_text(focus_keyword)
+    if not focus:
+        return None
+    canon = _canon_kw(focus)
+    if not canon:
+        return None
+    listings = _normalize_search_rows(headers, rows)
+    if not listings:
+        return None
+    for lst in listings:
+        sold = (lst.get("sold") or 0) + (lst.get("sold_24h") or 0)
+        lst["selling"] = sold > 0
+        lst["exact_match"] = _exact_match(focus, lst.get("title"), lst.get("tags"))
+        lst["captured_at"] = date.today().isoformat()
+
+    EXACT_DIR.mkdir(parents=True, exist_ok=True)
+    p = EXACT_DIR / f"{_kw_slug(canon)}.json"
+    prior = {}
+    if p.is_file():
+        try:
+            prior = json.loads(p.read_text(encoding="utf-8")) or {}
+        except Exception:  # noqa: BLE001
+            prior = {}
+    merged = {l["listing_id"]: l for l in (prior.get("listings") or [])}
+    for l in listings:          # latest send wins per listing
+        merged[l["listing_id"]] = l
+    payload = {
+        "focus_keyword": focus,
+        "canon": canon,
+        "listings": list(merged.values()),
+        "collected_at": date.today().isoformat(),
+        "source": source_hint or "extension-loop",
+        "note": ("V37.5 Phase A capture-only lane. Records the live-pull winners "
+                 "for the exact keyword. Does NOT feed Rank / build_proof yet "
+                 "(Phase B, behind owner decision + config flag)."),
+    }
+    p.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return payload
+
+
+def load_focus_evidence(focus_keyword):
+    canon = _canon_kw(focus_keyword)
+    if not canon:
+        return None
+    p = EXACT_DIR / f"{_kw_slug(canon)}.json"
+    if not p.is_file():
+        return None
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def focus_evidence_summary(focus_keyword):
+    """READ-ONLY rollup of the exact-keyword lane for a focus keyword. Reports how
+    many pulled listings prove the EXACT keyword (exact + selling + organic) and
+    across how many distinct shops, plus whether that clears the capture bar.
+    Advisory only -- it mints NO proof and changes NO ranking (Phase B does that)."""
+    ev = load_focus_evidence(focus_keyword)
+    base = {"focus_keyword": clean_text(focus_keyword), "has_evidence": bool(ev),
+            "total_pulled": 0, "exact_selling_listings": 0, "distinct_shops": 0,
+            "meets_exact_bar": False, "would_be_scope": "NONE",
+            "affects_rank": False}
+    if not ev:
+        return base
+    listings = ev.get("listings") or []
+    qualifying = [l for l in listings
+                  if l.get("exact_match") and l.get("selling") and not l.get("is_ad")]
+    shops = {(l.get("shop") or "").strip().lower()
+             for l in qualifying if (l.get("shop") or "").strip()}
+    n_exact = len(qualifying)
+    n_shops = len(shops)
+    meets = (len(listings) >= EXACT_MIN_SAMPLE and n_exact >= EXACT_MIN_LISTINGS
+             and n_shops >= EXACT_MIN_SHOPS)
+    scope = ("EXACT_MULTISHOP" if meets else
+             "EXACT_SINGLE_SHOP" if n_exact and n_shops < EXACT_MIN_SHOPS else
+             "GROUP_ONLY" if listings and not n_exact else "NONE")
+    base.update({"total_pulled": len(listings), "exact_selling_listings": n_exact,
+                 "distinct_shops": n_shops, "meets_exact_bar": meets,
+                 "would_be_scope": scope})
+    return base
