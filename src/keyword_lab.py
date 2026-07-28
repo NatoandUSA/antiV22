@@ -86,6 +86,27 @@ def generate(keyword=None, limit=14, mode=None):
     # back to the typed keyword itself as the subject/product source.
     if keyword and (pat.get("matched") or 0) < 3:
         seed = []
+    # V37.4 CF007-class niche guard: when the Etsy Spy capture lane is empty the
+    # Pattern Miner falls back to the LARGEST group in etsy_listings.csv, so an
+    # unrelated seed silently mines the wrong niche ("disney princess shirt" -> the
+    # nurse group -> nurse candidates, and a TRADEMARKED seed then emits zero
+    # screenable candidates so nothing is ever dropped). Detect it on the mined
+    # GROUP HINT (pat["keyword"]) — NOT seed_words, which deliberately exclude the
+    # query's own tokens. No shared SUBJECT word => discard the foreign pattern and
+    # expand the typed keyword itself (honest empty pattern, niche_mismatch marker).
+    if keyword:
+        _mods = set(_MODIFIERS)
+        _kwsub = set(pm._query_tokens(keyword)) - _PRODUCTS - _mods
+        _grpsub = set(pm._query_tokens(pat.get("keyword") or "")) \
+            - _PRODUCTS - _mods
+        if _kwsub and _grpsub and not (_kwsub & _grpsub):
+            pat = {"keyword": keyword, "query": keyword, "n": 0, "matched": 0,
+                   "scanned": pat.get("scanned", 0), "n_shops": 0, "top_words": [],
+                   "leading": [], "phrases": [], "structure": {}, "price": None,
+                   "signals": {}, "gaps": [], "seed_words": [], "top_tags": [],
+                   "have": False, "review_evidence": {"has_evidence": False},
+                   "niche_mismatch": True}
+            seed = []
     subject = _subject(seed, pat.get("keyword") or keyword)
     product = _product(seed, pat.get("keyword") or keyword)
     cands, seen = [], set()

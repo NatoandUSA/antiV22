@@ -37,8 +37,16 @@ def test_ledger_counts_reconcile():
 
 
 def test_watch_rows_subranked_by_momentum_x_conversion():
+    # V37.4 ordering: WATCH rows sort by (proof_tier, priority, launchable) FIRST,
+    # then by the momentum x conversion sub-rank WITHIN each such group. A
+    # launchable real product outranks a higher-watch_rank non-launchable theme by
+    # design ("next 12 month" must not top "indoor decals"), so the sub-rank is
+    # non-increasing per group, NOT globally across every WATCH row.
+    from itertools import groupby
     d = oi.build_inbox(limit=100000)
     watch = [r for r in d["rows"] if r["action"] == "WATCH"]
-    if len(watch) >= 2:
-        ranks = [r.get("watch_rank", 0) for r in watch]
-        assert ranks == sorted(ranks, reverse=True)
+    keyfn = lambda r: (r.get("proof_tier", 9), -r.get("priority", 0),
+                       0 if r.get("launchable") else 1)
+    for _key, grp in groupby(watch, key=keyfn):
+        ranks = [r.get("watch_rank", 0) for r in grp]
+        assert ranks == sorted(ranks, reverse=True), (_key, ranks[:10])
