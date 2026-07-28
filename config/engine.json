@@ -1,3 +1,4 @@
 {
-  "proof_match_high_conf": 1.0
+  "proof_match_high_conf": 1.0,
+  "exact_loop_proof_enabled": true
 }

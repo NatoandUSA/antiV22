@@ -617,7 +617,7 @@ def build_app(password, secret):
             ("2", "\U0001F3C6", "Rank", "Opportunity Inbox", "/inbox", " hot"),
             ("3", "\U0001F52C", "Pattern", "Pattern Miner", "/pattern-miner", ""),
             ("4", "\U0001F4A1", "Keywords", "Keyword Lab", "/keyword-lab", ""),
-            ("5", "\U0001F3AF", "Re-rank", "Inbox again", "/inbox", ""),
+            ("5", "\U0001F3AF", "Re-rank", "Decide on generated", "/rerank", ""),
             ("6", "\U0001F4DD", "Build", "Launch Kit", "/launch-kit", ""),
             ("7", "\U0001F5BC\uFE0F", "Images", "Photo prompts", "/photo-brief", ""),
             ("8", "\U0001F4E3", "Ads", "Ads plan", "/ads-plan", ""),
@@ -1986,6 +1986,24 @@ def build_app(password, secret):
         except (SystemExit, Exception) as exc:  # noqa: BLE001
             return _tool_error("Opportunity Inbox", exc)
 
+    @app.route("/rerank")
+    @login_required
+    def rerank_page():
+        # V37.5 Phase D: Re-rank is now its OWN decision page over the GENERATED
+        # candidates (Keyword Lab / lane leads), not a second link to /inbox.
+        from src import interactive
+        m = request.args.get("mode")
+        mode = m if m in ("pod", "embroidery") else None
+        raw = (request.args.get("q") or "").strip()[:80]
+        q = "".join(c for c in raw if c.isalnum() or c in " '&-.").strip()
+        bar = (_stage_nav("rerank", q, m or "")
+               + _stage_kwbar("/rerank", q,
+                              "\U0001F3AF Re-rank generated candidates", mode=m or ""))
+        try:
+            return _render_tool("Re-rank", interactive.rerank(mode, q), switch=bar)
+        except (SystemExit, Exception) as exc:  # noqa: BLE001
+            return _tool_error("Re-rank", exc)
+
     @app.route("/enrich-leads", methods=["POST"])
     @login_required
     def enrich_leads():
@@ -2147,7 +2165,7 @@ def build_app(password, secret):
                    ("rank", "\U0001F3C6 Rank", "/inbox"),
                    ("pattern", "\U0001F52C Pattern", "/pattern-miner"),
                    ("lab", "\U0001F4A1 Keywords", "/keyword-lab"),
-                   ("rerank", "\U0001F3AF Re-rank", "/inbox"),
+                   ("rerank", "\U0001F3AF Re-rank", "/rerank"),
                    ("build", "\U0001F4DD Build", "/launch-kit"),
                    ("images", "\U0001F5BC️ Images", "/photo-brief"),
                    ("ads", "\U0001F4E3 Ads", "/ads-plan"),
@@ -2164,7 +2182,7 @@ def build_app(password, secret):
             qs.append("mode=" + _qp(mode))
         tail = ("?" + "&".join(qs)) if qs else ""
         items = "".join(
-            f'<a class="stgn{" on" if key == current or (current in ("rank", "rerank") and key in ("rank", "rerank")) else ""}"'
+            f'<a class="stgn{" on" if key == current else ""}"'
             f' href="{href}{tail}">{i + 1} {label}</a>'
             for i, (key, label, href) in enumerate(_STAGES_NAV))
         return ('<style>.stgnav{display:flex;gap:4px;flex-wrap:wrap;margin:0 0 10px}'

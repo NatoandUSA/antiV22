@@ -1978,11 +1978,35 @@ def _inbox_row(i, r):
         proof_cell = f"\U0001F7E2 {pr['evidence']}"
     else:
         proof_cell = "—"
-    # several related keywords share ONE proof group - name it, so identical
-    # evidence on neighbouring rows reads as "same group", not duplicated data
+    # V37.5 Phase D — PROOF SCOPE label so staff see WHY a row is Build vs Watch:
+    #   exact keyword proof  -> "exact"           (Build-eligible)
+    #   loop-verified proof  -> "✅ EXACT loop-verified (N shops)"  (Phase B)
+    #   group / fuzzy match  -> "⚠ group: X — verify"  (Confirm First, not exact)
+    #   niche roll-up        -> "niche roll-up — verify"
+    # Names the shared group so identical evidence on neighbouring rows reads as
+    # "same group", not duplicated data — and never as exact proof when it isn't.
     if pr:
         via = str(pr.get("keyword") or "").strip()
-        if via and via.lower() != r["keyword"].strip().lower():
+        diff = bool(via and via.lower() != r["keyword"].strip().lower())
+        src = str(pr.get("source") or "").lower()
+        match = str(pr.get("match") or "").lower()
+        shops = pr.get("shops")
+        if src == "loop":
+            if (pr.get("proof_scope") or "") == "EXACT_SINGLE_SHOP":
+                proof_cell += " · ✅ EXACT (1 shop — confirm)"
+            elif shops:
+                proof_cell += f" · ✅ EXACT ({int(shops)} shops)"
+            else:
+                proof_cell += " · ✅ EXACT loop-verified"
+        elif match == "exact":
+            proof_cell += (f" · exact (≡ {_clean(via)[:24]})" if diff
+                           else " · exact keyword")
+        elif match == "fuzzy":
+            proof_cell += (f" · ⚠ group: {_clean(via)[:24]} — verify" if diff
+                           else " · ⚠ group match — verify")
+        elif match == "niche":
+            proof_cell += " · niche roll-up — verify"
+        elif diff:
             proof_cell += f" (group: {_clean(via)[:32]})"
     comp = int(r["comp"]) if r["comp"] is not None else "—"
     conv = f"{r['conv']*100:.1f}%" if r["conv"] is not None else "—"
@@ -1993,6 +2017,116 @@ def _inbox_row(i, r):
 
 _INBOX_HDR = ["| # | Keyword | Etsy proof | Product-fit | Final action | Market | Comp. | Conv. | Mom. | Do |",
               "|---|---|---|---|---|---|---|---|---|---|"]
+
+
+# ---------------------------------------------------------------------------
+# V37.5 Phase D — Re-rank DECISION page (distinct from Rank).
+# Rank shortlists opportunities from the whole master; Re-rank evaluates ONLY the
+# keywords Pattern Miner / Keyword Lab GENERATED, with proof scope + next task, so
+# it answers "which generated long-tails are worth building?" — not a repeat of Rank.
+# ---------------------------------------------------------------------------
+_SRC_LABEL = {"keyword-lab": "\U0001F4A1 Keyword Lab", "lane-enrich": "\U0001F4A1 Lab enrich",
+              "pinterest-lead": "\U0001F4CC Pinterest", "supplier-lead": "\U0001F3ED Supplier"}
+
+
+def _is_generated(r):
+    """A row that came from GENERATION (Keyword Lab / lane leads), not the master."""
+    s = str(r.get("source") or "").lower()
+    return s in ("keyword-lab", "lane-enrich") or s.endswith("-lead")
+
+
+def _scope_word(pr):
+    """Short proof-scope word for the Re-rank table (mirrors the Rank proof cell)."""
+    if not pr:
+        return "—"
+    if str(pr.get("source") or "").lower() == "loop":
+        return "✅ EXACT (loop)"
+    match = str(pr.get("match") or "").lower()
+    return {"exact": "exact", "fuzzy": "⚠ group", "niche": "niche"}.get(match, "—")
+
+
+def _next_task(r):
+    """The concrete next action for a generated candidate (route/action derived)."""
+    action, route = r.get("action"), r.get("route")
+    if action == "BUILD_NOW":
+        return "\U0001F680 Build Launch Kit"
+    if action == "BLOCKED":
+        return "\U0001F6AB Blocked — drop"
+    if action == "SKIP":
+        return "⛔ Drop"
+    if route == "pattern":
+        return "\U0001F52C Pattern Miner → find angle"
+    if action == "CONFIRM_FIRST":
+        return "\U0001F50D Confirm (Should-I-Sell)"
+    if action == "REVIEW":
+        return "\U0001F6A9 Manager review"
+    return "\U0001F7E1 Hold / watch"
+
+
+_RERANK_HDR = ["| # | Generated keyword | Source | Proof scope | Product-fit | Final action | Next task | Do |",
+               "|---|---|---|---|---|---|---|---|"]
+
+
+def _rerank_row(i, r):
+    kw = _clean(r["keyword"])
+    src = _SRC_LABEL.get(str(r.get("source") or "").lower(), "generated")
+    scope = _scope_word(r.get("proof"))
+    fit = r.get("fit_label") or "—"
+    action = f"{_ACTION_ICON.get(r['action'], '')} {r['action'].replace('_', ' ').title()}"
+    return (f"| {i} | {kw} | {src} | {scope} | {fit} | {action} "
+            f"| {_next_task(r)} | {_inbox_do(r)} |")
+
+
+def rerank(mode=None, q=""):
+    """Re-rank decision page — evaluate ONLY the generated candidates, so it never
+    just repeats the Rank table (spec change_09). Proof scope + next task per row."""
+    from collections import Counter
+    from src import opportunity_inbox as oi
+    q = (q or "").strip()
+    data = oi.build_inbox(mode, q=q or None, show_archived=True)
+    rows = [r for r in data["rows"] if _is_generated(r)]
+    label = MODE_LABEL.get(mode, mode) if mode else "all modes"
+    L = [f"# \U0001F3AF Re-rank — decide on generated candidates ({label})", "",
+         "_**Rank** shortlists opportunities from your whole master keyword list. "
+         "**Re-rank** evaluates ONLY the keywords **Pattern Miner / Keyword Lab "
+         "generated**, sent back through the full engine — so you see which generated "
+         "long-tails are worth building, each with its **proof scope** and **next "
+         "task**. This is the decision layer, not a repeat of Rank._", ""]
+    if not rows:
+        L += ["> **No generated candidates yet.** Generate long-tails in "
+              "**[\U0001F4A1 Keyword Lab](/keyword-lab)** (or mine a niche in "
+              "**[\U0001F52C Pattern Miner](/pattern-miner)**), click **Add to "
+              "Inbox → re-rank**, then come back here to decide on them.", "",
+              "_Re-rank shows Keyword-Lab, lane and lead candidates — not your whole "
+              "master list (that's Rank)._"]
+        return "\n".join(L)
+    ca = Counter(r["action"] for r in rows)
+    L += [f"_**{len(rows)}** generated candidate(s) — "
+          f"\U0001F680 **{ca.get('BUILD_NOW', 0)}** build · "
+          f"\U0001F50D **{ca.get('CONFIRM_FIRST', 0)}** confirm · "
+          f"\U0001F7E1 **{ca.get('WATCH', 0)}** watch · "
+          f"⛔ **{ca.get('SKIP', 0)}** skip · "
+          f"\U0001F6AB **{ca.get('BLOCKED', 0)}** blocked. Proof scope shows whether a "
+          "candidate has its OWN exact proof (Build-eligible) or only borrowed group "
+          "proof (verify first)._", ""]
+    L += list(_RERANK_HDR)
+    for i, r in enumerate(rows, 1):
+        L.append(_rerank_row(i, r))
+    top = next((r for r in rows if r["action"] in ("BUILD_NOW", "CONFIRM_FIRST")), None)
+    if top:
+        uq = _uq(top["keyword"])
+        L += ["", f"## ◎ Best generated candidate: **{_clean(top['keyword'])}** — "
+              f"{_ACTION_ICON.get(top['action'], '')} "
+              f"{top['action'].replace('_', ' ').title()}",
+              f"_{top.get('action_reason', '')}. {top.get('evidence', '')}_", ""]
+        if top["route"] == "build":
+            L.append(f"**▶ [Build the Launch Kit](/launch-kit?q={uq})**")
+        elif top["route"] == "pattern":
+            L.append(f"**▶ [Run Pattern Miner](/pattern-miner?q={uq})** to find the "
+                     "angle before building.")
+        else:
+            L.append(f"**▶ [Confirm it first](/should-sell?q={uq})** before building.")
+    return "\n".join(L)
 
 
 def inbox(mode=None, q="", show_archived=False):

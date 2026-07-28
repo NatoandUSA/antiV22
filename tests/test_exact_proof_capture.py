@@ -3,10 +3,25 @@
 These verify the capture is honest and that it has ZERO ranking effect: it writes
 to its own data/imports/etsy_exact_proof lane and never touches build_proof.
 """
+import json
+from pathlib import Path
+
 from src import feed_evidence_router as fer
+from src import engine_config as ec
 
 
 HEADERS = ["listing_id", "title", "shop", "he_sold", "price", "tags", "promoted"]
+
+
+def _flag_off(monkeypatch):
+    """Pin exact_loop_proof_enabled OFF for this test, regardless of the committed
+    config default (engine_config reads config/engine.json by absolute path)."""
+    p = Path("config/engine.json").resolve()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps({"exact_loop_proof_enabled": False}))
+    monkeypatch.setattr(ec, "_PATH", p)
+    ec._cache = None
+    ec._cache_mtime = None
 
 
 def _rows():
@@ -68,9 +83,12 @@ def test_group_only_pull_scores_group_scope(sandbox):
     assert s["would_be_scope"] == "GROUP_ONLY"
 
 
-def test_capture_has_zero_ranking_effect(sandbox):
-    # build_proof must be identical before and after a capture: the lane is not
-    # a proof source in Phase A.
+def test_capture_has_zero_ranking_effect_when_phase_b_off(sandbox, monkeypatch):
+    # With Phase B OFF, the capture lane is NOT a proof source: build_proof must be
+    # identical before and after a capture. (With the flag ON — the committed
+    # default — the capture DOES feed ranking; that path is covered in
+    # test_exact_proof_loop.py.)
+    _flag_off(monkeypatch)
     from src import etsy_proof as ep
     before = ep.build_proof()
     fer.record_focus_evidence("personalized birthday age shirt", HEADERS, _rows())
