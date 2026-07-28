@@ -1650,6 +1650,28 @@ def _price_cost_for(kw, mode):
         conv = _f(stats.get("avg_conversion_rate")) or None
     except (SystemExit, Exception):  # noqa: BLE001 - degrade to honest-null
         pass
+    # V37.4 bug-fix: fall back to the LOCAL master (keyword_data.csv), which already
+    # stores avg_price + conversion_rate per keyword. Without this, any request where
+    # the live MCP was unreachable produced NO price/conversion -> _economics()==None
+    # -> every keyword got the identical "no price on file" ads plan. Honest-null:
+    # only real stored values are used; a keyword not in the master stays None.
+    if price is None or conv is None:
+        try:
+            import csv as _csv
+            from pathlib import Path as _P
+            p = _P("keyword_data.csv")
+            if p.is_file():
+                kwl = (kw or "").strip().lower()
+                with p.open(encoding="utf-8-sig") as fh:
+                    for r in _csv.DictReader(fh):
+                        if (r.get("keyword") or "").strip().lower() == kwl:
+                            if price is None:
+                                price = _f(r.get("avg_price")) or None
+                            if conv is None:
+                                conv = _f(r.get("conversion_rate")) or None
+                            break
+        except (SystemExit, Exception):  # noqa: BLE001 - degrade to honest-null
+            pass
     base = ship = None
     try:
         from src.idea_report import cluster_of, load_costs
@@ -1751,10 +1773,22 @@ def ads_plan(kw, mode=None):
 
     L += ["## 2. The money math (from your real Etsy fees)"]
     if econ is None:
-        L += ["- _No price/cost on file, so breakeven is a formula, not a number:_",
-              "  `breakeven ACOS % = net profit per sale ÷ sale price × 100`",
-              "- Fill in your price and supplier cost to get the real figure + a "
-              "max average CPC.", ""]
+        # V37.4 bug-fix: surface the keyword-specific price + conversion we DO know
+        # (from market data / the master) so the plan isn't identical for every
+        # keyword. Only the breakeven waits on a supplier cost (honest-null).
+        if price is not None:
+            L += [f"- Average sale price for this niche ≈ **{_money(price)}** "
+                  "(from market data)."]
+        if conv and plan["assumed_cr"] is None:
+            L += [f"- Real conversion ≈ **{conv * 100:.1f}%** → about "
+                  f"**{plan['clicks_per_sale']} clicks per sale** "
+                  "(a typical Etsy listing is ~2% ≈ 50 clicks)."]
+        else:
+            L += [f"- No real conversion on file → assuming ~2% "
+                  f"(**{plan['clicks_per_sale']} clicks per sale**) until you have one."]
+        L += ["- _Add your **supplier cost** (Suppliers tool) to turn this into a real "
+              "breakeven ACOS + a max average CPC:_",
+              "  `breakeven ACOS % = net profit per sale ÷ sale price × 100`", ""]
     elif econ.get("unprofitable"):
         L += [f"- ⚠️ At **{_money(econ['price'])}** this sale **loses "
               f"{_money(econ['net_profit'])} before any ad spend** — do not "
@@ -2235,7 +2269,7 @@ def keyword_lab(kw="", mode=None):
     """Keyword Lab — generate a NEW keyword batch FROM the Pattern Miner output, each
     linked back to the Inbox for re-ranking through the layered engine."""
     from src import keyword_lab as kl
-    r = kl.generate(kw or None)
+    r = kl.generate(kw or None, mode=_mode_for(kw, mode))
     pat = r["pattern"]
     L = ["# \U0001F4A1 Keyword Lab — new keywords from the winning pattern", ""]
     if not r["candidates"]:

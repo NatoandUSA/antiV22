@@ -223,6 +223,11 @@ def mine(keyword=None):
     titles = [b["title"] for b in batch]
     shops = {(b["shop"] or "").strip().lower() for b in batch if b.get("shop")}
     res["n_shops"] = len(shops)
+    # V37.4 improvement: the QUERY's own tokens are trivially in ~100% of matched
+    # titles ("nurse", "sweatshirt" for query "nurse sweatshirt") — showing them as
+    # "winning words" is noise. Exclude them so the miner surfaces what actually
+    # DIFFERENTIATES the winners (rn, crewneck, personalized, gift...).
+    qset = set(_query_tokens(keyword)) if keyword else set()
 
     # 0. competitor TAGS (HeyEtsy overlay capture, v2.3 extension): the winners'
     # actual Etsy tags are keyword gold - aggregate across matched listings.
@@ -240,7 +245,7 @@ def mine(keyword=None):
     for s in docword:
         wc.update(s)
     content = [(w, round(100 * c / n)) for w, c in wc.most_common(40)
-               if w not in _PERS and w not in _GIFT]
+               if w not in _PERS and w not in _GIFT and w not in qset]
     res["top_words"] = content[:12]
 
     # 2. leading words (first ~40 chars = what Etsy weights most)
@@ -248,7 +253,8 @@ def mine(keyword=None):
     for t in titles:
         for w in set(_tokens(t[:40])):
             lead[w] += 1
-    res["leading"] = [(w, round(100 * c / n)) for w, c in lead.most_common(8)]
+    res["leading"] = [(w, round(100 * c / n)) for w, c in lead.most_common(14)
+                      if w not in qset][:8]
 
     # 3. repeated 2-word phrases
     ph = Counter()

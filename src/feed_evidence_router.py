@@ -792,7 +792,24 @@ def evidence_for_keyword(keyword, max_listings=6):
     kw_toks = set(_singular(t) for t in _tokens(keyword))
     if not kw_toks:
         return empty
-    kw_subject = kw_toks - PRODUCT_NOUNS - {_singular(m) for m in GENERIC_MODIFIERS}
+    # Generic words carry NO niche identity: a bridge built only on "custom"/"name"
+    # must never attach a listing to an unrelated keyword (CF007). The discriminators
+    # are SUBJECT tokens (niche words) and the PRODUCT noun.
+    _mods = {_singular(m) for m in GENERIC_MODIFIERS}
+    kw_products = kw_toks & PRODUCT_NOUNS
+
+    def _valid_bridge(shared, other_toks):
+        """A token overlap is a valid keyword<->evidence bridge only when it shares
+        a SUBJECT word or the SAME PRODUCT noun — never generic modifiers alone
+        ("custom"/"name"), and never across conflicting products (a necklace keyword
+        must not borrow a tote handbag listing's evidence)."""
+        if len(shared) < 2:
+            return False
+        beyond_generic = shared - _mods                 # a subject OR a product noun
+        other_products = other_toks & PRODUCT_NOUNS
+        conflict = bool(kw_products and other_products
+                        and not (kw_products & other_products))
+        return bool(beyond_generic) and not conflict
 
     matched = []
     for lid in _all_map_listing_ids():
@@ -801,16 +818,15 @@ def evidence_for_keyword(keyword, max_listings=6):
             continue
         title_toks = set(_singular(t) for t in _tokens(detail.get("title")))
         overlap = kw_toks & title_toks
-        subj_overlap = overlap & kw_subject if kw_subject else overlap
+        title_ok = _valid_bridge(overlap, title_toks)
         conf = 0.0
         mp = load_keyword_map(lid) or {}
         for c in mp.get("candidates", []):
             ct = set(_singular(t) for t in _tokens(c.get("keyword")))
-            if len(kw_toks & ct) >= 2:
+            if _valid_bridge(kw_toks & ct, ct):
                 j = len(kw_toks & ct) / max(1, len(kw_toks | ct))
                 conf = max(conf, round(j * float(c.get("match_confidence") or 0.5), 2))
-        # attach only with a real subject-token bridge (>=2 shared incl. a subject)
-        if (len(overlap) >= 2 and subj_overlap) or conf >= 0.4:
+        if title_ok or conf >= 0.4:
             score = conf if conf else round(len(overlap) / max(1, len(kw_toks | title_toks)), 2)
             matched.append((score, lid, detail))
     if not matched:

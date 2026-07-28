@@ -2229,7 +2229,7 @@ def build_app(password, secret):
         addform = ""
         try:
             from src import keyword_lab as kl
-            g = kl.generate(q or None)
+            g = kl.generate(q or None, mode=mode)
             if g["candidates"]:
                 import html as _h
                 boxes = "".join(

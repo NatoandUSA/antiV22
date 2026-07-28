@@ -318,6 +318,7 @@ def _build_inbox(mode=None, limit=80):
             "route": act["route"],
             "fit_status": act["fit_status"],
             "fit_label": act["fit_label"],
+            "launchable": act.get("launchable", False),
             "priority": act["priority"],
             "proof_tier": act.get("proof_tier", 9),   # L1: 0 proven, 1 selling
             "proof": act.get("proof"),
@@ -387,6 +388,7 @@ def _build_inbox(mode=None, limit=80):
                     "action": act["action"], "action_reason": act["reason"],
                     "route": act["route"], "fit_status": act["fit_status"],
                     "fit_label": act["fit_label"], "priority": act["priority"],
+                    "launchable": act.get("launchable", False),
                     "proof_tier": act.get("proof_tier", 9),
                     "proof": act.get("proof"),
                     "comp": None, "views": None, "rev": None, "conv": None,
@@ -403,8 +405,14 @@ def _build_inbox(mode=None, limit=80):
 
     # sort: Etsy-proof group first, then final action, then (for WATCH rows) the
     # momentum x conversion sub-rank, then market score (spec order + review fix)
+    # V37.4 improvement: within the same proof tier + action, a LAUNCHABLE real
+    # product ranks above a non-launchable theme/broad fragment (e.g. "next 12
+    # month"). Without this, a junk phrase with a high conversion could outrank a
+    # real product in the same CONFIRM_FIRST tier. Ordering only — scores/verdicts
+    # /actions are unchanged (frozen L0-L4 untouched).
     rows = sorted(best.values(),
                   key=lambda r: (r["proof_tier"], -r["priority"],
+                                 0 if r.get("launchable") else 1,
                                  -(r["watch_rank"] if r["action"] == "WATCH" else 0),
                                  -(r["score"] or 0)))
     # WATCH lifecycle (V32, review consensus): a WATCH row with no proof and no

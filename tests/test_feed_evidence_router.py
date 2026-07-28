@@ -269,6 +269,19 @@ def test_evidence_for_keyword_empty_when_no_lanes():
     assert ev["has_evidence"] is False
 
 
+def test_evidence_no_cross_product_attachment():
+    # CF007 regression: a listing's evidence must not attach to an unrelated keyword
+    # that only shares generic modifiers ("custom name"). A necklace/mug keyword must
+    # NOT borrow the tote handbag listing's evidence; same-product keywords still do.
+    fer.save_detail(DETAIL_HEADERS, [DETAIL_ROW])
+    fer.save_reviews(REVIEW_HEADERS, REVIEW_ROWS)
+    assert fer.evidence_for_keyword("custom name necklace")["has_evidence"] is False
+    assert fer.evidence_for_keyword("custom name mug")["has_evidence"] is False
+    assert fer.evidence_for_keyword("nurse sweatshirt")["has_evidence"] is False
+    assert fer.evidence_for_keyword("custom name tote bag")["has_evidence"] is True
+    assert fer.evidence_for_keyword("personalized name tote handbag")["has_evidence"] is True
+
+
 # --- recent evidence card (Feed / Import Center) ----------------------------
 def test_recent_evidence_card():
     assert fer.recent_evidence() == []                    # no lanes -> empty

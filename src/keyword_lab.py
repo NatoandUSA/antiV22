@@ -48,8 +48,11 @@ def _subject(seed_words, keyword):
         if len(subs) == 2:
             break
     if not subs:
+        # V37.4 bug-fix: exclude _MODIFIERS here too (the seed path already does).
+        # Without it, a modifier ("personalized"/"custom") leaked into the subject
+        # and produced doubled-modifier junk like "personalized personalized name tote".
         toks = [w for w in re.findall(r"[a-z0-9]+", (keyword or "").lower())
-                if w not in _PRODUCTS and len(w) > 2]
+                if w not in _PRODUCTS and w not in _MODIFIERS and len(w) > 2]
         subs = toks[:2]
     # keep the words in the order they appear in the original keyword when possible
     kw_order = re.findall(r"[a-z0-9]+", (keyword or "").lower())
@@ -58,15 +61,24 @@ def _subject(seed_words, keyword):
 
 
 def _product(seed_words, keyword):
-    for w in list(seed_words) + re.findall(r"[a-z0-9]+", (keyword or "").lower()):
+    # The keyword's OWN product noun wins over a pattern-derived one, so a search
+    # for "nurse sweatshirt" builds sweatshirt candidates (crewneck / hoodie / tee /
+    # tote are still offered separately as product swaps). Falling back to the
+    # pattern's product only when the keyword names no product.
+    for w in re.findall(r"[a-z0-9]+", (keyword or "").lower()) + list(seed_words):
         if w in _PRODUCTS:
             return "sweatshirt" if w in ("quarter", "zip") else w
     return "sweatshirt"
 
 
-def generate(keyword=None, limit=14):
+def generate(keyword=None, limit=14, mode=None):
     """Mine the pattern, then return {pattern, subject, product, candidates}.
-    candidates = [{keyword, angle}] - fresh long-tails to push back into the Inbox."""
+    candidates = [{keyword, angle}] - fresh long-tails to push back into the Inbox.
+
+    mode selects the material word: 'embroidered' for embroidery, nothing for POD
+    (V37.4 fix — the old code forced 'embroidered' onto every candidate, which was
+    wrong for a print-on-demand keyword)."""
+    material = "embroidered " if (mode or "").lower().startswith("emb") else ""
     pat = pm.mine(keyword)
     seed = pat.get("seed_words") or []
     # A THIN pattern (fewer than 3 matched listings) is noise, not signal — one
@@ -100,7 +112,8 @@ def generate(keyword=None, limit=14):
             if adj:
                 break
     for a in adj:
-        add(f"personalized {a} embroidered {product}", f"adjacent buyer: {a}")
+        add(f"personalized {a} {material}{product}".replace("  ", " "),
+            f"adjacent buyer: {a}")
 
     # (a1) V37.4 review-derived buyer-language long-tails from the Evidence Router.
     # Real buyer/recipient nouns (granddaughter, niece...) mined from Etsy reviews
@@ -121,19 +134,39 @@ def generate(keyword=None, limit=14):
     for t, n_uses in (pat.get("top_tags") or [])[:10]:
         add(t, f"competitor tag ({n_uses} winning listings use it)")
 
-    # (b) recombine the mined pattern into fresh long-tails
+    # (b) recombine the mined pattern into fresh long-tails. The leading modifier
+    # is mode-aware: "embroidered" is only offered for an embroidery keyword, never
+    # for POD (V37.4 fix — POD used to get a stray "embroidered <niche> <product>").
+    gen_modifiers = ["personalized", "custom"] + (["embroidered"] if material else [])
     if subject:
-        for m in _MODIFIERS:
+        for m in gen_modifiers:
             add(f"{m} {subject} {product}", "pattern recombination")
         for occ in _OCCASIONS[:4]:
             add(f"{subject} {product} {occ}", f"occasion: {occ}")
         # product swaps keep the winning subject, open a new format
         for alt in ("crewneck", "hoodie", "t shirt", "tote bag"):
             if alt.split()[0] != product:
-                add(f"personalized {subject} embroidered {alt}", f"product swap: {alt}")
+                add(f"personalized {subject} {material}{alt}".replace("  ", " "),
+                    f"product swap: {alt}")
 
+    # V37.4 safety screen: never SUGGEST a trademark-infringing long-tail. A
+    # trademarked seed ("disney princess shirt") otherwise emits build-ready
+    # infringing candidates (they'd be BLOCKED on re-rank, but must not be shown
+    # as build-ready in the first place). Drop HIGH-trademark candidates here.
+    tm_dropped = 0
+    try:
+        from src.trademark import check as _tmck
+        kept = []
+        for c in cands:
+            if _tmck((c.get("keyword") or "").lower())[0] == "HIGH":
+                tm_dropped += 1
+                continue
+            kept.append(c)
+        cands = kept
+    except Exception:  # noqa: BLE001 - screen is best-effort, never blocks the Lab
+        pass
     return {"pattern": pat, "subject": subject, "product": product,
-            "candidates": cands[:limit]}
+            "candidates": cands[:limit], "tm_dropped": tm_dropped}
 
 
 # --------- close the loop: SAVE candidates into the master so the Inbox -----

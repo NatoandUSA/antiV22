@@ -31,3 +31,21 @@ def test_candidates_are_long_tail_only_and_subject_sane():
                    for c in g["candidates"])
     finally:
         p.unlink(missing_ok=True)
+
+
+def test_trademarked_seed_not_suggested_as_buildable():
+    # V37.4 safety regression: a trademarked seed must not yield build-ready
+    # infringing long-tails. All HIGH-trademark candidates are screened out.
+    g = kl.generate("disney princess shirt")
+    assert g.get("tm_dropped", 0) > 0
+    assert all("disney" not in c["keyword"] for c in g["candidates"])
+
+
+def test_mode_aware_material_and_keyword_product():
+    # POD keeps no material word; embroidery adds "embroidered"; the keyword's own
+    # product (sweatshirt) drives candidates rather than a pattern-derived noun.
+    pod = [c["keyword"] for c in kl.generate("nurse sweatshirt", mode="pod")["candidates"]]
+    emb = [c["keyword"] for c in kl.generate("nurse sweatshirt", mode="embroidery")["candidates"]]
+    assert pod and all("embroidered" not in k for k in pod)     # POD: no material word
+    assert any("sweatshirt" in k for k in pod)                  # product from keyword
+    assert any("embroidered" in k for k in emb)                 # embroidery keeps it
