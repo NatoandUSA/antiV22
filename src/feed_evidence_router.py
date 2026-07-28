@@ -1066,6 +1066,21 @@ def load_focus_evidence(focus_keyword):
         return None
 
 
+def all_focus_evidence():
+    """Every stored exact-keyword lane payload (newest keyword files first). Used
+    by Phase B (etsy_proof) to build loop-verified exact proof. Read-only."""
+    if not EXACT_DIR.is_dir():
+        return []
+    out = []
+    for p in sorted(EXACT_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime,
+                    reverse=True):
+        try:
+            out.append(json.loads(p.read_text(encoding="utf-8")))
+        except Exception:  # noqa: BLE001
+            continue
+    return out
+
+
 def focus_evidence_summary(focus_keyword):
     """READ-ONLY rollup of the exact-keyword lane for a focus keyword. Reports how
     many pulled listings prove the EXACT keyword (exact + selling + organic) and

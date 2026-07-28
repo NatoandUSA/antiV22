@@ -49,6 +49,36 @@ def _young_months():
     return int(_cfg("young_winner_months"))
 
 
+def _cfg_bool(key):
+    return str(_cfg(key)).strip().lower() in ("1", "true", "yes", "on")
+
+
+def _merge_loop_proof(out, mode=None):
+    """V37.5 Phase B: merge loop-verified EXACT-keyword proof into the proof map,
+    ONLY when exact_loop_proof_enabled is on. Default-off => returns out unchanged,
+    so build_proof() behaves exactly as before. Called on BOTH build_proof return
+    paths (including the no-export early return), so loop proof works even for a
+    shop with no Alura/EverBee export yet."""
+    try:
+        if not _cfg_bool("exact_loop_proof_enabled"):
+            return out
+        from src import feed_evidence_router as _fer
+        for ev in _fer.all_focus_evidence():
+            rec = exact_proof_from_loop(ev, mode)
+            if not rec:
+                continue
+            c = _canon(rec["keyword"])
+            if not c:
+                continue
+            cur = out.get(c)
+            if cur is None or (_VERDICT_RANK.get(rec["verdict"], 0)
+                               >= _VERDICT_RANK.get(cur.get("verdict"), 0)):
+                out[c] = rec           # exact loop proof wins ties (it's exact)
+    except Exception:  # noqa: BLE001 - loop proof is additive, never breaks build_proof
+        pass
+    return out
+
+
 def _num(v):
     if v is None:
         return None
@@ -346,7 +376,8 @@ def build_proof(mode=None):
     # ledger keeps proof ALIVE when old captures rotate out of the fresh window
     # (V33 CEO fix: a PROVEN niche must never vanish because 13 newer spy files
     # arrived). Primary dedup key = listing id/url; fallback title+shop.
-    for r in _latest_rows() + _capture_rows(mode) + _ledger_rows(mode):
+    _all_rows = _latest_rows() + _capture_rows(mode) + _ledger_rows(mode)
+    for r in _all_rows:
         k1 = str(r.get("key") or "").strip().lower()
         xk = (_canon(r.get("title") or r.get("keyword")),
               (r.get("shop") or "").strip().lower())
@@ -364,7 +395,7 @@ def build_proof(mode=None):
             _seen_x.add(xk)
         rows.append(r)
     if not rows:
-        return {}
+        return _merge_loop_proof({}, mode)   # loop proof still applies w/o exports
     agg = {}
     for r in rows:
         c = _canon(r["keyword"])
@@ -450,7 +481,7 @@ def build_proof(mode=None):
             "evidence": _evidence(s_life, a["revenue"], shops, shops_known,
                                   a["listings"], a["young"], sold24=s_24),
         }
-    return out
+    return _merge_loop_proof(out, mode)
 
 
 def _short(n):
@@ -585,6 +616,81 @@ def niche_proof(keyword, proof_map):
         "groups": len(members),
         "members": [{"keyword": m.get("keyword"), "verdict": m.get("verdict"),
                      "evidence": m.get("evidence")} for m in members[:5]],
+    }
+
+
+def exact_proof_from_loop(ev, mode=None):
+    """Build a loop-verified EXACT-keyword proof record from one Phase-A lane
+    payload (feed_evidence_router.record_focus_evidence), or None.
+
+    match='exact' + source='loop'. Verdict follows the SAME tiers as export proof:
+    PROVEN needs lifetime sold >= proven_sold AND spread across >= exact_proof_min_shops
+    distinct shops; a single-shop or thin pull caps at SELLING (-> CONFIRM_FIRST in
+    decide()). Ads and non-selling listings are excluded; stale pulls cap to SELLING."""
+    if not ev:
+        return None
+    focus = (ev.get("focus_keyword") or "").strip()
+    listings = ev.get("listings") or []
+    if not focus or not listings:
+        return None
+    q = [l for l in listings
+         if l.get("exact_match") and l.get("selling") and not l.get("is_ad")]
+    if (len(listings) < int(_cfg("exact_proof_min_sample"))
+            or len(q) < int(_cfg("exact_proof_min_listings"))):
+        return None
+    shops = {}
+    s_life = s_24 = rev = 0.0
+    for l in q:
+        sh = (l.get("shop") or "").strip().lower()
+        if sh:
+            shops[sh] = shops.get(sh, 0) + 1
+        s_life += l.get("sold") or 0
+        s_24 += l.get("sold_24h") or 0
+        rev += l.get("revenue_usd") or 0
+    n_shops = len(shops)
+    spread_ok = n_shops >= int(_cfg("exact_proof_min_shops"))
+    if s_life >= _proven_sold() and spread_ok:
+        verdict = "PROVEN_WINNER"
+    elif (s_life >= _strong_sold() or s_24 >= _strong_sold24()) and spread_ok:
+        verdict = "STRONG_SELLER"
+    elif s_life + s_24 > 0:
+        verdict = "SELLING"
+    else:
+        return None
+    # monopoly cap — same rule as export proof.
+    if verdict in ("PROVEN_WINNER", "STRONG_SELLER") and shops:
+        tot = sum(shops.values()) or 1
+        if max(shops.values()) / tot > float(_cfg("monopoly_top_share")):
+            verdict = "SELLING"
+    # freshness — a stale pull can no longer hold Build; cap to SELLING.
+    stale = False
+    exp = int(_cfg("exact_proof_expire_days"))
+    coll = ev.get("collected_at")
+    if exp > 0 and coll:
+        try:
+            from datetime import date as _date
+            y, m, d = (int(x) for x in str(coll)[:10].split("-"))
+            if (_date.today() - _date(y, m, d)).days > exp:
+                stale = True
+                if _VERDICT_RANK.get(verdict, 0) > _VERDICT_RANK["SELLING"]:
+                    verdict = "SELLING"
+        except Exception:  # noqa: BLE001
+            pass
+    ev_str = _evidence(s_life, rev, n_shops, True, len(q), 0, sold24=s_24)
+    ev_str += " · loop-verified"
+    if coll:
+        ev_str += f" {str(coll)[:10]}"
+    if stale:
+        ev_str += " (stale — re-verify)"
+    return {
+        "keyword": focus, "sold": s_life, "sold_24h": s_24, "revenue": rev,
+        "shops": n_shops, "shops_known": True, "listings": len(q),
+        "young": 0, "score": None, "verdict": verdict, "young_winner": False,
+        "evidence": ev_str, "match": "exact", "match_confidence": 1.0,
+        "source": "loop",
+        "proof_scope": "EXACT_MULTISHOP" if spread_ok else "EXACT_SINGLE_SHOP",
+        "verified_at": coll, "stale": stale,
+        "listing_ids": [l.get("listing_id") for l in q],
     }
 
 

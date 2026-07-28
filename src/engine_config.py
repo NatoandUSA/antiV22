@@ -36,6 +36,15 @@ DEFAULTS = {
     "proof_match_high_conf": 0.50,
     # Young-winner definition (months).
     "young_winner_months": 12,
+    # V37.5 Exact-Proof Loop (Phase B). Loop-verified EXACT-keyword listing
+    # evidence may mint proof ONLY when this flag is on (default OFF -> ships dark,
+    # zero ranking effect until the owner flips it; crosses the Evidence-Router/L4
+    # separation, handoff §7.4). Bars mirror the Phase A capture lane.
+    "exact_loop_proof_enabled": False,
+    "exact_proof_min_shops": 2,       # distinct shops for exact multi-shop proof
+    "exact_proof_min_listings": 3,    # exact-matching, selling, organic listings
+    "exact_proof_min_sample": 5,      # listings pulled before the bar is evaluated
+    "exact_proof_expire_days": 45,    # re-verify window; older -> capped to SELLING
     # WATCH lifecycle (V32): a WATCH row with no proof and no data refresh for
     # this many days is archived out of the main list (still reachable).
     "watch_expire_days": 30,
