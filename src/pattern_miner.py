@@ -93,6 +93,20 @@ def _title_matches(title, qtoks):
     return hits >= min(2, len(qtoks))
 
 
+def _view_matches(view, qtoks):
+    """A whole capture FILE belongs to the queried niche when its view/search
+    name shares the query tokens. This is the reliable signal: every listing in
+    an Etsy SERP capture was captured FROM that search, but the search term is
+    stored only in the file's view name (e.g. 'etsy-bridesmaid_pajamas') — NOT in
+    a per-row column. Matching individual titles misses listings whose title says
+    'PJs'/'Sleep Set' instead of the literal query, so we match the view too."""
+    if not qtoks:
+        return True
+    vt = set(_tokens(view or ""))
+    hits = sum(1 for t in qtoks if t in vt)
+    return hits >= min(2, len(qtoks))
+
+
 def _from_import(keyword=None):
     """(keyword_hint, [listings], matched, scanned): listings gathered across the
     RECENT capture files (not just the newest), de-duped, and - when a keyword is
@@ -122,6 +136,9 @@ def _from_import(keyword=None):
         except Exception:  # noqa: BLE001
             continue
         H = [str(h).lower() for h in (payload.get("headers") or [])]
+        # the search this file was captured FROM lives in the view name / filename,
+        # never in a per-row column — carry it so we can match by SERP, not title.
+        file_view = str(payload.get("view") or f.stem or "").replace("_", " ")
 
         def col(*names, exclude=()):
             for i, h in enumerate(H):
@@ -158,11 +175,17 @@ def _from_import(keyword=None):
             all_rows.append({"title": title, "price": _num(c(pi)),
                              "shop": c(shi), "star": _flag(c(sti)),
                              "ad": _flag(c(adi)), "freeship": _flag(c(fsi)),
-                             "tags": str(c(tgi) or "").strip()})
+                             "tags": str(c(tgi) or "").strip(),
+                             "view": file_view})
     scanned = len(all_rows)
     if keyword:
         qtoks = _query_tokens(keyword)
-        matched_rows = [r for r in all_rows if _title_matches(r["title"], qtoks)]
+        # A listing matches the niche if the SEARCH it came from matches (its
+        # file's view) OR its own title matches. View-match is what surfaces a
+        # whole SERP capture whose titles use 'PJs'/'robe' instead of the query.
+        matched_rows = [r for r in all_rows
+                        if _view_matches(r.get("view"), qtoks)
+                        or _title_matches(r["title"], qtoks)]
         if matched_rows:
             return keyword, matched_rows, len(matched_rows), scanned
         return keyword, [], 0, scanned      # honest: nothing matches this keyword
