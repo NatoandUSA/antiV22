@@ -27,7 +27,13 @@ from src.ytx_import import parse_number
 
 DIRS = {"supplier": Path("data/imports/supplier"),
         "pinterest": Path("data/imports/pinterest"),
-        "etsy": Path("data/imports/etsy_spy")}
+        "etsy": Path("data/imports/etsy_spy"),
+        # Etsy SEARCH RESULTS (the listings currently ranking for a keyword).
+        # Its own dir on purpose: Pattern Miner reads it as 'winners', but the
+        # FROZEN proof/opportunity engines read ONLY etsy_spy, so search-result
+        # candidates never leak into the ranking math (they are explicitly
+        # SEARCH_RESULT_CANDIDATE_NOT_PROOF).
+        "etsy_search": Path("data/imports/etsy_search")}
 SUPPLIER_DIR = DIRS["supplier"]   # back-compat alias
 
 ALL_NOUNS = pf.POD_NOUNS | pf.JEWELRY_NOUNS | pf.ACRYLIC_NOUNS
@@ -292,6 +298,23 @@ def looks_like_etsy_listings(headers):
     signals = ("he_sold", "he_views", "he_tags", "sold", "listing_id", "listing id",
                "shop", "favorite", "revenue", "conversion")
     return has_title and any(s in blob for s in signals)
+
+
+def looks_like_etsy_search_results(headers):
+    """Etsy SEARCH-RESULTS export from the extension (v3.6.x): the listings
+    currently ranking for a keyword — title + listing signals + rank_position +
+    the keyword_context/match columns.
+
+    These are pure GOLD for the Pattern Miner ('how the winners win'), but the
+    'keyword_context' column makes has_keyword_col() true, which otherwise sends
+    the whole batch to the keyword ingester instead of the listings pool. Detect
+    it explicitly so it lands in its own etsy_search lane (Pattern Miner only —
+    never the frozen proof/ranking pool)."""
+    blob = _hdr_blob(headers)
+    has_title = "title" in blob
+    has_rank = "rank_position" in blob or "keyword_match_type" in blob
+    listingish = "listing_id" in blob or "he_sold" in blob or "he_tags" in blob
+    return has_title and has_rank and listingish
 
 
 def _dir(source):

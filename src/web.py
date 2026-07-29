@@ -2470,7 +2470,12 @@ def build_app(password, secret):
             # V37.4 Feed Center Evidence Router: the granular v3.4.0 exports go to
             # their own validated lanes FIRST (before the generic etsy detector),
             # so raw Detail never lands in proof and reviews never land in spy.
-            if _fer.looks_like_heyetsy_detail(hdrs):
+            # Search results FIRST: it carries he_sold (would else be grabbed by
+            # the HeyEtsy-detail check) but is uniquely marked by rank_position /
+            # keyword_match_type. It feeds the Pattern Miner pool, not proof.
+            if _st.looks_like_etsy_search_results(hdrs):
+                lane = "etsy_search"
+            elif _fer.looks_like_heyetsy_detail(hdrs):
                 lane = "listing_detail"
             elif _fer.looks_like_etsy_reviews(hdrs):
                 lane = "listing_reviews"
@@ -2652,7 +2657,9 @@ def build_app(password, secret):
                 if kf == "auto":
                     # V37.4 evidence lanes first: granular HeyEtsy Detail / Etsy
                     # Reviews (v3.4.0) route to validated lanes, not proof/spy.
-                    if fer.looks_like_heyetsy_detail(hf):
+                    if st.looks_like_etsy_search_results(hf):
+                        kf = "etsy_search"         # ranking listings -> Pattern Miner
+                    elif fer.looks_like_heyetsy_detail(hf):
                         kf = "listing_detail"
                     elif fer.looks_like_etsy_reviews(hf):
                         kf = "listing_reviews"
@@ -2682,7 +2689,7 @@ def build_app(password, secret):
                         st.save_payload(p1, source="etsy")
                     except Exception:  # noqa: BLE001
                         pass
-                elif kf in ("supplier", "pinterest", "etsy"):
+                elif kf in ("supplier", "pinterest", "etsy", "etsy_search"):
                     st.save_payload(p1, source=kf)
                 else:
                     if kf == "amazon":

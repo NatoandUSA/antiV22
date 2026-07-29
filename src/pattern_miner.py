@@ -53,7 +53,11 @@ def _flag(v):
 
 
 # --------------------------- load the listing batch ------------------------
+# Pattern Miner reads BOTH the spy pool AND the search-results pool. The frozen
+# proof/opportunity engines read ONLY etsy_spy, so search-result candidates feed
+# the miner's "how the winners win" view without ever touching the ranking math.
 _IMPORT_DIR = Path("data/imports/etsy_spy")
+_SEARCH_DIR = Path("data/imports/etsy_search")
 _MAX_FILES = 12
 
 
@@ -78,10 +82,16 @@ def _from_import(keyword=None):
     given - FILTERED to the listings that actually belong to that niche. This is
     what makes the miner answer 'how do the winners of THIS keyword win' instead
     of 'whatever the last capture happened to contain'."""
-    d = _IMPORT_DIR
-    if not d.is_dir():
+    # gather recent capture files from BOTH the spy pool and the search-results
+    # pool (search results are the listings actually ranking for the keyword —
+    # the richest 'winners' signal the miner has).
+    files = []
+    for d in (_IMPORT_DIR, _SEARCH_DIR):
+        if d.is_dir():
+            files += list(d.glob("*.json"))
+    if not files:
         return None, [], 0, 0
-    files = sorted(d.glob("*.json"), key=lambda p: p.stat().st_mtime,
+    files = sorted(files, key=lambda p: p.stat().st_mtime,
                    reverse=True)[:_MAX_FILES]
     import json as _json
     all_rows, seen = [], set()

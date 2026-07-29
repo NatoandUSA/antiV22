@@ -1187,7 +1187,15 @@ def normalize_listing_structure(headers, rows, source_hint=None):
     if not listing_id or not title:
         return None
     raw_tags = clean_text(_row_get(row, idx["tags"])) or ""
-    tags = [t.strip() for t in re.split(r"[;|,]", raw_tags) if t.strip()]
+    tags, _tseen = [], set()
+    for t in re.split(r"[;|,]", raw_tags):
+        # strip Etsy's visually-hidden "opens in a new tab" accessibility text and
+        # other link cruft the DOM scrape can pick up; dedupe; drop junk lengths.
+        t = re.sub(r"[-–—]?\s*opens in( a)? new tab.*$", "", t, flags=re.I)
+        t = re.sub(r"\s+", " ", t).strip().lower()
+        if 2 < len(t) <= 40 and t not in _tseen:
+            _tseen.add(t)
+            tags.append(t)
     raw_vars = clean_text(_row_get(row, idx["variations"])) or ""
     variations = [v.strip() for v in re.split(r"[;|]", raw_vars) if v.strip()]
     pers = clean_text(_row_get(row, idx["personalization"]))
@@ -1304,6 +1312,21 @@ def structure_for_keyword(keyword, max_listings=10):
             imgs.append(s["image_count"])
         if s.get("title"):
             titles.append(s["title"])
+    # price band: captures may be in VND (Vietnamese staff view Etsy in local
+    # currency). Detect by median like the Pattern Miner, convert to USD, and DROP
+    # absurd/garbage values so one malformed scrape can't blow the band into billions.
+    _raw = [p for p in prices if p and p > 0]
+    prices = []
+    if _raw:
+        _med = sorted(_raw)[len(_raw) // 2]
+        try:
+            from src.engine_config import get as _cfg
+            _rate = float(_cfg("vnd_per_usd")) or 25000.0
+        except Exception:  # noqa: BLE001
+            _rate = 25000.0
+        _is_vnd = _med > 2000
+        prices = sorted(round((p / _rate) if _is_vnd else p, 2)
+                        for p in _raw if 0 < ((p / _rate) if _is_vnd else p) < 100000)
     n = len(matched)
     return {
         "keyword": keyword, "has_structure": True, "listings": n,
