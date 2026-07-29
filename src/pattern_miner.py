@@ -49,7 +49,17 @@ def _num(v):
 
 
 def _flag(v):
-    return str(v).strip() in ("1", "true", "True", "yes", "Y")
+    # accept booleans ("1"/"true"/"yes") AND the human badge text some captures
+    # store ("Ad", "Free shipping", "Star Seller") — otherwise every signal reads
+    # 0% because the extension wrote "Free shipping" and we only matched "1".
+    s = str(v).strip().lower()
+    if s in ("1", "true", "yes", "y", "t"):
+        return True
+    if s in ("", "0", "false", "no", "n", "none", "-"):
+        return False
+    return (s.startswith("free ship") or s.startswith("free deliver")
+            or s in ("ad", "promoted", "sponsored", "star seller",
+                     "star-seller", "bestseller"))
 
 
 # --------------------------- load the listing batch ------------------------
@@ -58,7 +68,14 @@ def _flag(v):
 # the miner's "how the winners win" view without ever touching the ranking math.
 _IMPORT_DIR = Path("data/imports/etsy_spy")
 _SEARCH_DIR = Path("data/imports/etsy_search")
+# No-keyword "overview" mode shows the newest captures only. But when the owner
+# TYPES a keyword, we must search the WHOLE capture history — the listings for
+# that niche may have been captured days ago and pushed far down the file list by
+# later, unrelated captures. A 12-file cap silently hid all but the newest 12
+# files (the #1 "my data isn't used" bug): with 140+ capture files, a keyword's
+# listings were never even read. Keyword search now scans up to _MAX_FILES_KW.
 _MAX_FILES = 12
+_MAX_FILES_KW = 2000
 
 
 def _query_tokens(q):
@@ -91,8 +108,11 @@ def _from_import(keyword=None):
             files += list(d.glob("*.json"))
     if not files:
         return None, [], 0, 0
+    # keyword given -> scan the whole history to FIND that niche; no keyword ->
+    # newest window only (fast overview of the latest captures).
+    _cap = _MAX_FILES_KW if keyword else _MAX_FILES
     files = sorted(files, key=lambda p: p.stat().st_mtime,
-                   reverse=True)[:_MAX_FILES]
+                   reverse=True)[:_cap]
     import json as _json
     all_rows, seen = [], set()
     hint = None
