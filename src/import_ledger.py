@@ -101,9 +101,14 @@ def stats(days=14):
               for i in range(days)]
 
     # ---- growth by first-seen date + channel, from the master itself ----
+    # This is the ONLY reconciling view: every DISTINCT keyword in the base is
+    # counted exactly once, so base_by_channel sums to `total`. (The per-user
+    # ledger below counts import EVENTS, which over-counts when the same
+    # keywords are re-pulled — see the note at the bottom.)
     total = 0
     daily = defaultdict(lambda: defaultdict(int))     # date -> channel -> n
-    chan_total = defaultdict(int)
+    chan_total = defaultdict(int)                     # channel -> distinct kw
+    n_dated = 0                                       # kws with a real date
     try:
         with MASTER.open(encoding="utf-8-sig") as fh:
             for r in csv.DictReader(fh):
@@ -115,6 +120,8 @@ def stats(days=14):
                 ch = _channel_of(r.get("source"))
                 daily[d][ch] += 1
                 chan_total[ch] += 1
+                if d != "unknown":
+                    n_dated += 1
     except OSError:
         pass
     today_n = sum(daily.get(today_s, {}).values())
@@ -142,17 +149,36 @@ def stats(days=14):
     users = [{"user": u, **v} for u, v in
              sorted(by_user.items(), key=lambda kv: -kv[1]["total"])]
 
+    # how spread-out are the first-seen dates? if nearly everything sits on ONE
+    # day, the daily/today/7d/30d numbers are not yet trustworthy (the old
+    # re-stamp bug collapsed history) — the render uses this to warn honestly.
+    dated_days = len([k for k in daily if k != "unknown"])
+    single_day = None
+    if dated_days == 1:
+        single_day = next(k for k in daily if k != "unknown")
+
     return {
         "total": total,
         "today": today_n,
         "last7": last7_n,
         "last30": last30_n,
         "daily": day_rows,
-        "by_channel_total": dict(chan_total),
+        "by_channel_total": dict(chan_total),   # distinct kw per channel -> sums to total
+        "base_by_channel": [{"channel": c, "count": n,
+                             "pct": round(100 * n / total) if total else 0}
+                            for c, n in sorted(chan_total.items(),
+                                               key=lambda kv: -kv[1])],
+        "dated_days": dated_days,      # how many distinct real first-seen dates exist
+        "single_day": single_day,      # set when ALL dated kws share one day
         "by_user": users,
         "recent_events": list(reversed(events[-20:])),
-        "note": ("collected_at = first-seen date (fixed 2026-07-19; dates "
-                 "before that were re-stamped on every import, so earlier "
-                 "history is compressed into one day). The WHO table starts "
-                 "counting from when the ledger went live."),
+        "note": ("The 'By person' totals count import EVENTS, not distinct "
+                 "keywords: when the same keyword list is re-pulled (e.g. MCP "
+                 "auto-pull re-sends the same saved searches), every pull "
+                 "re-counts those keywords, so the per-person 'new kws' can be "
+                 "many times larger than your actual base. Your true base is "
+                 "the 'keywords total' number above. collected_at = first-seen "
+                 "date; dates before 2026-07-19 were re-stamped on every "
+                 "import, so older history is compressed onto one day and "
+                 "daily/7d/30d only become reliable going forward."),
     }

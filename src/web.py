@@ -2104,9 +2104,17 @@ def build_app(password, secret):
             f"<td><b>+{u['total']}</b></td>"
             f"<td>{u['rows']}</td><td>{u['events']}</td></tr>"
             for u in g["by_user"]) or (
-            '<tr><td colspan="6">No import events recorded yet. Staff names '
+            '<tr><td colspan="7">No import events recorded yet. Staff names '
             'appear here once they set "Your name" in the extension popup, or '
             'when they drop files while logged in.</td></tr>')
+        # RECONCILING table: distinct keywords per channel, sums to the base.
+        # This is the honest "where did my keywords come from" view — unlike the
+        # per-person cumulative counts, these add up to your real total.
+        crows = "".join(
+            f"<tr><td><b>{_h.escape(str(c['channel']))}</b></td>"
+            f"<td><b>{c['count']}</b></td><td>{c['pct']}%</td></tr>"
+            for c in g.get("base_by_channel", [])) or (
+            '<tr><td colspan="3">Base is empty.</td></tr>')
         def _evt_result(e):
             new = int(e.get("kw_new", 0) or 0)
             upd = int(e.get("kw_updated", 0) or 0)
@@ -2133,20 +2141,47 @@ def build_app(password, secret):
             f"<td>{_h.escape(str(e.get('view', ''))[:40])}</td>"
             f"<td>{e.get('rows', 0)}</td><td>{_evt_result(e)}</td></tr>"
             for e in g["recent_events"]) or '<tr><td colspan="6">—</td></tr>'
+        # honest date warning when first-seen dates all collapse onto one day
+        _date_warn = ""
+        if g.get("single_day"):
+            _date_warn = (
+                '<p class="note" style="background:#fef3c7;padding:8px 12px;'
+                'border-radius:6px">⚠️ Almost all keywords share one '
+                f'first-seen date ({_h.escape(str(g["single_day"]))}), so '
+                '"today / 7 days / 30 days" below are not meaningful yet — an '
+                'earlier bug re-stamped the date on every import. Genuine daily '
+                'tracking starts from now on.</p>')
         content = (
             '<article class="md"><h1>\U0001F4C8 Keyword base — growth &amp; '
             'who added what</h1>'
-            f'<p><b>{g["total"]}</b> keywords total · <b>+{g["today"]}</b> today '
-            f'· <b>+{g["last7"]}</b> last 7 days · '
-            f'<b>+{g.get("last30", 0)}</b> last 30 days.</p>'
+            f'<p style="font-size:1.15em"><b>You have {g["total"]} keywords</b> '
+            'in your base right now. That is the real number — everything below '
+            'is import <i>activity</i>, which can be higher because the same '
+            'keywords get re-pulled.</p>'
+            f'{_date_warn}'
+            '<h2>Where your keywords came from</h2>'
+            '<p class="note">Distinct keywords by channel. These add up to your '
+            'total base — the honest breakdown of your ' f'{g["total"]}'
+            ' keywords.</p>'
+            '<table><tr><th>Channel</th><th>Keywords</th><th>Share</th></tr>'
+            f'{crows}</table>'
+            f'<p><b>+{g["today"]}</b> today · <b>+{g["last7"]}</b> last 7 days · '
+            f'<b>+{g.get("last30", 0)}</b> last 30 days '
+            '<span class="note">(from first-seen dates; reliable going '
+            'forward).</span></p>'
             '<h2>Daily additions (last 14 days, by channel)</h2>'
             f'<table><tr><th>Date</th><th>New keywords</th>{chead}</tr>{drows}</table>'
-            '<h2>By person</h2>'
+            '<h2>By person — import activity</h2>'
             '<p class="note">Counted from the import ledger: extension sends '
             '(with the staff name set in the popup), homepage file drops '
-            '(logged-in user), Keyword Lab adds, and the MCP auto-pull.</p>'
+            '(logged-in user), Keyword Lab adds, and the MCP auto-pull. '
+            '<b>"New-kw imports" counts every import’s new keywords added '
+            'up over time</b> — if someone re-pulls the same list, those '
+            'keywords are counted again each pull, so this can be far larger '
+            'than your actual base. It measures work done, not base size.</p>'
             '<table><tr><th>Who</th><th>Today</th><th>7 days</th><th>30 days</th>'
-            '<th>Total new kws</th><th>Rows imported</th><th>Imports</th></tr>'
+            '<th>New-kw imports (cumulative)</th><th>Rows imported</th>'
+            '<th>Imports</th></tr>'
             f'{urows}</table>'
             '<h2>Recent import events</h2>'
             '<p class="note">Result key: <b style="color:#15803d">new kw</b> = '
@@ -2314,8 +2349,8 @@ def build_app(password, secret):
                 pass
         except Exception as exc:  # noqa: BLE001
             return _tool_error("Keyword Lab", exc)
-        # land on the RE-RANKED inbox FOCUSED on the niche just expanded, so the
-        # new candidates are immediately visible (no hunting in 1,000 rows)
+        # land on the RE-RANK decision page (V37.5), where the freshly generated
+        # candidates live — the button promises "& re-rank", so go there, not to Rank.
         from urllib.parse import quote_plus as _uq3
         qkw = (request.form.get("q") or "").strip()[:80]
         parts = []
@@ -2324,7 +2359,7 @@ def build_app(password, secret):
         if mode:
             parts.append(f"mode={m}")
         tail = ("?" + "&".join(parts)) if parts else ""
-        return redirect(f"/inbox{tail}")
+        return redirect(f"/rerank{tail}")
 
     @app.route("/winners")
     @login_required
