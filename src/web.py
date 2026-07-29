@@ -2507,6 +2507,19 @@ def build_app(password, secret):
                 _st.save_payload(payload, source=lane)
                 summary = {"type": lane, "view": str(payload.get("view") or lane),
                            "rows_received": n_rows}
+                # Option C hybrid: ALSO index Etsy SERP listings into the clean
+                # SQLite layer (files stay for the frozen ranking readers; the DB
+                # gives Pattern Miner keyword-keyed queries). Never blocks ingest.
+                if lane in ("etsy", "etsy_search"):
+                    try:
+                        from src import data_store as _ds
+                        _ds.index_capture(payload.get("view"), hdrs,
+                                          payload.get("rows") or [],
+                                          "etsy_vn" if "vietnam" in
+                                          str(payload.get("view") or "").lower()
+                                          else "etsy")
+                    except Exception:  # noqa: BLE001
+                        pass
             else:
                 summary = ytx_import.ingest(payload)
             # V37.5 Phase A (capture-only, ZERO ranking effect): if the extension
@@ -2691,6 +2704,13 @@ def build_app(password, secret):
                         pass
                 elif kf in ("supplier", "pinterest", "etsy", "etsy_search"):
                     st.save_payload(p1, source=kf)
+                    if kf in ("etsy", "etsy_search"):
+                        try:
+                            from src import data_store as _ds
+                            _ds.index_capture(p1.get("view") or fn, hf,
+                                              p1.get("rows") or [], "etsy")
+                        except Exception:  # noqa: BLE001
+                            pass
                 else:
                     if kf == "amazon":
                         p1["view"] = "amazon-xray"

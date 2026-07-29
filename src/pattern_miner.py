@@ -223,9 +223,31 @@ def _from_master(keyword=None):
     return (key or keyword), batch
 
 
+def _from_db(keyword):
+    """(batch) from the clean SQLite index — every listing captured from a search
+    matching `keyword`, already normalized (USD prices, real flags, keyword-keyed).
+    This is the Option-C fast path; returns [] if the DB is empty/absent so the
+    file scan below still runs (nothing regresses)."""
+    try:
+        from src import data_store as _ds
+        rows = _ds.listings_for_keyword(keyword)
+    except Exception:  # noqa: BLE001
+        return []
+    return [{"title": r.get("title") or "", "price": r.get("price_usd"),
+             "shop": r.get("shop"), "star": bool(r.get("is_star")),
+             "ad": bool(r.get("is_ad")), "freeship": bool(r.get("free_ship")),
+             "tags": r.get("tags") or "", "view": r.get("source_keyword") or ""}
+            for r in rows if (r.get("title") or "").strip()]
+
+
 def load_batch(keyword=None):
-    """(kw, batch, matched, scanned) for a keyword: captures first (filtered to
-    the keyword's niche when one is given), master CSV fallback."""
+    """(kw, batch, matched, scanned) for a keyword. Order: clean SQLite index
+    first (keyword-keyed, normalized), then the raw file scan, then master CSV —
+    each a fallback so the miner still works if the DB isn't populated yet."""
+    if keyword:
+        db_batch = _from_db(keyword)
+        if db_batch:
+            return keyword, db_batch, len(db_batch), len(db_batch)
     hint, batch, matched, scanned = _from_import(keyword)
     if batch:
         return (keyword or hint), batch, matched, scanned
