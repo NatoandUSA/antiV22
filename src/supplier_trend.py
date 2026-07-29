@@ -279,9 +279,21 @@ def looks_like_pinterest(headers):
 
 
 def has_keyword_col(headers):
-    """True if there's a real keyword column (a YTrends/Amazon keyword table)."""
-    return any(k in str(h).lower() for h in (headers or [])
-               for k in ("keyword", "phrase"))
+    """True ONLY for a real KEYWORD TABLE (YTrends/Amazon), where a whole column
+    IS the keyword/phrase.
+
+    Critical fix: an Etsy SERP listing export carries per-listing metadata columns
+    named 'keyword_context' / 'keyword_match_type' — those contain the substring
+    'keyword' but are NOT a keyword table. Counting them here made the router dump
+    ~72 ranking LISTINGS into the keyword base instead of the Pattern Miner pool
+    (the "my search never shows up" bug). Match the column NAME exactly, so
+    metadata tags no longer masquerade as a keyword table."""
+    for h in (headers or []):
+        hl = str(h).lower().strip()
+        if hl in ("keyword", "keywords", "phrase", "phrases", "query",
+                  "search term", "search_term", "search phrase", "search_phrase"):
+            return True
+    return False
 
 
 def looks_like_etsy_listings(headers):
