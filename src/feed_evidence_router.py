@@ -44,6 +44,11 @@ DETAIL_DIR = IMPORTS / "etsy_listing_detail"
 REVIEWS_DIR = IMPORTS / "etsy_listing_reviews"
 SUMMARY_DIR = IMPORTS / "etsy_review_summary"
 MAP_DIR = IMPORTS / "listing_keyword_map"
+# V37.5: rich ETSY listing STRUCTURE (title/tags/price/description/personalization/
+# variations/images) from the extension's Etsy listing-detail page — feeds Pattern
+# Miner "why winners win" + turns real listing tags into re-rankable candidates.
+# Distinct from DETAIL_DIR (which is HeyEtsy third-party sales estimates).
+STRUCTURE_DIR = IMPORTS / "etsy_listing_structure"
 
 # Evidence provenance label -- deliberately NOT "real Etsy sales".
 DETAIL_EVIDENCE_TYPE = "heyetsy_estimated_listing_evidence"
@@ -210,6 +215,25 @@ def looks_like_etsy_reviews(headers):
     has_listing = (_ci(headers, "listing_id", "listing id") is not None)
     has_variation = (_ci(headers, "variation_json", "variation") is not None)
     return has_review and (has_listing or has_variation)
+
+
+def looks_like_etsy_listing_structure(headers):
+    """Etsy listing-DETAIL structure page (extension source_page_type
+    etsy_listing_detail): listing_id + title + rich structure fields
+    (description / personalization / variations / listing_tags), and NOT a HeyEtsy
+    sales estimate (no estimated_sold/he_sold) and NOT a reviews export."""
+    if not headers:
+        return False
+    has_listing = _ci(headers, "listing_id", "listing id") is not None
+    has_title = _ci(headers, "title", exclude=("shop",)) is not None
+    has_structure = _ci(
+        headers, "description", "personalization_text", "variations_options",
+        "listing_tags", "category_breadcrumb") is not None
+    has_estimate = _ci(headers, "estimated_sold", "estimated sold", "he_sold",
+                       "estimated_revenue") is not None
+    has_reviews = _ci(headers, "review_text", "review text", "review_id") is not None
+    return (has_listing and has_title and has_structure
+            and not has_estimate and not has_reviews)
 
 
 # ----------------------------------------------------------------------------
@@ -612,7 +636,7 @@ def build_keyword_map(listing_id, detail=None, intel=None):
       * review-derived long-tails are CONFIRM_FIRST candidates for Re-rank (CF006)
     Nothing here is auto-built; Re-rank + gates decide the final action.
     """
-    detail = detail or load_detail(listing_id)
+    detail = detail or load_detail(listing_id) or load_structure(listing_id)
     if not detail:
         return None
     intel = intel or review_intel(listing_id)
@@ -973,9 +997,17 @@ def _normalize_search_rows(headers, rows):
                        exclude=("id",)),
         "price": _ci(headers, "price", exclude=("was", "compare")),
         "tags": _ci(headers, "tags", exclude=("count", "categor")),
-        "ad": _ci(headers, "promoted", "advert", "is_ad", "sponsored"),
+        # ad flag: the 22Etsy extension names this column "ad" (1/0). Match it and
+        # the promoted/sponsored aliases; index 0 is a valid column, so test None
+        # explicitly rather than truthiness. Excludes guard against words that merely
+        # contain "ad" (upload / thread / grade …) in other datasets.
         "url": _ci(headers, "url", "link", "heyetsy"),
     }
+    _ad_i = _ci(headers, "promoted", "advert", "is_ad", "sponsored")
+    if _ad_i is None:
+        _ad_i = _ci(headers, "ad", exclude=("add", "read", "head", "load", "grade",
+                                            "shade", "road", "thread", "upload"))
+    idx["ad"] = _ad_i
     seen, out = set(), []
     for row in (rows or []):
         title = clean_text(_row_get(row, idx["title"]))
@@ -1109,3 +1141,180 @@ def focus_evidence_summary(focus_keyword):
                  "distinct_shops": n_shops, "meets_exact_bar": meets,
                  "would_be_scope": scope})
     return base
+
+
+# ============================================================================
+# V37.5 — Etsy listing STRUCTURE lane. The extension's Etsy listing-detail page
+# carries the real title / tags / price / description / personalization /
+# variations / images of a winning listing. This lane stores it, turns the real
+# tags into re-rankable keyword candidates (via listing_keyword_map), and rolls it
+# up per keyword for Pattern Miner ("why winners win"). NEVER an L2 market signal.
+# ============================================================================
+def normalize_listing_structure(headers, rows, source_hint=None):
+    """Map an Etsy listing-detail STRUCTURE row to a normalized dict, or None."""
+    if not rows:
+        return None
+    idx = {
+        "listing_id": _ci(headers, "listing_id", "listing id"),
+        "title": _ci(headers, "title", exclude=("shop", "seller")),
+        "shop": _ci(headers, "shop_name", "shop", "seller",
+                    exclude=("url", "review", "sales")),
+        "shop_url": _ci(headers, "shop_url"),
+        "price": _ci(headers, "price", exclude=("was", "compare")),
+        "currency": _ci(headers, "currency"),
+        "rating": _ci(headers, "listing_rating", "jsonld_rating", "rating",
+                      exclude=("count", "distribution", "shop")),
+        "review_count": _ci(headers, "listing_review_count", "jsonld_review_count",
+                            "review_count", exclude=("shop",)),
+        "tags": _ci(headers, "listing_tags", "he_tags", "tags",
+                    exclude=("count", "categor")),
+        "description": _ci(headers, "description"),
+        "personalization": _ci(headers, "personalization_text", "personalization"),
+        "variations": _ci(headers, "variations_options", "variation"),
+        "breadcrumb": _ci(headers, "category_breadcrumb", "breadcrumb"),
+        "badges": _ci(headers, "badges"),
+        "image_count": _ci(headers, "image_count"),
+        "images": _ci(headers, "image_urls"),
+        "url": _ci(headers, "etsy_url", "url", "link"),
+        "jsonld_price": _ci(headers, "jsonld_price"),
+    }
+    row = rows[0]
+    listing_id = clean_text(_row_get(row, idx["listing_id"]))
+    if not listing_id:
+        m = re.search(r"(\d{6,})", str(source_hint or ""))
+        listing_id = m.group(1) if m else None
+    title = clean_text(_row_get(row, idx["title"]))
+    if not listing_id or not title:
+        return None
+    raw_tags = clean_text(_row_get(row, idx["tags"])) or ""
+    tags = [t.strip() for t in re.split(r"[;|,]", raw_tags) if t.strip()]
+    raw_vars = clean_text(_row_get(row, idx["variations"])) or ""
+    variations = [v.strip() for v in re.split(r"[;|]", raw_vars) if v.strip()]
+    pers = clean_text(_row_get(row, idx["personalization"]))
+    return {
+        "listing_id": listing_id, "title": title,
+        "shop": clean_text(_row_get(row, idx["shop"])),
+        "shop_url": clean_text(_row_get(row, idx["shop_url"])),
+        "price_usd": parse_market_number(_row_get(row, idx["price"]))
+        or parse_market_number(_row_get(row, idx["jsonld_price"])),
+        "currency": clean_text(_row_get(row, idx["currency"])),
+        "rating": parse_market_number(_row_get(row, idx["rating"])),
+        "review_count": parse_market_number(_row_get(row, idx["review_count"])),
+        "tags": tags,
+        "description": (clean_text(_row_get(row, idx["description"])) or "")[:6000],
+        "personalization_text": pers,
+        "has_personalization": bool(pers),
+        "variations": variations,
+        "category_breadcrumb": clean_text(_row_get(row, idx["breadcrumb"])),
+        "badges": clean_text(_row_get(row, idx["badges"])),
+        "image_count": parse_market_number(_row_get(row, idx["image_count"])),
+        "image_urls": clean_text(_row_get(row, idx["images"])),
+        "etsy_url": clean_text(_row_get(row, idx["url"])),
+        "evidence_type": "etsy_listing_structure",
+        "shop_spread": 1,       # one listing = one shop; never proof on its own
+        "collected_at": date.today().isoformat(),
+        "source": source_hint or "etsy-listing-structure",
+    }
+
+
+def save_listing_structure(headers, rows, source_hint=None):
+    """Persist an Etsy listing-structure row + turn its real tags into candidates
+    (listing_keyword_map). Returns the structure dict, or None if unusable."""
+    s = normalize_listing_structure(headers, rows, source_hint)
+    if not s:
+        return None
+    STRUCTURE_DIR.mkdir(parents=True, exist_ok=True)
+    (STRUCTURE_DIR / f"{s['listing_id']}.json").write_text(
+        json.dumps(s, ensure_ascii=False, indent=2), encoding="utf-8")
+    try:
+        build_keyword_map(s["listing_id"], detail=s)   # real tags -> candidates
+    except Exception:  # noqa: BLE001 - map is best-effort, never blocks ingest
+        pass
+    return s
+
+
+def load_structure(listing_id):
+    p = STRUCTURE_DIR / f"{listing_id}.json"
+    if not p.is_file():
+        return None
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _all_structure_ids():
+    if not STRUCTURE_DIR.is_dir():
+        return []
+    return [p.stem for p in sorted(STRUCTURE_DIR.glob("*.json"))]
+
+
+def structure_for_keyword(keyword, max_listings=10):
+    """Roll up the listing-structure lane for a keyword: the winners' real tags,
+    personalization rate, variation opportunities, price points and image counts.
+    Qualitative competitor intelligence for Pattern Miner / Keyword Lab — NEVER an
+    L2 market signal. Honest-null: empty when no structure listing matches."""
+    from collections import Counter
+    empty = {"keyword": keyword, "has_structure": False, "listings": 0,
+             "personalization_rate": None, "top_tags": [],
+             "variation_opportunities": [], "price_points": [],
+             "avg_image_count": None, "titles": [], "affects_l2_market_signal": False,
+             "note": "Etsy listing-structure evidence — feeds Pattern Miner / "
+                     "Keyword Lab, never L2 market math."}
+    kw_toks = {_singular(t) for t in _tokens(keyword)}
+    if not kw_toks:
+        return empty
+    _mods = {_singular(m) for m in GENERIC_MODIFIERS}
+    kw_products = kw_toks & PRODUCT_NOUNS
+
+    def _bridge(shared, other):
+        if len(shared) < 2:
+            return False
+        op = other & PRODUCT_NOUNS
+        conflict = bool(kw_products and op and not (kw_products & op))
+        return bool(shared - _mods) and not conflict
+
+    matched = []
+    for lid in _all_structure_ids():
+        s = load_structure(lid)
+        if not s:
+            continue
+        ttoks = {_singular(t) for t in _tokens(s.get("title"))}
+        if _bridge(kw_toks & ttoks, ttoks):
+            matched.append(s)
+    if not matched:
+        return empty
+    matched = matched[:max_listings]
+    tagc, varc = Counter(), Counter()
+    prices, imgs, titles, pers = [], [], [], 0
+    for s in matched:
+        for t in s.get("tags") or []:
+            t = re.sub(r"\s+", " ", t).strip().lower()
+            if 2 < len(t) <= 40:
+                tagc[t] += 1
+        for v in s.get("variations") or []:
+            v = re.sub(r"\s+", " ", v).strip().lower()
+            if v and len(v) <= 40:
+                varc[v] += 1
+        if s.get("has_personalization"):
+            pers += 1
+        if s.get("price_usd"):
+            prices.append(s["price_usd"])
+        if s.get("image_count"):
+            imgs.append(s["image_count"])
+        if s.get("title"):
+            titles.append(s["title"])
+    n = len(matched)
+    return {
+        "keyword": keyword, "has_structure": True, "listings": n,
+        "personalization_rate": round(100 * pers / n),
+        "top_tags": tagc.most_common(15),
+        "variation_opportunities": [v for v, _ in varc.most_common(8)],
+        "price_points": prices,
+        "avg_image_count": round(sum(imgs) / len(imgs), 1) if imgs else None,
+        "titles": titles,
+        "affects_l2_market_signal": False,
+        "note": "Etsy listing-structure evidence — real tags, personalization + "
+                "variation patterns of the winners. Feeds Pattern Miner / Keyword "
+                "Lab, never L2 market math.",
+    }

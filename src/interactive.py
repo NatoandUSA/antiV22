@@ -2385,6 +2385,34 @@ def pattern_miner(kw="", mode=None):
         if rkw:
             L.append("- **Review-derived long-tails** (→ Keyword Lab re-rank, "
                      "confirm first): " + ", ".join(f"“{k}”" for k in rkw[:5]))
+    # V37.5 winners' LISTING STRUCTURE (Etsy listing-detail lane): real tags,
+    # personalization %, variation opportunities, price band — "how the winners
+    # build the listing". Qualitative competitor intel, never a market-score boost.
+    st = r.get("listing_structure") or {}
+    if st.get("has_structure"):
+        L += ["", "## \U0001F9F5 Winners' listing structure — from Etsy listing pages",
+              f"_From **{st['listings']} matching listing(s)** you opened & sent. Real "
+              "listing tags + the build pattern of the winners. Competitor intel — it "
+              "never changes the market score._"]
+        pr = st.get("personalization_rate")
+        if pr is not None:
+            L.append(f"- **Personalize the title:** {pr}% of the winners do "
+                     + ("— match it." if pr >= 50 else "— a GAP you can own with a "
+                        "“Custom Name” angle."))
+        tags = st.get("top_tags") or []
+        if tags:
+            L.append("- **Real tags the winners use** (reference — write your own): "
+                     + ", ".join(f"{t} ×{n}" for t, n in tags[:12]))
+        varo = st.get("variation_opportunities") or []
+        if varo:
+            L.append("- **Variations offered:** " + ", ".join(varo[:8]))
+        prices = sorted(p for p in (st.get("price_points") or []) if p)
+        if prices:
+            L.append(f"- **Price band:** ${min(prices):.0f}–${max(prices):.0f} "
+                     f"(median ${prices[len(prices) // 2]:.0f})")
+        aic = st.get("avg_image_count")
+        if aic:
+            L.append(f"- **Avg images per listing:** {aic} — match or beat for buyer trust.")
     # next step -> keyword lab
     seed = ", ".join(r["seed_words"][:8])
     L += ["", "## \U0001F3AF Your better angle & next step",

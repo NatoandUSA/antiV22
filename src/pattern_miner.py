@@ -216,7 +216,8 @@ def mine(keyword=None):
     res = {"keyword": kw, "query": keyword, "n": n, "matched": matched,
            "scanned": scanned, "n_shops": 0, "top_words": [], "leading": [],
            "phrases": [], "structure": {}, "price": None, "signals": {},
-           "gaps": [], "seed_words": [], "top_tags": [], "have": False}
+           "gaps": [], "seed_words": [], "top_tags": [], "have": False,
+           "listing_structure": {"has_structure": False}}
     if not n:
         return res
     res["have"] = True
@@ -328,4 +329,12 @@ def mine(keyword=None):
         res["review_evidence"] = _fer.evidence_for_keyword(keyword or kw)
     except Exception:  # noqa: BLE001 — evidence is additive, never blocks mining
         res["review_evidence"] = {"has_evidence": False}
+    # V37.5: winners' listing STRUCTURE (real tags, personalization %, variation
+    # opportunities, price points) from the Etsy listing-detail lane. Qualitative
+    # competitor intelligence — never touches the market/demand math.
+    try:
+        from src import feed_evidence_router as _fer2
+        res["listing_structure"] = _fer2.structure_for_keyword(keyword or kw)
+    except Exception:  # noqa: BLE001 — additive, never blocks mining
+        res["listing_structure"] = {"has_structure": False}
     return res

@@ -2439,6 +2439,8 @@ def build_app(password, secret):
                 lane = "listing_detail"
             elif _fer.looks_like_etsy_reviews(hdrs):
                 lane = "listing_reviews"
+            elif _fer.looks_like_etsy_listing_structure(hdrs):
+                lane = "listing_structure"
             elif _st.looks_like_supplier(hdrs):
                 lane = "supplier"
             elif _st.looks_like_pinterest(hdrs):
@@ -2454,6 +2456,11 @@ def build_app(password, secret):
             elif lane == "listing_reviews":
                 _fer.save_reviews(hdrs, payload.get("rows") or [],
                                   source_hint=payload.get("view"))
+                summary = {"type": lane, "view": str(payload.get("view") or lane),
+                           "rows_received": n_rows}
+            elif lane == "listing_structure":
+                _fer.save_listing_structure(hdrs, payload.get("rows") or [],
+                                            source_hint=payload.get("view"))
                 summary = {"type": lane, "view": str(payload.get("view") or lane),
                            "rows_received": n_rows}
             elif lane:
