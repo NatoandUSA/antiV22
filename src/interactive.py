@@ -37,6 +37,15 @@ def _pull(kind, source=None, limit=PULL):
     return getattr(mcp, kind)(limit=limit)
 
 
+def _src_badge(r):
+    """Per-row provenance badge (senior-review W02/W06). A local mined-proxy row
+    is supply-side evidence (tag/shop counts), NOT buyer demand — mark it so staff
+    never read it as a real market metric."""
+    if isinstance(r, dict) and r.get("is_proxy_metric"):
+        return " `🗃️proxy`"
+    return ""
+
+
 def _f(v):
     try:
         return float(v)
@@ -412,7 +421,7 @@ def opportunities(mode=None, show_all=False, source=None):
     for r in picks:
         tag = _clean(r.get("tag"))
         risk, _ = tm_check(tag.lower())
-        L.append(f"| {tag} | {r['_fit']['product_type'] or 'ok'} "
+        L.append(f"| {tag}{_src_badge(r)} | {r['_fit']['product_type'] or 'ok'} "
                  f"| {r.get('opportunity_score', '-')} "
                  f"| {r.get('momentum_score', '-')} | {_int(r.get('sellers'))} "
                  f"| {_pct(r.get('avg_conversion_rate'))} "

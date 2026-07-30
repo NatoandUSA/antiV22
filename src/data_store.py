@@ -434,10 +434,95 @@ def mine_keywords_from_listings(min_listings=2):
     return upsert_keywords(rows)
 
 
+# --------------------------------------------------------------------------- #
+# Local Data Safety Contract  (senior-review W01/W02 — the critical fix)
+# --------------------------------------------------------------------------- #
+# A keyword row that entered the store from CAPTURED LISTINGS carries demand and
+# competition PROXIES (tag frequency, unique-shop count) — supply-side evidence,
+# NOT buyer search demand. It must never be scored like a real YTrends market row.
+# Every row therefore declares its provenance, and — critically — a proxy row
+# emits NO scorer-facing demand/competition metric, so the FROZEN scorer can only
+# reach WATCH for it. No ranking-math change; the input semantics are made honest.
+
+def _source_kind(source):
+    s = (source or "").lower()
+    if s in ("mcp", "ytrends", "ytrends-en"):
+        return "live_ytrends"
+    if s == "listing-mined":
+        return "local_mined_proxy"
+    if s == "keyword-lab":
+        return "keyword_lab"
+    return "user_import"          # extension file-drops / ext:*
+
+
+def _freshness(last_seen):
+    if not last_seen:
+        return "unknown"
+    try:
+        d = date.fromisoformat(str(last_seen)[:10])
+    except (ValueError, TypeError):
+        return "unknown"
+    age = (date.today() - d).days
+    return "fresh" if age <= 14 else ("stale" if age <= 60 else "old")
+
+
+def _kw_confidence(keyword):
+    """How much we trust that this keyword IS the search it claims to be. View
+    names get truncated (~40 chars), so a clipped-looking key is low confidence
+    until the extension supplies an explicit focus_keyword / URL query."""
+    k = (keyword or "").strip()
+    if not k:
+        return "unknown"
+    # view-derived keys clip at ~40 chars and often end mid-word
+    if len(k) >= 38 or (len(k) >= 30 and not k.endswith(tuple("aeiouy s"))):
+        return "view_name_truncated"
+    return "view_name"
+
+
+def _contract_row(r):
+    """Turn a keywords-table row into a discovery row + full safety contract.
+    PROXY rows null their scorer-facing demand/competition so the frozen scorer
+    caps them at WATCH; their captured counts live in labeled display fields."""
+    kind = _source_kind(r["source"])
+    proxy = kind == "local_mined_proxy"
+    return {
+        "tag": r["keyword"],
+        # ---- scorer-facing metrics (None for proxy => frozen scorer => WATCH) ----
+        "sellers": None if proxy else r["seller_count"],
+        "momentum_score": None if proxy else r["momentum"],
+        "avg_conversion_rate": None if proxy else r["conversion_rate"],
+        "etsy_listings": None if proxy else r["etsy_listings"],
+        "avg_price_usd": r["avg_price"],
+        # ---- Local Data Safety Contract ----
+        "source": r["source"],
+        "source_kind": kind,
+        "is_proxy_metric": proxy,
+        "metric_confidence": ("low" if proxy
+                              else "high" if kind == "live_ytrends" else "medium"),
+        "demand_metric_type": ("captured_listing_tag_frequency_not_search_volume"
+                               if proxy else "ytrends_search_signal"),
+        "competition_metric_type": ("captured_unique_shop_count_not_market_competition"
+                                    if proxy else "ytrends_seller_signal"),
+        "captured_listing_count": r["etsy_listings"] if proxy else None,
+        "captured_unique_shop_count": r["seller_count"] if proxy else None,
+        "price_confidence": "low" if proxy else "medium",
+        "action_cap": "WATCH_OR_CONFIRM_FIRST" if proxy else None,
+        "build_eligible": (not proxy),
+        "build_ineligible_reason": (
+            "supply-side proxy (listing-tag & shop counts), not buyer demand — "
+            "confirm on Live YTrends before Build Now" if proxy else None),
+        "source_keyword": r["source_search"],
+        "source_keyword_confidence": _kw_confidence(r["keyword"]),
+        "first_seen": r["first_seen"],
+        "last_seen": r["last_seen"],
+        "freshness_status": _freshness(r["last_seen"]),
+    }
+
+
 def keyword_rows(mode=None, limit=200, sort="recent", include_mined=True):
-    """Keyword rows in the shape the discovery pages expect (tag + sellers +
-    avg_price_usd + avg_conversion_rate + momentum_score), fed straight into the
-    UNCHANGED frozen ranking. sort: 'recent' (newest first_seen) or 'momentum'."""
+    """Keyword rows for the discovery pages, each carrying the full Local Data
+    Safety Contract. Proxy (listing-mined) rows emit no real demand/competition,
+    so the UNCHANGED frozen scorer can only reach WATCH for them."""
     try:
         if not DB_PATH.is_file():
             return []
@@ -446,21 +531,8 @@ def keyword_rows(mode=None, limit=200, sort="recent", include_mined=True):
             where = "" if include_mined else "WHERE source != 'listing-mined'"
             order = ("first_seen DESC, last_seen DESC" if sort == "recent"
                      else "momentum DESC")
-            q = (f"SELECT * FROM keywords {where} "
-                 f"ORDER BY {order} LIMIT ?")
-            out = []
-            for r in con.execute(q, (int(limit),)):
-                out.append({
-                    "tag": r["keyword"],
-                    "sellers": r["seller_count"],
-                    "avg_price_usd": r["avg_price"],
-                    "avg_conversion_rate": r["conversion_rate"],
-                    "momentum_score": r["momentum"],
-                    "etsy_listings": r["etsy_listings"],
-                    "source": r["source"],
-                    "first_seen": r["first_seen"],
-                })
-            return out
+            q = f"SELECT * FROM keywords {where} ORDER BY {order} LIMIT ?"
+            return [_contract_row(r) for r in con.execute(q, (int(limit),))]
         finally:
             con.close()
     except Exception:  # noqa: BLE001
@@ -480,12 +552,22 @@ def keyword_payload(limit=400, sort="recent"):
         try:
             order = ("first_seen DESC, last_seen DESC" if sort == "recent"
                      else "momentum DESC")
-            rows = [[r["keyword"], r["etsy_listings"], r["seller_count"],
-                     r["views_24h"], r["avg_price"], r["avg_revenue"],
-                     r["conversion_rate"], r["momentum"]]
-                    for r in con.execute(
-                        f"SELECT * FROM keywords ORDER BY {order} LIMIT ?",
-                        (int(limit),))]
+            rows = []
+            for r in con.execute(
+                    f"SELECT * FROM keywords ORDER BY {order} LIMIT ?",
+                    (int(limit),)):
+                proxy = _source_kind(r["source"]) == "local_mined_proxy"
+                # proxy rows null their demand/competition so Winner Finder's
+                # scorer can't rank a supply-side proxy as a GO/Build winner.
+                rows.append([
+                    r["keyword"],
+                    None if proxy else r["etsy_listings"],
+                    None if proxy else r["seller_count"],
+                    r["views_24h"],
+                    r["avg_price"], r["avg_revenue"],
+                    None if proxy else r["conversion_rate"],
+                    None if proxy else r["momentum"],
+                ])
             return ({"view": "my-keyword-store", "headers": hdrs, "rows": rows}
                     if rows else None)
         finally:
@@ -548,9 +630,17 @@ def stats():
                 k = con.execute("SELECT COUNT(*) FROM keywords").fetchone()[0]
                 m = con.execute("SELECT COUNT(*) FROM keywords "
                                 "WHERE source='listing-mined'").fetchone()[0]
+                rng = con.execute("SELECT MIN(last_seen), MAX(last_seen) "
+                                  "FROM keywords").fetchone()
+                oldest, newest = (rng[0], rng[1]) if rng else (None, None)
             except Exception:  # noqa: BLE001
                 k = m = 0
-            return {"listings": n, "search_keywords": sk, "keywords": k, "mined": m}
+                oldest = newest = None
+            return {"listings": n, "search_keywords": sk, "keywords": k,
+                    "mined": m, "live_or_real": max(0, k - m),
+                    "proxy_pct": round(100 * m / k) if k else 0,
+                    "newest_capture": newest, "oldest_capture": oldest,
+                    "freshness": _freshness(newest)}
         finally:
             con.close()
     except Exception:  # noqa: BLE001

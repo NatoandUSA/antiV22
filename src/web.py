@@ -1607,8 +1607,11 @@ def build_app(password, secret):
         return f'<div class="risktoggle"><a class="pullbtn" href="{href}">{label}</a></div>'
 
     def _source_toggle(endpoint, mode, source):
-        """Live YTuong  |  My data — lets the owner see the discovery pages driven
-        by their own accumulated + listing-mined keywords, not just a live pull."""
+        """Live YTrends market data  |  Local Capture Index. The local index is
+        your accumulated + listing-mined keywords — useful for exploration, but
+        it can be stale/partial and its mined rows are supply-side PROXIES, not
+        buyer demand. Labelled explicitly (senior-review W06) so it's never read
+        as equal to live market data."""
         from urllib.parse import urlencode
         base = {}
         if mode:
@@ -1620,11 +1623,31 @@ def build_app(password, secret):
             on = "on" if (source == val or (not source and not val)) else ""
             return (f'<a class="stgn {on}" href="/{endpoint}?{urlencode(q)}">'
                     f'{label}</a>')
-        return ('<div class="stgnav" style="margin-top:6px">'
-                '<span style="font-size:11px;color:var(--ink-faint);'
-                'align-self:center;margin-right:4px">Source:</span>'
-                + _lnk(None, "\U0001F310 Live YTuong")
-                + _lnk("mine", "\U0001F4BE My data (base + mined)") + '</div>')
+        bar = ('<div class="stgnav" style="margin-top:6px">'
+               '<span style="font-size:11px;color:var(--ink-faint);'
+               'align-self:center;margin-right:4px">Source:</span>'
+               + _lnk(None, "\U0001F310 Live YTrends market")
+               + _lnk("mine", "\U0001F5C3️ Local Capture Index") + '</div>')
+        if source == "mine":
+            try:
+                from src import data_store as _ds
+                s = _ds.stats()
+                bar += (
+                    '<div class="warn" style="margin-top:6px;font-size:.8rem">'
+                    '🗃️ <b>Local Capture Index</b> — your captured/mined data, '
+                    'not live market data. '
+                    f'<b>{s.get("keywords", 0)}</b> keywords '
+                    f'(<b>{s.get("mined", 0)}</b> mined proxies, '
+                    f'{s.get("proxy_pct", 0)}%), '
+                    f'{s.get("listings", 0)} listings · newest capture '
+                    f'{str(s.get("newest_capture") or "—")[:10]} · '
+                    f'freshness <b>{s.get("freshness", "unknown")}</b>. '
+                    'Mined rows are <b>supply-side proxies</b> (listing-tag &amp; '
+                    'shop counts, not search demand) — capped at '
+                    '<b>Confirm-first</b>, never Build-Now.</div>')
+            except Exception:  # noqa: BLE001
+                pass
+        return bar
 
     def _mode_tool(fn, title, filterable=False):
         m = request.args.get("mode")
