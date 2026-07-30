@@ -709,8 +709,6 @@ def build_app(password, secret):
             '<details class="archive advtools"><summary>🧰 Advanced tools — research '
             'library, team &amp; analytics (open when you need them)</summary>'
             '<div class="toolgrid">'
-            f'<a class="toolcard" href="/launch-kit?mode={active}"><b>🚀 Launch Kit</b>'
-            '<span>One winner → verdict, edge, listing, photos & ads on one page</span></a>'
             f'<a class="toolcard" href="/daily-brief?mode={active}"><b>🌅 Daily brief</b>'
             '<span>Today\'s scored build-list (Opportunity Score) — read first</span></a>'
             f'<a class="toolcard" href="/score-import?mode={active}"><b>🎯 Score latest import</b>'
@@ -3681,11 +3679,12 @@ def build_app(password, secret):
         is_mgr = bool(u and (auth.has_perm(u["role"], "tasks.assign")
                              or auth.has_perm(u["role"], "tasks.review")))
         cur = request.path
+        # Trimmed per owner: Research, Review and the old Team board removed from
+        # the top bar. Review is still reachable from the Manager Desk on Home;
+        # team work now lives entirely under Team Ops.
         links = [("/", "🏠 Home"), ("/build-queue", "🎯 Build"),
-                 ("/research-queue", "🧭 Research"),
                  ("/design-skill-bridge", "🎨 Design"), ("/launch-kit", "🚀 Launch Kit")]
-        links += ([("/admin/reviews", "✅ Review"), ("/team", "👥 Team")]
-                  if is_mgr else [("/me/tasks", "✅ My work")])
+        links += ([] if is_mgr else [("/me/tasks", "✅ My work")])
         links += [("/team/ops", "🛠️ Team Ops"), ("/training", "📚 Guide")]
         # Longest match wins, so /team/ops doesn't also light up /team.
         matches = [h for h, _ in links
