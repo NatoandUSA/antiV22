@@ -1524,8 +1524,12 @@ def build_app(password, secret):
                       f'{_h.escape(r.get("day3_reason",""))}</p>'
                       f'<p><b>Day 7 → {_h.escape(a7)}:</b> '
                       f'{_h.escape(r.get("day7_reason") or r.get("rec_reason",""))}</p></div>')
-        bar = _bar() + _stage_nav("learn", (request.args.get("q") or "").strip()[:80],
-                                  request.args.get("mode") or "")
+        _lq = (request.args.get("q") or "").strip()[:80]
+        bar = (_bar() + _stage_nav("learn", _lq, request.args.get("mode") or "")
+               + _teamops_strip(
+                   [("DAY3_FOLLOWUP", "Day 3 check"), ("DAY7_FOLLOWUP", "Day 7 check"),
+                    ("FIX_REQUEST", "Assign fix")], keyword=_lq,
+                   lead="Schedule the follow-up checks"))
         return page("Sales feedback", bar + '<article class="md"><h1>Sales feedback '
                     'loop</h1><p>After you MANUALLY publish, log the listing\'s real '
                     'numbers to get a Day-3/7 <b>KEEP / CHANGE / KILL / SCALE</b> '
@@ -1785,7 +1789,12 @@ def build_app(password, secret):
         except Exception:  # noqa: BLE001
             runs = []
         return page("Design Skill Bridge",
-                    _bar() + dsb.form_html(_csrf(), prefill_q=q or "", runs=runs))
+                    _bar() + _teamops_strip(
+                        [("DESIGN", "Assign Design"), ("MOCKUP", "Assign Mockup"),
+                         ("PHOTO_STUDIO", "Assign Photo Studio"),
+                         ("REVIEW_QA", "Submit to Review Queue")],
+                        keyword=q or "", lead="Assign the image work")
+                    + dsb.form_html(_csrf(), prefill_q=q or "", runs=runs))
 
     @app.route("/design-skill-bridge/run/<run_id>")
     @login_required
@@ -2001,6 +2010,11 @@ def build_app(password, secret):
                         'arrives</span></form>')
         except Exception:  # noqa: BLE001
             pass
+        bar += _teamops_strip(
+            [("RESEARCH", "Create Task"), ("PATTERN_MINER", "Assign Pattern Miner"),
+             ("SUPPLIER_CHECK", "Assign Supplier Check"),
+             ("TRADEMARK_CHECK", "Assign Trademark Check")],
+            keyword=q, opportunity=q)
         try:
             return _render_tool("Opportunity Inbox",
                                 interactive.inbox(mode, q,
@@ -2022,6 +2036,10 @@ def build_app(password, secret):
         bar = (_stage_nav("rerank", q, m or "")
                + _stage_kwbar("/rerank", q,
                               "\U0001F3AF Re-rank generated candidates", mode=m or ""))
+        bar += _teamops_strip(
+            [("LISTING_DRAFT", "Assign Listing Draft"), ("DESIGN", "Assign Design"),
+             ("PHOTO_STUDIO", "Assign Photo Studio"),
+             ("REVIEW_QA", "Assign Manager Review")], keyword=q)
         try:
             return _render_tool("Re-rank", interactive.rerank(mode, q), switch=bar)
         except (SystemExit, Exception) as exc:  # noqa: BLE001
@@ -2282,6 +2300,10 @@ def build_app(password, secret):
                + _stage_kwbar("/pattern-miner", q, "\U0001F52C Mine pattern",
                               f"/keyword-lab?q={_uq2(q)}" if q else "/keyword-lab",
                               "Next: \U0001F4A1 Keyword Lab →", mode=m or ""))
+        bar += _teamops_strip(
+            [("DESIGN", "Assign Designer"), ("LISTING_DRAFT", "Assign Seller"),
+             ("KEYWORD_RERANK", "Send candidates to Re-rank"),
+             ("LISTING_UPLOAD", "Create Build Listing task")], keyword=q)
         try:
             return _render_tool("Pattern Miner",
                                 interactive.pattern_miner(q, mode), switch=bar)
@@ -3410,6 +3432,11 @@ def build_app(password, secret):
             return _tool_error("Build Queue", exc)
         return page("Build Queue", _bar()
                     + _source_toggle("build-queue", None, source)
+                    + _teamops_strip(
+                        [("LISTING_DRAFT", "Assign Listing Draft"),
+                         ("DESIGN", "Assign Design"),
+                         ("REVIEW_QA", "Submit to Review Queue")],
+                        lead="Hand a build to the team")
                     + bq.render_html(data, _csrf()))
 
     @app.route("/build-queue/done", methods=["POST"])
@@ -3659,12 +3686,50 @@ def build_app(password, secret):
                  ("/design-skill-bridge", "🎨 Design"), ("/launch-kit", "🚀 Launch Kit")]
         links += ([("/admin/reviews", "✅ Review"), ("/team", "👥 Team")]
                   if is_mgr else [("/me/tasks", "✅ My work")])
-        links += [("/training", "📚 Guide")]
+        links += [("/team/ops", "🛠️ Team Ops"), ("/training", "📚 Guide")]
+        # Longest match wins, so /team/ops doesn't also light up /team.
+        matches = [h for h, _ in links
+                   if cur == h or (h != "/" and cur.startswith(h + "/"))]
+        best = max(matches, key=len) if matches else None
         items = ""
         for h, l in links:
-            on = " on" if (cur == h or (h != "/" and cur.startswith(h))) else ""
+            on = " on" if h == best else ""
             items += f'<a class="navbtn{on}" href="{h}">{l}</a>'
         return f'<nav class="rbar">{items}</nav>'
+
+    def _rollout_note():
+        """Shown on the OLD boards so nobody confuses them with the new Team Ops
+        board. Both systems run side by side; nothing is migrated automatically."""
+        return ('<div class="rolloutnote"><b>Legacy task system remains active '
+                'during rollout.</b> <span>The new Team Ops task system is at '
+                '<a href="/team/ops/board">/team/ops/board</a> and '
+                '<a href="/team/ops/my-tasks">/team/ops/my-tasks</a>. Tasks are not '
+                'copied between the two.</span></div>')
+
+    def _teamops_strip(pairs, keyword="", opportunity="", listing="", store="",
+                       lead="Assign this to the team"):
+        """Hand work from a workflow module to the Team Ops board.
+
+        Each button deep-links to the Create Task form with the type and the
+        opportunity/keyword/listing already filled in. Internal only — it never
+        touches Etsy, it just puts the next move on someone's board. Managers
+        only, since staff can't assign.
+        """
+        u = current_user()
+        if not (u and auth.has_perm(u["role"], "tasks.assign")):
+            return ""
+        from src import team_ops as _to
+        btns = ""
+        for ttype, label in pairs:
+            title = label
+            if keyword:
+                title = f"{label} — {keyword}"
+            href = _to.new_task_url(ttype, title=title, keyword=keyword,
+                                    opportunity_id=opportunity,
+                                    listing_id=listing, store=store)
+            btns += f'<a class="tostrip-b" href="{href}">{_h_esc(label)}</a>'
+        return (f'<div class="tostrip"><b>👥 {_h_esc(lead)}</b>{btns}'
+                '<a class="tostrip-b" href="/team/ops/board">Open board →</a></div>')
 
     def _user_options(sel=None):
         from src import auth as _a
@@ -3867,6 +3932,8 @@ def build_app(password, secret):
             return (f'<a class="toolcard" href="{href}"><b>{title}</b>'
                     f'<span>{sub}</span></a>')
         cards = [
+            _card("/team/ops", "🛠️ Team Operations",
+                  "Role-based board, review queue, work log, KPI + bottlenecks"),
             _card("/me/tasks", "✅ My Tasks",
                   f"{len(mine)} open · {len(my_overdue)} overdue"),
             _card("/research-queue", "🧭 Research Queue",
@@ -4140,8 +4207,10 @@ def build_app(password, secret):
                          '</span></h2>' + "".join(card(t) for t in items))
         if not body:
             body = '<p class="empty">No open tasks — you\'re all caught up. 🎉</p>'
-        return page("My Tasks", _bar() + '<article class="md"><h1>✅ My Tasks</h1>'
-                    '<p class="note">Your assigned work, most urgent first. Click '
+        return page("My Tasks", _bar() + '<article class="md"><h1>✅ My Tasks '
+                    '<span class="legacytag">Legacy task system</span></h1>'
+                    + _rollout_note()
+                    + '<p class="note">Your assigned work, most urgent first. Click '
                     '<b>Start</b> → <b>Submit for review</b> as you go.</p>'
                     + body + '</article>')
 
@@ -4277,8 +4346,10 @@ def build_app(password, secret):
             cols += (f'<div class="lpcol"><h3>{label} <span class="count">{len(cards)}'
                      f'</span></h3>{body or "<p class=note>—</p>"}</div>')
         return page("Team Tasks", _bar()
-                    + '<article class="md"><h1>📋 Team Tasks</h1>'
-                    '<p class="tklead">Great products ship when everyone knows their next '
+                    + '<article class="md"><h1>📋 Team Tasks '
+                    '<span class="legacytag">Legacy task system</span></h1>'
+                    + _rollout_note()
+                    + '<p class="tklead">Great products ship when everyone knows their next '
                     'move. Assign the work, watch it flow left → right, and clear the board '
                     'together — momentum is a team sport.</p>'
                     + pulse + whos + form + '</article><div class="lpboard">' + cols + '</div>')
@@ -4530,6 +4601,14 @@ def build_app(password, secret):
                     f'<p>{n} events written to <code>{path}</code> on the server.</p>'
                     '</article>')
 
+    # ---- Team Operations OS (/team/ops/*) ---------------------------------
+    # The role-based execution board: task workflow, review queue, proactive
+    # work log with the 48h KPI lock, bottleneck alerts and analytics. Lives in
+    # src/team_ui.py so this file stays navigable; it reuses the helpers above.
+    from src import team_ui
+    team_ui.register(app, page, login_required, current_user, _log, _h_esc,
+                     _safe_url, _csrf)
+
     return app
 
 
@@ -4704,6 +4783,21 @@ padding:0 6px;font-size:.72rem;color:#fff;background:#B45309;vertical-align:midd
 .lpcard b{font-size:.86rem;display:block}
 .ckrow{flex-direction:row!important;align-items:center;gap:8px;font-weight:400!important}
 .ckrow input{width:auto!important}
+/* rollout labels: old board vs new Team Ops board */
+.legacytag{display:inline-block;font-size:.62rem;font-weight:800;letter-spacing:.05em;
+text-transform:uppercase;background:var(--ink-faint);color:var(--paper);
+border-radius:20px;padding:2px 9px;vertical-align:middle}
+.rolloutnote{background:var(--accent-bg);border:1px solid var(--accent);
+border-radius:10px;padding:9px 13px;margin:0 0 12px;font-size:.82rem}
+.rolloutnote b{color:var(--accent)}
+.rolloutnote span{color:var(--ink-soft)}
+/* hand-off strip: workflow module -> Team Ops board */
+.tostrip{display:flex;flex-wrap:wrap;gap:7px;align-items:center;background:var(--surface);
+border:1px solid var(--line-strong);border-radius:11px;padding:9px 13px;margin:0 0 12px}
+.tostrip b{font-size:.83rem;margin-right:4px}
+.tostrip-b{font-size:.78rem;font-weight:700;padding:5px 10px;border-radius:7px;
+border:1px solid var(--line-strong);background:var(--paper);color:var(--ink);text-decoration:none}
+.tostrip-b:hover{border-color:var(--accent);color:var(--accent)}
 /* team tasks */
 .mytasks{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;
 background:var(--accent-bg);border:1px solid var(--accent);border-radius:12px;
