@@ -2107,9 +2107,21 @@ def rerank(mode=None, q=""):
     just repeats the Rank table (spec change_09). Proof scope + next task per row."""
     from collections import Counter
     from src import opportunity_inbox as oi
+    import re as _re
     q = (q or "").strip()
     data = oi.build_inbox(mode, q=q or None, show_archived=True)
     rows = [r for r in data["rows"] if _is_generated(r)]
+    # keyword-aware: the box used to do nothing — the table always showed EVERY
+    # generated candidate regardless of what you typed. Now typing a keyword shows
+    # the generated candidates for THAT niche (>=2 shared words, or >=1 for a
+    # one-word query); empty box still shows all.
+    total_gen = len(rows)
+    if q:
+        _qt = {w for w in _re.findall(r"[a-z0-9]+", q.lower()) if len(w) > 1}
+        def _kwm(kw):
+            _kt = set(_re.findall(r"[a-z0-9]+", (kw or "").lower()))
+            return (len(_qt & _kt) >= min(2, len(_qt))) if _qt else True
+        rows = [r for r in rows if _kwm(r.get("keyword"))]
     label = MODE_LABEL.get(mode, mode) if mode else "all modes"
     L = [f"# \U0001F3AF Re-rank — decide on generated candidates ({label})", "",
          "_**Rank** shortlists opportunities from your whole master keyword list. "
@@ -2118,15 +2130,25 @@ def rerank(mode=None, q=""):
          "long-tails are worth building, each with its **proof scope** and **next "
          "task**. This is the decision layer, not a repeat of Rank._", ""]
     if not rows:
-        L += ["> **No generated candidates yet.** Generate long-tails in "
-              "**[\U0001F4A1 Keyword Lab](/keyword-lab)** (or mine a niche in "
-              "**[\U0001F52C Pattern Miner](/pattern-miner)**), click **Add to "
-              "Inbox → re-rank**, then come back here to decide on them.", "",
-              "_Re-rank shows Keyword-Lab, lane and lead candidates — not your whole "
-              "master list (that's Rank)._"]
+        if q and total_gen:
+            L += [f"> **No generated candidates match “{_clean(q)}”.** You have "
+                  f"**{total_gen}** generated candidate(s) for other niches — clear "
+                  "the keyword box to see them all, or generate long-tails for this "
+                  f"niche in **[\U0001F4A1 Keyword Lab](/keyword-lab?q={_uq(q)})** / "
+                  f"**[\U0001F52C Pattern Miner](/pattern-miner?q={_uq(q)})**, then "
+                  "Add to Inbox → re-rank."]
+        else:
+            L += ["> **No generated candidates yet.** Generate long-tails in "
+                  "**[\U0001F4A1 Keyword Lab](/keyword-lab)** (or mine a niche in "
+                  "**[\U0001F52C Pattern Miner](/pattern-miner)**), click **Add to "
+                  "Inbox → re-rank**, then come back here to decide on them.", "",
+                  "_Re-rank shows Keyword-Lab, lane and lead candidates — not your "
+                  "whole master list (that's Rank)._"]
         return "\n".join(L)
     ca = Counter(r["action"] for r in rows)
-    L += [f"_**{len(rows)}** generated candidate(s) — "
+    _scope = (f" matching “{_clean(q)}” (of {total_gen} total)" if q and
+              len(rows) != total_gen else "")
+    L += [f"_**{len(rows)}** generated candidate(s){_scope} — "
           f"\U0001F680 **{ca.get('BUILD_NOW', 0)}** build · "
           f"\U0001F50D **{ca.get('CONFIRM_FIRST', 0)}** confirm · "
           f"\U0001F7E1 **{ca.get('WATCH', 0)}** watch · "
