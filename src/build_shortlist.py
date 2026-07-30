@@ -124,10 +124,21 @@ def _classify(r):
     return "UNVERIFIED"
 
 
-def analyze(path=None):
+def analyze(path=None, source=None):
     """Return the full picture: counts, the ranked buildable queue, and the
-    reasons. Pure read — no side effects."""
+    reasons. Pure read — no side effects. source='mine' ALSO folds in the
+    listing-mined keyword candidates from the store (keywords YTuong doesn't
+    have), so the queue reflects your own research, not just the on-disk base."""
     rows = _load_master(path)
+    if source == "mine":
+        try:
+            from src import data_store as _ds
+            seen = {(r.get("keyword") or "").strip().lower() for r in rows}
+            for mr in _ds.master_rows(mined_only=True):
+                if (mr.get("keyword") or "").strip().lower() not in seen:
+                    rows.append(mr)
+        except Exception:  # noqa: BLE001
+            pass
     total = len(rows)
     actioned = load_actioned()
     proven, partial, unverified = [], [], []

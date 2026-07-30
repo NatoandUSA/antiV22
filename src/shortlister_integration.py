@@ -194,8 +194,12 @@ def _enrich_row(d, mode=None):
 
 
 def score_latest(source=None, limit=None, threshold=None, mode=None,
-                 enrich=False, gtrends=False):
+                 enrich=False, gtrends=False, payload=None):
     """Load the newest import, score every row, return ranked results (best first).
+
+    payload= lets a caller score a supplied {view, headers, rows} instead of the
+    newest import file — used to rank the WHOLE keyword store (Winner Finder's
+    "My data" source) through this exact same scorer, math unchanged.
 
     enrich=True first tops up each launch-ready row's blank fields from the live
     YTrends MCP, so the verdict rests on real market data instead of the handful
@@ -205,7 +209,8 @@ def score_latest(source=None, limit=None, threshold=None, mode=None,
     gtrends=True cross-checks the top rows against free Google Trends demand and
     blends that into the Market score (a rising/cooling external corroboration).
     Both are opt-in because they hit the network."""
-    payload = load_latest_import(source)
+    if payload is None:
+        payload = load_latest_import(source)
     if not payload:
         return {"ok": False, "results": [],
                 "error": "no extension import found in data/imports/ytrends_ext/"}

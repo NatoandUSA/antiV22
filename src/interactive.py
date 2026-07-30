@@ -20,6 +20,23 @@ PULL = 100
 SHOW = 50
 
 
+def _pull(kind, source=None, limit=PULL):
+    """Feed the discovery pages. source='mine' -> YOUR keyword store (base +
+    keywords mined from your captured listings), newest first; anything else ->
+    the live YTrends pull (unchanged default). Either way the rows are the same
+    shape and go through the SAME frozen ranking. Falls back to live if the store
+    is empty, so 'mine' never shows a blank page."""
+    if source == "mine":
+        try:
+            from src import data_store as _ds
+            rows = _ds.keyword_rows(limit=max(limit, 200), sort="recent")
+            if rows:
+                return rows
+        except Exception:  # noqa: BLE001
+            pass
+    return getattr(mcp, kind)(limit=limit)
+
+
 def _f(v):
     try:
         return float(v)
@@ -335,10 +352,10 @@ def _hidden_block(hidden, key, show_all):
     return L
 
 
-def trending(mode=None, show_all=False):
+def trending(mode=None, show_all=False, source=None):
     # Pull the full pool; product-fit (mode-aware) decides what shows. No mode
     # pre-filter — that used to starve Embroidery by dropping design themes.
-    raw = mcp.trending_keywords(limit=PULL)
+    raw = _pull('trending_keywords', source, PULL)
     picks, hidden = _split_fit(raw, "tag", mode)
     L = [f"# Trending now — {MODE_LABEL.get(mode)}", "",
          "_Rising keywords, **product-fit filtered** (junk hidden). Verify trademark._",
@@ -380,9 +397,9 @@ def _cluster_block(picks, key="tag"):
     return L + [""]
 
 
-def opportunities(mode=None, show_all=False):
+def opportunities(mode=None, show_all=False, source=None):
     from src import opportunity_score as oscore
-    raw = mcp.scout_opportunities(limit=PULL)
+    raw = _pull('scout_opportunities', source, PULL)
     picks, hidden = _split_fit(raw, "tag", mode)
     L = [f"# Opportunities — {MODE_LABEL.get(mode)}", "",
          "_Launch-ready, **product-fit** ideas only (shop names, spells, brands, "
@@ -407,11 +424,11 @@ def opportunities(mode=None, show_all=False):
 
 
 # ---- Hidden gems: full sortable review table (#3) ----------------------------
-def gems(mode=None, show_all=False):
+def gems(mode=None, show_all=False, source=None):
     """Hidden Gems as a full review table (previously only folded into Market
     Pulse). High-conversion, low-competition niches a NEW shop can rank for."""
     from src import signals, opportunity_score as oscore
-    raw = mcp.hidden_gems(limit=PULL)
+    raw = _pull('hidden_gems', source, PULL)
     picks, hidden = _split_fit(raw, "tag", mode)
     L = [f"# Hidden gems - {MODE_LABEL.get(mode)}", "",
          "_Underexploited niches: high conversion + low competition. gem_score is "
@@ -743,7 +760,7 @@ def shortlist(mode="embroidery", limit=10):
     number. Only launch-ready, product-fit rows for `mode`; trademark flagged; verdict
     from the real score. Feeds Confirm & Assign. Returns a list of dicts (structured,
     not markdown) so the web layer renders one-click actions."""
-    raw = mcp.scout_opportunities(limit=PULL)
+    raw = _pull('scout_opportunities', source, PULL)
     picks, _ = _split_fit(raw, "tag", mode)
     out = []
     for r in picks:
@@ -1864,14 +1881,22 @@ def _proven_orders(kw):
         return 0
 
 
-def winners(mode=None):
-    """Winner Finder — rank the latest extension import STRICTLY by the high-demand
-    + low-competition sweet spot (the opportunity gap), so the fastest 'what should
-    I make this week' answer is the top row. Fast lane: pure local scoring, no live
-    MCP pull, no waiting."""
+def winners(mode=None, source=None):
+    """Winner Finder — rank STRICTLY by the high-demand + low-competition sweet
+    spot (the opportunity gap). Default scores the latest import; source='mine'
+    scores your WHOLE accumulated keyword store (base + mined), so it ranks every
+    keyword you've gathered, not just the last send. Same scorer either way."""
     from src import shortlister_integration as si
     from src import opportunity_score as osc
-    res = si.score_latest(source=None, mode=mode)
+    if source == "mine":
+        try:
+            from src import data_store as _ds
+            _pl = _ds.keyword_payload()
+        except Exception:  # noqa: BLE001
+            _pl = None
+        res = si.score_latest(payload=_pl, mode=mode) if _pl else si.score_latest(mode=mode)
+    else:
+        res = si.score_latest(source=None, mode=mode)
     if not res.get("ok"):
         return ("# Winner Finder\n\n> **No import yet.** On a YTrends or Etsy search "
                 "page, use the **YTrends Exporter** toolbar and click **Send to "

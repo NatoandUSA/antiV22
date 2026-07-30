@@ -67,6 +67,23 @@ def init_db():
                 PRIMARY KEY (listing_id, source_keyword)
             );
             CREATE INDEX IF NOT EXISTS idx_listings_kw ON listings(source_keyword);
+
+            CREATE TABLE IF NOT EXISTS keywords (
+                keyword         TEXT PRIMARY KEY,
+                source          TEXT,     -- ytrends | ext | keyword-lab | listing-mined
+                etsy_listings   INTEGER,
+                seller_count    INTEGER,
+                views_24h       INTEGER,
+                avg_price       REAL,
+                avg_revenue     REAL,
+                conversion_rate REAL,
+                momentum        REAL,
+                tm_risk         TEXT,
+                source_search   TEXT,     -- the captured search that surfaced it
+                first_seen      TEXT,
+                last_seen       TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_keywords_seen ON keywords(last_seen);
             """
         )
         con.commit()
@@ -289,18 +306,252 @@ def rebuild_from_raw(dirs=None):
     return {"files": files, "listings": total}
 
 
-def stats():
-    """{listings, keywords} — for a health/debug view."""
+# --------------------------------------------------------------------------- #
+# keywords  (the store the discovery pages read — YOUR data, not a live pull)
+# --------------------------------------------------------------------------- #
+_KW_COLS = ["keyword", "source", "etsy_listings", "seller_count", "views_24h",
+            "avg_price", "avg_revenue", "conversion_rate", "momentum", "tm_risk",
+            "source_search", "first_seen", "last_seen"]
+
+
+def upsert_keywords(rows):
+    """Insert/update keyword rows. first_seen is preserved on conflict (honest
+    'when did I first see this'); last_seen advances. Never raises."""
+    if not rows:
+        return 0
     try:
-        if not DB_PATH.is_file():
-            return {"listings": 0, "keywords": 0}
+        init_db()
         con = _connect()
         try:
-            n = con.execute("SELECT COUNT(*) FROM listings").fetchone()[0]
-            k = con.execute(
-                "SELECT COUNT(DISTINCT source_keyword) FROM listings").fetchone()[0]
-            return {"listings": n, "keywords": k}
+            con.executemany(
+                f"INSERT INTO keywords ({','.join(_KW_COLS)}) "
+                f"VALUES ({','.join('?' * len(_KW_COLS))}) "
+                "ON CONFLICT(keyword) DO UPDATE SET "
+                "source=excluded.source, "
+                "etsy_listings=COALESCE(excluded.etsy_listings, keywords.etsy_listings), "
+                "seller_count=COALESCE(excluded.seller_count, keywords.seller_count), "
+                "views_24h=COALESCE(excluded.views_24h, keywords.views_24h), "
+                "avg_price=COALESCE(excluded.avg_price, keywords.avg_price), "
+                "avg_revenue=COALESCE(excluded.avg_revenue, keywords.avg_revenue), "
+                "conversion_rate=COALESCE(excluded.conversion_rate, keywords.conversion_rate), "
+                "momentum=COALESCE(excluded.momentum, keywords.momentum), "
+                "tm_risk=COALESCE(excluded.tm_risk, keywords.tm_risk), "
+                "last_seen=excluded.last_seen",
+                [[r.get(c) for c in _KW_COLS] for r in rows],
+            )
+            con.commit()
+            return len(rows)
         finally:
             con.close()
     except Exception:  # noqa: BLE001
-        return {"listings": 0, "keywords": 0}
+        return 0
+
+
+def import_keyword_base(path="keyword_data.csv"):
+    """Mirror the existing keyword base (with its YTrends metrics + first-seen
+    dates) into the store. This is what lets the discovery pages show YOUR whole
+    accumulated base instead of a 25-row live pull. Returns count."""
+    import csv as _csv
+    p = Path(path)
+    if not p.is_file():
+        return 0
+    rows = []
+    try:
+        with p.open(encoding="utf-8-sig") as fh:
+            for r in _csv.DictReader(fh):
+                kw = (r.get("keyword") or "").strip()
+                if not kw:
+                    continue
+                d = (r.get("collected_at") or "").strip() or None
+                rows.append({
+                    "keyword": kw.lower(),
+                    "source": (r.get("source") or "").split(":")[0] or "ytrends",
+                    "etsy_listings": _num(r.get("etsy_listings")),
+                    "seller_count": _num(r.get("seller_count")),
+                    "views_24h": _num(r.get("views_24h")),
+                    "avg_price": _num(r.get("avg_price")),
+                    "avg_revenue": _num(r.get("avg_revenue")),
+                    "conversion_rate": _num(r.get("conversion_rate")),
+                    "momentum": _num(r.get("momentum")),
+                    "tm_risk": (r.get("tm_risk") or "").strip() or None,
+                    "source_search": None,
+                    "first_seen": d, "last_seen": d,
+                })
+    except OSError:
+        return 0
+    return upsert_keywords(rows)
+
+
+_KW_STOP = _STOP | {"custom", "personalized", "gift", "gifts", "set", "sets"}
+
+
+def mine_keywords_from_listings(min_listings=2):
+    """CLOSE THE LOOP: derive fresh keyword candidates from the tags of the
+    listings you captured. A tag used across several listings/shops is a real,
+    buyer-used keyword — often ones YTuong doesn't rank. Demand/competition are
+    proxied from how many listings/shops use the tag. Returns count."""
+    try:
+        if not DB_PATH.is_file():
+            return 0
+        con = _connect()
+        try:
+            agg = {}   # tag -> {listings, shops:set, prices:[]}
+            for r in con.execute(
+                    "SELECT tags, shop, price_usd, source_keyword FROM listings"):
+                for t in re.split(r"[;|,]", r["tags"] or ""):
+                    t = re.sub(r"\s+", " ", t).strip().lower()
+                    if not (2 < len(t) <= 40):
+                        continue
+                    toks = [w for w in re.findall(r"[a-z0-9]+", t)
+                            if w not in _KW_STOP]
+                    if not toks:
+                        continue
+                    a = agg.setdefault(t, {"n": 0, "shops": set(), "px": [],
+                                           "src": r["source_keyword"]})
+                    a["n"] += 1
+                    if r["shop"]:
+                        a["shops"].add(r["shop"])
+                    if r["price_usd"]:
+                        a["px"].append(r["price_usd"])
+        finally:
+            con.close()
+    except Exception:  # noqa: BLE001
+        return 0
+    today = date.today().isoformat()
+    rows = []
+    for tag, a in agg.items():
+        if a["n"] < min_listings:
+            continue
+        rows.append({
+            "keyword": tag, "source": "listing-mined",
+            "etsy_listings": a["n"], "seller_count": len(a["shops"]),
+            "views_24h": None,
+            "avg_price": round(sum(a["px"]) / len(a["px"]), 2) if a["px"] else None,
+            "avg_revenue": None, "conversion_rate": None, "momentum": None,
+            "tm_risk": None, "source_search": a["src"],
+            "first_seen": today, "last_seen": today,
+        })
+    return upsert_keywords(rows)
+
+
+def keyword_rows(mode=None, limit=200, sort="recent", include_mined=True):
+    """Keyword rows in the shape the discovery pages expect (tag + sellers +
+    avg_price_usd + avg_conversion_rate + momentum_score), fed straight into the
+    UNCHANGED frozen ranking. sort: 'recent' (newest first_seen) or 'momentum'."""
+    try:
+        if not DB_PATH.is_file():
+            return []
+        con = _connect()
+        try:
+            where = "" if include_mined else "WHERE source != 'listing-mined'"
+            order = ("first_seen DESC, last_seen DESC" if sort == "recent"
+                     else "momentum DESC")
+            q = (f"SELECT * FROM keywords {where} "
+                 f"ORDER BY {order} LIMIT ?")
+            out = []
+            for r in con.execute(q, (int(limit),)):
+                out.append({
+                    "tag": r["keyword"],
+                    "sellers": r["seller_count"],
+                    "avg_price_usd": r["avg_price"],
+                    "avg_conversion_rate": r["conversion_rate"],
+                    "momentum_score": r["momentum"],
+                    "etsy_listings": r["etsy_listings"],
+                    "source": r["source"],
+                    "first_seen": r["first_seen"],
+                })
+            return out
+        finally:
+            con.close()
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def keyword_payload(limit=400, sort="recent"):
+    """The keyword store as a Winner-Finder import payload {view, headers, rows}.
+    Headers use the base column names the scorer already maps, so Winner Finder
+    scores the WHOLE store with its existing math — not just the latest import."""
+    hdrs = ["keyword", "etsy_listings", "seller_count", "views_24h", "avg_price",
+            "avg_revenue", "conversion_rate", "momentum"]
+    try:
+        if not DB_PATH.is_file():
+            return None
+        con = _connect()
+        try:
+            order = ("first_seen DESC, last_seen DESC" if sort == "recent"
+                     else "momentum DESC")
+            rows = [[r["keyword"], r["etsy_listings"], r["seller_count"],
+                     r["views_24h"], r["avg_price"], r["avg_revenue"],
+                     r["conversion_rate"], r["momentum"]]
+                    for r in con.execute(
+                        f"SELECT * FROM keywords ORDER BY {order} LIMIT ?",
+                        (int(limit),))]
+            return ({"view": "my-keyword-store", "headers": hdrs, "rows": rows}
+                    if rows else None)
+        finally:
+            con.close()
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def master_rows(mined_only=False):
+    """Store keywords as keyword_data.csv-shaped dicts, for Build Queue and other
+    master readers. mined_only=True -> just the listing-mined candidates (so we can
+    ADD them to the on-disk base without duplicating it)."""
+    try:
+        if not DB_PATH.is_file():
+            return []
+        con = _connect()
+        try:
+            where = "WHERE source='listing-mined'" if mined_only else ""
+            out = []
+            for r in con.execute(f"SELECT * FROM keywords {where}"):
+                out.append({
+                    "keyword": r["keyword"],
+                    "etsy_listings": r["etsy_listings"] if r["etsy_listings"] is not None else "",
+                    "seller_count": r["seller_count"] if r["seller_count"] is not None else "",
+                    "views_24h": r["views_24h"] if r["views_24h"] is not None else "",
+                    "avg_price": r["avg_price"] if r["avg_price"] is not None else "",
+                    "avg_revenue": r["avg_revenue"] if r["avg_revenue"] is not None else "",
+                    "conversion_rate": r["conversion_rate"] if r["conversion_rate"] is not None else "",
+                    "momentum": r["momentum"] if r["momentum"] is not None else "",
+                    "tm_risk": r["tm_risk"] or "",
+                    "source": r["source"] or "",
+                    "collected_at": r["first_seen"] or "",
+                })
+            return out
+        finally:
+            con.close()
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def rebuild_keywords(path="keyword_data.csv"):
+    """Populate the keyword store: mirror the metric-rich base, then mine fresh
+    candidates from captured listings. Returns {base, mined, total}."""
+    base = import_keyword_base(path)
+    mined = mine_keywords_from_listings()
+    return {"base": base, "mined": mined, "total": base + mined}
+
+
+def stats():
+    """{listings, search_keywords, keywords, mined} — health/debug view."""
+    try:
+        if not DB_PATH.is_file():
+            return {"listings": 0, "search_keywords": 0, "keywords": 0, "mined": 0}
+        con = _connect()
+        try:
+            n = con.execute("SELECT COUNT(*) FROM listings").fetchone()[0]
+            sk = con.execute(
+                "SELECT COUNT(DISTINCT source_keyword) FROM listings").fetchone()[0]
+            try:
+                k = con.execute("SELECT COUNT(*) FROM keywords").fetchone()[0]
+                m = con.execute("SELECT COUNT(*) FROM keywords "
+                                "WHERE source='listing-mined'").fetchone()[0]
+            except Exception:  # noqa: BLE001
+                k = m = 0
+            return {"listings": n, "search_keywords": sk, "keywords": k, "mined": m}
+        finally:
+            con.close()
+    except Exception:  # noqa: BLE001
+        return {"listings": 0, "search_keywords": 0, "keywords": 0, "mined": 0}

@@ -1604,17 +1604,40 @@ def build_app(password, secret):
         label = "✅ Show launch-ready only" if show_all else "🔎 Show risky / review items"
         return f'<div class="risktoggle"><a class="pullbtn" href="{href}">{label}</a></div>'
 
+    def _source_toggle(endpoint, mode, source):
+        """Live YTuong  |  My data — lets the owner see the discovery pages driven
+        by their own accumulated + listing-mined keywords, not just a live pull."""
+        from urllib.parse import urlencode
+        base = {}
+        if mode:
+            base["mode"] = mode
+        def _lnk(val, label):
+            q = dict(base)
+            if val:
+                q["source"] = val
+            on = "on" if (source == val or (not source and not val)) else ""
+            return (f'<a class="stgn {on}" href="/{endpoint}?{urlencode(q)}">'
+                    f'{label}</a>')
+        return ('<div class="stgnav" style="margin-top:6px">'
+                '<span style="font-size:11px;color:var(--ink-faint);'
+                'align-self:center;margin-right:4px">Source:</span>'
+                + _lnk(None, "\U0001F310 Live YTuong")
+                + _lnk("mine", "\U0001F4BE My data (base + mined)") + '</div>')
+
     def _mode_tool(fn, title, filterable=False):
         m = request.args.get("mode")
         mode = m if m in ("pod", "embroidery") else None
         endpoint = request.path.strip("/")
         show_all = request.args.get("show") == "all"
+        source = request.args.get("source")
+        source = source if source in ("mine", "live") else None
         from src import interactive
         try:
             switch = _mode_switch(endpoint, mode)
             if filterable:
                 switch += _risk_toggle(endpoint, mode, show_all)
-                out = fn(interactive, mode, show_all)
+                switch += _source_toggle(endpoint, mode, source)
+                out = fn(interactive, mode, show_all, source)
             else:
                 out = fn(interactive, mode)
             return _render_tool(title, out, switch=switch)
@@ -1889,22 +1912,22 @@ def build_app(password, secret):
     @app.route("/trending")
     @login_required
     def trending():
-        return _mode_tool(lambda iv, m, s: iv.trending(m, s), "Trending now", filterable=True)
+        return _mode_tool(lambda iv, m, s, src: iv.trending(m, s, src), "Trending now", filterable=True)
 
     @app.route("/opportunities")
     @login_required
     def opportunities():
-        return _mode_tool(lambda iv, m, s: iv.opportunities(m, s), "Opportunities", filterable=True)
+        return _mode_tool(lambda iv, m, s, src: iv.opportunities(m, s, src), "Opportunities", filterable=True)
 
     @app.route("/gems")
     @login_required
     def gems():
-        return _mode_tool(lambda iv, m, s: iv.gems(m, s), "Hidden gems", filterable=True)
+        return _mode_tool(lambda iv, m, s, src: iv.gems(m, s, src), "Hidden gems", filterable=True)
 
     @app.route("/newest")
     @login_required
     def newest():
-        return _mode_tool(lambda iv, m, s: iv.newest(m, s), "Newest fresh winners", filterable=True)
+        return _mode_tool(lambda iv, m, s, src: iv.newest(m, s), "Newest fresh winners", filterable=True)
 
     @app.route("/categories")
     @login_required
@@ -2367,8 +2390,12 @@ def build_app(password, secret):
         from src import interactive
         m = request.args.get("mode")
         mode = m if m in ("pod", "embroidery") else None
+        source = request.args.get("source")
+        source = source if source in ("mine", "live") else None
         try:
-            return _render_tool("Winner Finder", interactive.winners(mode))
+            switch = _source_toggle("winners", mode, source)
+            return _render_tool("Winner Finder",
+                                interactive.winners(mode, source), switch=switch)
         except (SystemExit, Exception) as exc:  # noqa: BLE001
             return _tool_error("Winner Finder", exc)
 
@@ -3375,11 +3402,15 @@ def build_app(password, secret):
         # TM-flagged, routed to Design Analyzer + Launch Kit. Works straight from
         # keyword_data.csv (no warm cache needed, unlike /shortlist).
         from src import build_shortlist as bq
+        source = request.args.get("source")
+        source = source if source in ("mine", "live") else None
         try:
-            data = bq.analyze()
+            data = bq.analyze(source=source)
         except (SystemExit, Exception) as exc:  # noqa: BLE001
             return _tool_error("Build Queue", exc)
-        return page("Build Queue", _bar() + bq.render_html(data, _csrf()))
+        return page("Build Queue", _bar()
+                    + _source_toggle("build-queue", None, source)
+                    + bq.render_html(data, _csrf()))
 
     @app.route("/build-queue/done", methods=["POST"])
     @login_required
