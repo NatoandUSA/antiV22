@@ -72,6 +72,28 @@ def test_pages_render(client, route):
     assert client.get(route).status_code == 200
 
 
+def test_longtail_lane_renders_and_is_linked(client):
+    """The lane is a view over the frozen engine — it must render offline and be
+    reachable from the top bar (it's a daily-use page, not a hidden route)."""
+    body = client.get("/longtail").get_data(as_text=True)
+    assert "Long-tail lane" in body
+    assert "Pull more long-tails" in body           # the supply action is present
+    assert 'href="/longtail"' in client.get("/").get_data(as_text=True)
+    assert client.get("/longtail?words=4").status_code == 200
+    assert client.get("/longtail?q=dad+shirt").status_code == 200
+
+
+def test_longtail_lane_does_not_change_the_ranking(client):
+    """Hard guarantee: opening the lane must leave every verdict/action alone."""
+    from src import longtail as lt, opportunity_inbox as oi
+    before = [(r["keyword"], r["verdict"], r["action"], r["score"])
+              for r in oi.build_inbox(None, limit=100000)["rows"]]
+    lt.shortlist()
+    after = [(r["keyword"], r["verdict"], r["action"], r["score"])
+             for r in oi.build_inbox(None, limit=100000)["rows"]]
+    assert before == after
+
+
 def test_team_command_center(client):
     body = client.get("/team").get_data(as_text=True)
     assert "Team Command Center" in body

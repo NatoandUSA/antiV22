@@ -323,6 +323,11 @@ def _build_inbox(mode=None, limit=80):
             "proof_tier": act.get("proof_tier", 9),   # L1: 0 proven, 1 selling
             "proof": act.get("proof"),
             "comp": comp, "views": views, "rev": rev, "conv": cr, "momentum": mom,
+            # niche TOTAL revenue, kept beside the per-listing avg so a reader can
+            # tell the two apart (harvest used to write the total into avg_revenue
+            # for opportunity-sourced rows). Carried for display/selection only —
+            # the scorer never reads it, so L2 is untouched.
+            "rev_total": _num(row.get("total_revenue")),
             "evidence": ev,
             "collected_at": (row.get("collected_at") or "").strip(),
             "source": str(row.get("source") or "").strip(),

@@ -13,6 +13,7 @@ Commands:
   py main.py daily [pod|embroidery]  -> THE team command: 5 clean reports + Market Pulse
   py main.py harvest                 -> pull fresh keywords from the YTrends index into keyword_data.csv
   py main.py harvest --dry           -> preview the harvest without writing anything
+  py main.py longtail [seed ...]     -> pull long-tails (with real revenue+conversion) and show the lane
   py main.py images                  -> list AI design prompts (no API calls)
   py main.py images --all            -> generate design PNGs via OpenAI (needs OPENAI_API_KEY, costs money)
   py main.py web                     -> team report portal (read the reports in a browser; needs WEB_PASSWORD)
@@ -378,6 +379,29 @@ def cmd_harvest(cmd, args):
     run_harvest(args)
 
 
+def cmd_longtail(cmd, args):
+    """Pull long-tail keywords that arrive WITH their own revenue + conversion,
+    then show the lane. Seeds default to the lane's current best sellers."""
+    from src import longtail as lt
+    seeds = [a for a in args if not a.startswith("-")]
+    if not seeds:
+        seeds = [s["keyword"] for s in lt.shortlist(limit=6)["rows"]][:6]
+    if not seeds:
+        print("No seeds and nothing in the lane yet — pass seeds: "
+              "py main.py longtail \"embroidered hat\" \"dad shirt\"")
+        return
+    print(f"Pulling long-tails related to {len(seeds)} seed(s)...")
+    rows = lt.pull(seeds, per_seed=10, log=print)
+    added = 0 if "--dry" in args else lt.save_rows(rows)
+    print(f"\nFound {len(rows)} long-tail(s) with real market data; "
+          f"{added} new into keyword_data.csv"
+          + (" (DRY RUN - nothing written)" if "--dry" in args else ""))
+    res = lt.shortlist()
+    print(f"\nLane now: {res['n_scored']} evidence-backed long-tail(s)")
+    for s in res["rows"][:15]:
+        print(f"  {s['verdict']:<6} {s['score']:>5}  {s['keyword']:<32} {s['why']}")
+
+
 def cmd_alerts(cmd, args):
     from src import alerts
     alerts.generate()
@@ -666,6 +690,7 @@ COMMANDS = {
     "discover": cmd_discover,
     "expand": cmd_expand,
     "harvest": cmd_harvest,
+    "longtail": cmd_longtail,
     "workspace": cmd_workspace,
     "autopull": cmd_autopull,
     "daily-run": cmd_daily_run,

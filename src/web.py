@@ -2066,6 +2066,69 @@ def build_app(password, secret):
         except (SystemExit, Exception) as exc:  # noqa: BLE001
             return _tool_error("Re-rank", exc)
 
+    @app.route("/longtail")
+    @login_required
+    def longtail_page():
+        """The long-tail lane: evidence-backed phrases a small shop can win.
+        A view over the same ranked rows — no scoring/verdict change anywhere."""
+        from src import longtail as lt
+        m = request.args.get("mode")
+        mode = m if m in ("pod", "embroidery") else None
+        raw = (request.args.get("q") or "").strip()[:80]
+        q = "".join(c for c in raw if c.isalnum() or c in " '&-.").strip()
+        try:
+            mw = max(2, min(6, int(request.args.get("words") or lt.MIN_WORDS)))
+        except ValueError:
+            mw = lt.MIN_WORDS
+        bar = _stage_kwbar("/longtail", q, "\U0001F48E Filter this niche",
+                           mode=m or "")
+        # the _csrf hidden field is injected app-wide by _inject_csrf
+        bar += ('<form method="post" action="/longtail/pull" class="toolbar">'
+                + f'<input type="hidden" name="mode" value="{_h_esc(m or "")}">'
+                f'<input name="seeds" placeholder="Seeds to expand (blank = your '
+                f'best sellers), e.g. embroidered hat, dad shirt">'
+                '<button class="primary" type="submit">\U0001F53D Pull more '
+                'long-tails from YTrends</button></form>')
+        try:
+            return _render_tool("Long-tail lane", lt.page(mode, q, min_words=mw),
+                                switch=bar)
+        except (SystemExit, Exception) as exc:  # noqa: BLE001
+            return _tool_error("Long-tail lane", exc)
+
+    @app.route("/longtail/pull", methods=["POST"])
+    @login_required
+    def longtail_pull():
+        """Supply: ask YTrends for the long-tails related to a seed. They arrive
+        WITH per-tag revenue + conversion, so they can be judged immediately."""
+        _check_csrf()
+        from src import longtail as lt
+        m = request.form.get("mode")
+        mode = m if m in ("pod", "embroidery") else None
+        raw = (request.form.get("seeds") or "").strip()[:300]
+        seeds = [s.strip() for s in raw.split(",") if s.strip()][:8]
+        if not seeds:
+            seeds = [s["keyword"] for s in
+                     lt.shortlist(mode, limit=6)["rows"]][:6]
+        if not seeds:
+            return redirect("/longtail")
+        try:
+            rows = lt.pull(seeds, per_seed=10)
+            added = lt.save_rows(rows)
+            activity.log("longtail_pull", module="longtail",
+                         action=f"{len(seeds)} seed(s) -> {added} new long-tail(s)")
+            try:
+                from src import import_ledger as _il
+                _u = current_user()
+                _il.record(user=(_u or {}).get("display_name")
+                           or (_u or {}).get("email"),
+                           channel="longtail", view="long-tail pull",
+                           rows=len(rows), kw_new=added)
+            except Exception:  # noqa: BLE001
+                pass
+        except Exception as exc:  # noqa: BLE001
+            return _tool_error("Long-tail pull", exc)
+        return redirect(f"/longtail{'?mode=' + m if mode else ''}")
+
     @app.route("/enrich-leads", methods=["POST"])
     @login_required
     def enrich_leads():
@@ -3705,7 +3768,8 @@ def build_app(password, secret):
         # Trimmed per owner: Research, Review and the old Team board removed from
         # the top bar. Review is still reachable from the Manager Desk on Home;
         # team work now lives entirely under Team Ops.
-        links = [("/", "🏠 Home"), ("/build-queue", "🎯 Build"),
+        links = [("/", "🏠 Home"), ("/longtail", "💎 Long-tail"),
+                 ("/build-queue", "🎯 Build"),
                  ("/design-skill-bridge", "🎨 Design"), ("/launch-kit", "🚀 Launch Kit")]
         links += ([] if is_mgr else [("/me/tasks", "✅ My work")])
         links += [("/team/ops", "🛠️ Team Ops"), ("/training", "📚 Guide")]

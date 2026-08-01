@@ -72,8 +72,8 @@ def _clean(tag):
     return t
 
 
-_METRICS = ("age", "listings", "sellers", "comp", "price", "conv", "revenue", "sold",
-            "views")
+_METRICS = ("age", "listings", "sellers", "comp", "price", "conv", "revenue",
+            "revenue_total", "momentum", "sold", "views")
 
 
 def _est_views(views, sold, conv):
@@ -90,13 +90,31 @@ def _est_views(views, sold, conv):
 
 
 def _add(store, tag, score, source, listings=None, comp=None, price=None,
-         conv=None, sellers=None, revenue=None, sold=None, views=None, age=None):
+         conv=None, sellers=None, revenue=None, sold=None, views=None, age=None,
+         revenue_total=None, momentum=None):
+    """Merge one pulled tag into the store.
+
+    `revenue` is ALWAYS revenue per listing and `revenue_total` is ALWAYS the
+    niche total — the two are never mixed in one field. YTrends returns
+    `avg_revenue` (per listing) from trending and `total_revenue_usd` (niche
+    total) from opportunities; writing both into one column made an
+    opportunity-sourced keyword look ~250x richer than an identical
+    trending-sourced one and swung the demand sub-score by ~60 points on
+    provenance alone. `momentum` is the measured momentum only — never a
+    stand-in score, so a row without one stays an honest null.
+    """
     c = _clean(tag)
     if not c:
         return
+    if revenue is None and revenue_total is not None and listings:
+        try:                       # niche total -> per listing, so units match
+            revenue = float(revenue_total) / float(listings)
+        except (TypeError, ValueError, ZeroDivisionError):
+            revenue = None
     rec = {"tag": c, "score": float(score or 0), "source": source,
            "listings": listings, "sellers": sellers, "comp": comp,
-           "price": price, "conv": conv, "revenue": revenue, "sold": sold,
+           "price": price, "conv": conv, "revenue": revenue,
+           "revenue_total": revenue_total, "momentum": momentum, "sold": sold,
            "views": _est_views(views, sold, conv) or None, "age": age}
     cur = store.get(c)
     if cur is None or rec["score"] > cur["score"]:
@@ -122,6 +140,8 @@ def _pull(store, log=lambda s: None):
         if not page:
             break
         for e in page:
+            # browse_rankings carries rank/target_score + listing_count only —
+            # no demand fields, and target_score is a RANK score, not momentum.
             _add(store, e.get("tag"), e.get("target_score"), "ranking",
                  listings=e.get("listing_count"))
         got += len(page)
@@ -135,7 +155,9 @@ def _pull(store, log=lambda s: None):
                      "opportunity", listings=r.get("listings"),
                      sellers=r.get("sellers"), price=r.get("avg_price_usd"),
                      conv=r.get("avg_conversion_rate"),
-                     revenue=r.get("total_revenue_usd"),
+                     revenue=r.get("avg_revenue"),
+                     revenue_total=r.get("total_revenue_usd"),
+                     momentum=r.get("momentum_score"),
                      sold=r.get("avg_sold_24h"))
         except Exception:
             pass
@@ -145,13 +167,16 @@ def _pull(store, log=lambda s: None):
              listings=t.get("listing_count"), sellers=t.get("seller_count"),
              comp=t.get("competition_level"), price=t.get("avg_price"),
              conv=t.get("avg_conversion_rate"), revenue=t.get("avg_revenue"),
+             momentum=t.get("momentum_score"),
              sold=t.get("total_sold_24h"), views=t.get("total_views_24h"))
 
     def _scout(r):
         _add(store, r.get("tag"), r.get("opportunity_score"), "opportunity",
              listings=r.get("listings"), sellers=r.get("sellers"),
              price=r.get("avg_price_usd"), conv=r.get("avg_conversion_rate"),
-             revenue=r.get("total_revenue_usd"), sold=r.get("avg_sold_24h"))
+             revenue=r.get("avg_revenue"),
+             revenue_total=r.get("total_revenue_usd"),
+             momentum=r.get("momentum_score"), sold=r.get("avg_sold_24h"))
 
     # 3) this week's risers (broad)
     try:
@@ -210,8 +235,55 @@ def _num(v, cast=float, default=0):
 # in the reports (not just sit in keywords.csv). Schema must match exactly what
 # product_manager.load_keyword_data expects.
 KDATA_FIELDS = ["keyword", "etsy_listings", "seller_count", "views_24h",
-                "avg_price", "avg_revenue", "conversion_rate", "momentum",
-                "niche_age_days", "tm_risk", "source", "collected_at"]
+                "avg_price", "avg_revenue", "total_revenue", "conversion_rate",
+                "momentum", "niche_age_days", "tm_risk", "source", "collected_at"]
+
+
+def merge_existing(store, path="keyword_data.csv"):
+    """Fold the keywords ALREADY in the master back into a fresh pull.
+
+    harvest() used to hand write_keyword_data() nothing but the live MCP pull,
+    and write_keyword_data() opens the file with "w" — so every keyword the MCP
+    did not return that run was deleted. That silently wiped every Keyword Lab
+    long-tail, every Pinterest/supplier lane lead and every extension import on
+    the next `main.py harvest`, which is why generated long-tails never
+    accumulated (the base stayed ~1100 MCP rows with 30 Keyword Lab rows).
+
+    A keyword the fresh pull DID return keeps the fresh metrics but its original
+    source, so the growth ledger can still say who first added it. Returns the
+    number of rows carried over.
+    """
+    carried = 0
+    try:
+        with open(path, encoding="utf-8-sig") as fh:
+            rows = list(csv.DictReader(fh))
+    except OSError:
+        return 0
+    def _f(row, key):
+        v = _num(row.get(key), float, None)
+        return v if v else None
+
+    for row in rows:
+        tag = (row.get("keyword") or "").strip().lower()
+        if not tag:
+            continue
+        src = (row.get("source") or "").strip()
+        cur = store.get(tag)
+        if cur is not None:
+            cur["source"] = src or cur["source"]      # provenance is sticky
+            continue
+        store[tag] = {
+            "tag": tag, "score": _num(row.get("momentum")), "source": src,
+            "listings": _f(row, "etsy_listings"),
+            "sellers": _f(row, "seller_count"), "comp": None,
+            "price": _f(row, "avg_price"), "conv": _f(row, "conversion_rate"),
+            "revenue": _f(row, "avg_revenue"),
+            "revenue_total": _f(row, "total_revenue"),
+            "momentum": _f(row, "momentum"), "sold": None,
+            "views": _f(row, "views_24h"), "age": _f(row, "niche_age_days"),
+        }
+        carried += 1
+    return carried
 
 
 def write_keyword_data(store, path="keyword_data.csv"):
@@ -241,6 +313,20 @@ def write_keyword_data(store, path="keyword_data.csv"):
     except Exception:  # noqa: BLE001
         def _risk(kw):
             return ""
+    # Absent metric -> BLANK, never 0. Writing 0 for "the source didn't tell us"
+    # made a never-measured keyword indistinguishable from one measured at zero:
+    # the scorer read conversion 0.0 as a real datapoint, so a row with nothing
+    # behind it still produced a market score. Blank keeps honest-nulls intact
+    # all the way from the pull to the scorer (which already treats missing as
+    # missing).
+    def _opt(v, cast=float, nd=2):
+        if v is None:
+            return ""
+        n = _num(v, cast, None)
+        if n is None:
+            return ""
+        return n if cast is int else round(n, nd)
+
     rows = sorted(store.values(), key=lambda r: r["score"], reverse=True)
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=KDATA_FIELDS)
@@ -248,14 +334,20 @@ def write_keyword_data(store, path="keyword_data.csv"):
         for r in rows:
             w.writerow({
                 "keyword": r["tag"],
-                "etsy_listings": _num(r["listings"], int),
-                "seller_count": _num(r["sellers"], int),
-                "views_24h": _num(r["views"], int),     # 24h demand (views, or
+                "etsy_listings": _opt(r["listings"], int),
+                "seller_count": _opt(r["sellers"], int),
+                "views_24h": _opt(r["views"], int),     # 24h demand (views, or
                                                         # sales/conversion est.)
-                "avg_price": round(_num(r["price"]), 2),
-                "avg_revenue": round(_num(r["revenue"]), 2),
-                "conversion_rate": round(_num(r["conv"]), 4),
-                "momentum": round(r["score"], 2),
+                "avg_price": _opt(r["price"]),
+                "avg_revenue": _opt(r["revenue"]),
+                "total_revenue": _opt(r.get("revenue_total")),
+                "conversion_rate": _opt(r["conv"], float, 4),
+                # MEASURED momentum only. This used to be r["score"] — whatever
+                # score the source happened to return (opportunity 66-91, rank
+                # 38-75, trending 21-52, plain search a hardcoded 40) — so the
+                # velocity leg of the market score was provenance, not market.
+                # No measurement -> honest null, exactly like every other field.
+                "momentum": _opt(r.get("momentum")),
                 "niche_age_days": _num(r.get("age"), int) if r.get("age") is not None else "",
                 "tm_risk": _risk(r["tag"]),
                 # keep the TRUE channel: only bare MCP view names get the mcp:
@@ -330,9 +422,15 @@ def harvest(append=True, cap_pod=140, cap_emb=90, log=lambda s: None):
         log("  [!] pull returned ZERO tags (source outage?) -- KEEPING the "
             "existing keyword_data.csv, not overwriting it with an empty file")
     elif append:
-        # Fuel the reports: overwrite keyword_data.csv from the full live pull.
+        # Fuel the reports: rewrite keyword_data.csv from the live pull MERGED
+        # with what the master already held, so a pull never deletes the
+        # keywords it simply didn't return this time (Keyword Lab long-tails,
+        # lane leads, extension imports).
         # (keywords.csv, the small curated Google-Trends seed list, is left
         #  alone; the permanent archive of discoveries is the DB below.)
+        carried = merge_existing(store)
+        if carried:
+            log(f"  carried over {carried} existing keyword(s) not in this pull")
         wrote_data = write_keyword_data(store)
         try:                       # audit trail (spec §5): raw + normalized
             write_raw_and_processed(store)
