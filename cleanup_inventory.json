@@ -1,0 +1,96 @@
+{
+  "document_type": "22etsy_cleanup_inventory",
+  "generated": "2026-07-27",
+  "method": "reference audit (grep across src + tests) before any deletion — nothing removed blind",
+  "hard_rules_upheld": [
+    "PUBLISH_AUTOMATION=false untouched",
+    "no ranking-math change",
+    "no active route removed",
+    "quarantine/document when risk is unclear"
+  ],
+  "key_correction": {
+    "claim_in_handoffs": "V37.2 + cleanup handoff list create_pack / build_prompt / build_brief / pack_html / work_html and the /pack route as 'legacy dead code, safe to delete later'.",
+    "audit_finding": "FALSE as of this codebase. build_prompt/build_brief/work_html are LIVE (called by run_view_html, which /design-skill-bridge/run uses). create_pack + pack_html are wired to the /design-skill-bridge/pack route AND covered by 3 tests in test_design_skill_bridge.py (lines 20, 49, 160). Deleting any of them breaks the Design Inbox and/or the test suite.",
+    "consequence": "The Promax v38 execution prompt ('Delete design_analyzer.py, ... archive old tables') and the cleanup handoff REMOVE-02 must NOT be run as written — they would break /design-skill-bridge."
+  },
+  "classification": [
+    {
+      "item": "src/design_analyzer.py",
+      "size_kb": 31,
+      "class": "DEAD_FILE_MANUAL_RM",
+      "proof": "No module imports it (grep 'import design_analyzer' -> 0 matches). The /design-analyzer route is a legacy ALIAS to the design_skill_bridge handler, not this module. Only consumer is tests/test_design_analyzer.py.",
+      "action": "git rm (owner-side; the Cowork device bridge cannot delete files).",
+      "risk": "low"
+    },
+    {
+      "item": "tests/test_design_analyzer.py",
+      "size_kb": 9,
+      "class": "DEAD_FILE_MANUAL_RM",
+      "proof": "Only tests the dead design_analyzer module.",
+      "action": "git rm together with the module.",
+      "risk": "low"
+    },
+    {
+      "item": "/design-skill-bridge/pack route + create_pack + pack_html",
+      "class": "ORPHANED_ROUTE_REVIEW_MANUAL",
+      "proof": "No form action posts to /design-skill-bridge/pack (grep -> only the route def). create_pack/pack_html are called only by that route. HOWEVER they are still exercised by 3 tests.",
+      "action": "If the owner wants them gone: remove the route + both funcs + update the 3 tests as ONE reviewed change, then run the 26 bridge tests + a live /design-skill-bridge smoke. NOT done this pass (touches the active V37.2 file for low reward).",
+      "risk": "medium (active Design Inbox file)"
+    },
+    {
+      "item": "build_prompt / build_brief / work_html (design_skill_bridge.py)",
+      "class": "KEEP_LIVE",
+      "proof": "build_prompt @217/272/904, build_brief @273, work_html @980 — all reachable via run_view_html used by /design-skill-bridge/run.",
+      "action": "DO NOT REMOVE."
+    },
+    {
+      "item": "/api/design-result endpoint",
+      "class": "DEPRECATE_CANDIDATE",
+      "proof": "Exporter v3.3.0 no longer calls it (V37.2 §9). It still calls the live dsb.import_pasted. Harmless but unused by the current extension.",
+      "action": "Optional: return 410 Gone. Low value; safe to leave.",
+      "risk": "low"
+    },
+    {
+      "item": "/should-sell",
+      "class": "KEEP_LIVE",
+      "proof": "Keyword Lab 'Score it' links point to /should-sell?q= (interactive.py).",
+      "action": "KEEP."
+    },
+    {
+      "item": "/edge, /grade, /profit",
+      "class": "KEEP_CORE",
+      "proof": "Canonical routes in route_policy; /edge linked from tool nav.",
+      "action": "KEEP."
+    },
+    {
+      "item": "/winner-finder, /shop-analyzer, /listing-analyzer, /pack (root)",
+      "class": "ALREADY_GONE",
+      "proof": "No @app.route registration found (grep -> 0).",
+      "action": "None; already removed."
+    },
+    {
+      "item": "/draft-listing",
+      "class": "KEEP_OR_REVIEW",
+      "proof": "Still registered at web.py:1629. Not proven unused this pass; route_policy suggests it may duplicate /launch-kit.",
+      "action": "KEEP for now. If owner confirms it is unlinked, redirect it to /launch-kit rather than deleting (preserve any bookmarks)."
+    },
+    {
+      "item": "ChatGPT extension injection (chatgpt.com / chat.openai.com, fetch-etsy-image, /api/design-result allowlist)",
+      "class": "ALREADY_GONE",
+      "proof": "Exporter v3.3.0 already stripped these (V37.2 §9). Extension is a pure read-only evidence exporter.",
+      "action": "None."
+    }
+  ],
+  "safe_to_execute_via_bridge_this_pass": [],
+  "requires_owner_git_rm": [
+    "src/design_analyzer.py",
+    "tests/test_design_analyzer.py"
+  ],
+  "do_not_delete_despite_handoff_claims": [
+    "src/design_skill_bridge.py::create_pack",
+    "src/design_skill_bridge.py::pack_html",
+    "src/design_skill_bridge.py::build_prompt",
+    "src/design_skill_bridge.py::build_brief",
+    "src/design_skill_bridge.py::work_html"
+  ]
+}

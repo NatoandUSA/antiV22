@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Promax v38 Math Backtest — 22etsy</title>
+<style>
+  :root{
+    --bg:#faf8f4; --card:#fff; --ink:#20242b; --soft:#5b6472; --faint:#9aa3b0;
+    --line:#e6e2da; --accent:#7c5cff; --accent-bg:#efeaff;
+    --up:#b45309; --upbg:#fbefe0; --keep:#3f7d5b; --keepbg:#e7f3ec; --bad:#99271f; --badbg:#fbe9e7;
+    --go:#3f7d5b; --cond:#3b6e8f; --watch:#8a7a3c; --skip:#8a8a8a;
+  }
+  @media (prefers-color-scheme:dark){:root{
+    --bg:#14161a; --card:#1c1f26; --ink:#eef1f5; --soft:#aab2bf; --faint:#79828f;
+    --line:#2b2f38; --accent-bg:#2a2350;}}
+  *{box-sizing:border-box}
+  body{margin:0;font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+       background:var(--bg);color:var(--ink)}
+  .wrap{max-width:940px;margin:0 auto;padding:28px 20px 60px}
+  h1{font-size:26px;margin:0 0 2px} h2{font-size:18px;margin:30px 0 10px}
+  .sub{color:var(--soft);margin:0 0 20px}
+  .verdict{background:var(--badbg);border:1px solid #f0c9c4;border-radius:14px;padding:16px 18px;margin:18px 0}
+  .verdict b{color:var(--bad)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+  .card .big{font-size:26px;font-weight:800}
+  .card .lbl{font-size:12px;color:var(--soft);text-transform:uppercase;letter-spacing:.03em}
+  table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);
+        border-radius:12px;overflow:hidden;font-size:14px}
+  th,td{padding:8px 11px;text-align:left;border-bottom:1px solid var(--line)}
+  th{font-size:12px;color:var(--soft);text-transform:uppercase;letter-spacing:.02em}
+  tr:last-child td{border-bottom:none}
+  .num{text-align:right;font-variant-numeric:tabular-nums}
+  .bar{height:8px;border-radius:5px;background:var(--accent-bg);position:relative;min-width:40px}
+  .bar>span{position:absolute;left:0;top:0;bottom:0;border-radius:5px;background:var(--accent)}
+  .pill{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:9px}
+  .go{background:var(--keepbg);color:var(--go)} .cond{background:#e6eef4;color:var(--cond)}
+  .watch{background:#f3efe0;color:var(--watch)} .skip{background:#eee;color:#666}
+  .up{color:var(--up);font-weight:700}
+  .finding{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--up);
+           border-radius:10px;padding:12px 15px;margin:10px 0}
+  .finding.keep{border-left-color:var(--keep)}
+  .rec{background:var(--accent-bg);border:1px solid #d9cffb;border-radius:14px;padding:16px 18px;margin:16px 0}
+  code{background:var(--accent-bg);padding:1px 6px;border-radius:5px;font-size:13px}
+  .foot{color:var(--faint);font-size:12px;margin-top:26px}
+  .arrow{color:var(--faint)}
+</style></head>
+<body><div class="wrap">
+
+<h1>Promax v38 — Ranking-Math Backtest</h1>
+<p class="sub">MATH-01 (conversion S-curve) + MATH-02 (seller-concentration) applied to your real corpus —
+<b>1,123 keywords</b> from <code>keyword_data.csv</code>. Frozen engine untouched; this is analysis only.</p>
+
+<div class="verdict">
+<b>Recommendation: do not adopt either change as written.</b> Both are <b>uniformly inflationary</b> —
+of 54 verdicts that move, <b>all 54 go up toward GO and none become more conservative</b>. And MATH-02’s
+biggest effect rides on a data artifact: <b>69% of your keywords have <code>seller_count = 0</code></b>
+and receive the full +10 competition bonus for having <i>no seller data at all</i>. For a system built on
+“honest scoring, no flat optimism,” this is score inflation, not sharper discrimination.
+</div>
+
+<h2>Verdict distribution — current vs v38</h2>
+<table>
+<tr><th>Verdict</th><th>Current</th><th></th><th>v38 (as written)</th><th>v38 (intent-fixed)</th></tr>
+<tr><td><span class="pill go">GO</span></td><td class="num">0 · 0.0%</td>
+    <td><div class="bar"><span style="width:0%"></span></div></td>
+    <td class="num">2 · 0.2%</td><td class="num">4 · 0.4%</td></tr>
+<tr><td><span class="pill cond">CONDITIONAL</span></td><td class="num">41 · 3.7%</td>
+    <td><div class="bar"><span style="width:4%"></span></div></td>
+    <td class="num up">56 · 5.0%</td><td class="num">63 · 5.6%</td></tr>
+<tr><td><span class="pill watch">WATCH</span></td><td class="num">926 · 82.5%</td>
+    <td><div class="bar"><span style="width:82%"></span></div></td>
+    <td class="num">944 · 84.1%</td><td class="num">937 · 83.4%</td></tr>
+<tr><td><span class="pill skip">SKIP</span></td><td class="num">156 · 13.9%</td>
+    <td><div class="bar"><span style="width:14%"></span></div></td>
+    <td class="num">121 · 10.8%</td><td class="num">119 · 10.6%</td></tr>
+</table>
+<p class="sub" style="margin-top:8px">Net drift: ~35 keywords climb out of SKIP, +15 reach CONDITIONAL, 2 reach GO.
+WATCH stays dominant. The change moves ~5% of the corpus <b>one notch up</b>, in one direction only.</p>
+
+<div class="grid">
+  <div class="card"><div class="big up">54</div><div class="lbl">verdicts changed (4.8%)</div></div>
+  <div class="card"><div class="big up">54 ↑ / 0 ↓</div><div class="lbl">all upgrades, no downgrades</div></div>
+  <div class="card"><div class="big">69.3%</div><div class="lbl">rows with seller_count = 0</div></div>
+  <div class="card"><div class="big up">+8.2</div><div class="lbl">mean competition-health inflation (pts)</div></div>
+</div>
+
+<h2>The three problems the data exposes</h2>
+
+<div class="finding">
+<b>1 · MATH-02 rewards missing data, and rewards the wrong thing.</b>
+The formula adds <code>+10 × (1 − sellers/listings)</code>, so <b>fewer sellers → higher competition-health</b>.
+Its stated goal is “favor multi-seller hobbyist niches over single-seller monopolies” — the formula does the
+<i>opposite</i>. Worse, 778 of 1,123 rows have <code>seller_count = 0</code> and collect the maximum +10 simply
+because the field is empty. Mean competition-health rises <b>+8.2 pts across the whole corpus</b> — indiscriminate,
+not selective.
+</div>
+
+<div class="finding">
+<b>2 · MATH-01 argues against a formula you no longer run.</b>
+The spec says it fixes the “linear clamp <code>min(100, cr·2000)</code>.” Your current code was already fixed (V33)
+to a smooth piecewise curve. The proposed logistic (k=100, midpoint 2.5%) is actually <b>steeper at the median</b>
+— more sensitive to a 1% wobble near 2.5%, not less — and it never returns 0 (a 0% converter still scores ~7.6).
+It lifts Market by <b>+3.2 pts on average</b>, again only upward.
+</div>
+
+<div class="finding keep">
+<b>3 · Neither change adds a single conservative signal.</b>
+Across 1,123 keywords, 0 verdicts became more cautious. A tuning change that only ever raises scores isn’t
+re-balancing the ranking — it’s loosening it. That’s the opposite of what the 90-day freeze was protecting.
+</div>
+
+<h2>Conversion sub-score: current vs proposed logistic</h2>
+<table>
+<tr><th>Conversion rate</th><th class="num">Current (piecewise)</th><th class="num">v38 logistic (k=100)</th><th class="num">Δ</th></tr>
+<tr><td>0.5%</td><td class="num">8.0</td><td class="num">11.9</td><td class="num up">+3.9</td></tr>
+<tr><td>1.0%</td><td class="num">16.0</td><td class="num">18.2</td><td class="num up">+2.2</td></tr>
+<tr><td>2.0%</td><td class="num">32.0</td><td class="num">37.8</td><td class="num up">+5.8</td></tr>
+<tr><td>2.5% (median band)</td><td class="num">40.0</td><td class="num">50.0</td><td class="num up">+10.0</td></tr>
+<tr><td>3.0%</td><td class="num">48.0</td><td class="num">62.2</td><td class="num up">+14.2</td></tr>
+<tr><td>5.0%</td><td class="num">80.0</td><td class="num">92.4</td><td class="num up">+12.4</td></tr>
+<tr><td>8.0%</td><td class="num">90.6</td><td class="num">99.6</td><td class="num up">+9.0</td></tr>
+<tr><td>12.0%</td><td class="num">96.5</td><td class="num">100.0</td><td class="num up">+3.5</td></tr>
+</table>
+<p class="sub" style="margin-top:8px">The logistic sits above the current curve at every point — it is a level shift up, not a re-shaping.</p>
+
+<h2>Example verdict flips (as written)</h2>
+<table>
+<tr><th>Keyword</th><th>Current</th><th></th><th>v38</th><th class="num">Overall</th></tr>
+<tr><td>custom shirt kids</td><td><span class="pill cond">CONDITIONAL</span></td><td class="arrow">→</td><td><span class="pill go">GO</span></td><td class="num">77.5 → 80.2</td></tr>
+<tr><td>summer pouch</td><td><span class="pill cond">CONDITIONAL</span></td><td class="arrow">→</td><td><span class="pill go">GO</span></td><td class="num">79.5 → 82.1</td></tr>
+<tr><td>bridesmaid gift bags</td><td><span class="pill watch">WATCH</span></td><td class="arrow">→</td><td><span class="pill cond">CONDITIONAL</span></td><td class="num">63.3 → 67.4</td></tr>
+<tr><td>personalized totebag</td><td><span class="pill watch">WATCH</span></td><td class="arrow">→</td><td><span class="pill cond">CONDITIONAL</span></td><td class="num">61.5 → 65.0</td></tr>
+<tr><td>monogram bag</td><td><span class="pill skip">SKIP</span></td><td class="arrow">→</td><td><span class="pill watch">WATCH</span></td><td class="num">49.2 → 52.5</td></tr>
+<tr><td>monogrammed socks</td><td><span class="pill watch">WATCH</span></td><td class="arrow">→</td><td><span class="pill cond">CONDITIONAL</span></td><td class="num">64.0 → 67.8</td></tr>
+</table>
+
+<div class="rec">
+<b>If you still want to improve these two components, the safe order is:</b>
+<ol style="margin:8px 0 0;padding-left:20px">
+<li><b>Fix seller-count coverage first.</b> With 69% of rows at 0, <i>any</i> seller-based term is noise until the
+data is real. This is a data problem, not a formula problem.</li>
+<li><b>If a seller term is added:</b> gate it on <code>seller_count &gt; 0</code>, invert it to <i>penalize</i>
+concentration (match the stated intent), and make it zero-mean (a bonus <i>and</i> a penalty) so it discriminates
+instead of inflating everyone.</li>
+<li><b>MATH-01 is low priority.</b> The current curve is already smooth. If you adopt a logistic, fit <code>k</code>
+and the midpoint against keywords with <i>known outcomes</i> — don’t guess — and re-center it so 0% conversion scores 0.</li>
+<li><b>Keep it behind the freeze until backtested against real sell-through</b>, not just re-scored on the same inputs.
+This test shows the <i>direction</i> (up, for everyone); it can’t tell you the new scores are <i>more correct</i>.</li>
+</ol>
+</div>
+
+<p class="foot">Backtest reproduced the live L2 math (opportunity_score.score) faithfully via the same
+<code>_to_scorer</code> mapping the Inbox uses; only the conversion and competition sub-scores were swapped for the
+v38 formulas, holding weights, feasibility, opportunity and private components identical. No engine files were
+changed. Raw per-keyword results in <code>backtest_result.json</code>.</p>
+
+</div></body></html>
