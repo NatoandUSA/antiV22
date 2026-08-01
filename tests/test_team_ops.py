@@ -1056,7 +1056,7 @@ def test_dr_16_grid_has_the_required_columns(team, client):
     for col in ("Date", "Staff Name", "Role", "Account / Store", "Work Type",
                 "Seed phrase / Keyword", "Product Type", "Google Drive Folder",
                 "Listing URL", "Design Count", "Listing Count", "Status", "Notes",
-                "Last Updated", "Edited After Lock", "Verified"):
+                "Last Updated", "Edited After Lock", "Review"):
         assert "<th>" + col + "</th>" in body, col
 
 

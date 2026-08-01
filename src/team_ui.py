@@ -135,6 +135,36 @@ table.grid td.ed{cursor:text}
 table.grid td.ed:hover{outline:1px dashed var(--accent);outline-offset:-2px}
 table.grid td.locked{color:var(--ink-faint);cursor:not-allowed}
 .gwrap{overflow-x:auto;border:1px solid var(--line);border-radius:11px}
+/* daily-report grid: status colour, one-click links, review verdict */
+.stx{display:inline-block;font-size:.7rem;font-weight:700;border-radius:20px;
+padding:2px 9px;white-space:nowrap;border:1px solid transparent}
+.stx.s-draft{background:var(--row);color:var(--ink-soft);border-color:var(--line-strong)}
+.stx.s-completed{background:#1E6B54;color:#fff}
+.stx.s-listed{background:#3B6E8F;color:#fff}
+.stx.s-waiting-review{background:#B45309;color:#fff}
+.stx.s-blocked{background:#99271F;color:#fff}
+.ulink{display:inline-block;font-size:.72rem;font-weight:700;color:var(--accent);
+background:var(--surface);border:1px solid var(--line-strong);border-radius:20px;
+padding:2px 9px;white-space:nowrap;text-decoration:none}
+.ulink:hover{border-color:var(--accent);background:var(--accent-bg)}
+.uempty{font-size:.72rem;color:var(--ink-faint)}
+.pen{border:0;background:none;color:var(--ink-faint);cursor:pointer;
+font-size:.72rem;padding:2px 4px;font-family:inherit}
+.pen:hover{color:var(--accent)}
+.rv{display:inline-block;font-size:.7rem;font-weight:700;border-radius:20px;
+padding:2px 9px;white-space:nowrap;border:1px solid transparent}
+.rv.approved{background:#1E6B54;color:#fff}
+.rv.improve{background:#B45309;color:#fff}
+.rv.rejected{background:#99271F;color:#fff}
+.rv.pending{background:var(--row);color:var(--ink-soft);border-color:var(--line-strong)}
+.acts{display:flex;gap:5px;flex-wrap:nowrap;align-items:center}
+.tbtn.ok{color:#1E6B54;border-color:#1E6B54}
+.tbtn.ok:hover{background:#1E6B54;color:#fff}
+.tbtn.imp{color:#B45309;border-color:#B45309}
+.tbtn.imp:hover{background:#B45309;color:#fff}
+.tbtn.danger:hover{background:var(--stop);border-color:var(--stop);color:#fff}
+.tbtn.ic{color:var(--ink-faint);border-color:var(--line)}
+.tbtn.ic:hover{color:var(--accent);border-color:var(--accent)}
 .saved{color:var(--ok);font-size:.72rem;font-weight:700;margin-left:8px}
 .alert{display:flex;gap:11px;align-items:flex-start;padding:10px 13px;border-radius:10px;
 border:1px solid var(--line);background:var(--surface);margin-bottom:8px;border-left-width:4px}
@@ -224,10 +254,54 @@ AUTOSAVE_JS = """
     td.appendChild(s);
     setTimeout(function(){ if(s.parentNode){ s.parentNode.removeChild(s); } }, 2600);
   }
-  function render(td){ td.textContent = td.getAttribute('data-value') || ''; }
+  // Keep this in step with _cell_html() in team_ui.py — a cell must look the
+  // same after an inline save as it did on a fresh page load.
+  var ULAB = {link_folder_google_drive: '📁 Drive folder',
+              listing_url: '🔗 Listing'};
+  function mk(tag, cls, text){
+    var n = document.createElement(tag);
+    if(cls){ n.className = cls; } if(text){ n.textContent = text; } return n;
+  }
+  function render(td){
+    var v = td.getAttribute('data-value') || '';
+    var mode = td.getAttribute('data-render') || '';
+    td.textContent = '';
+    if(mode === 'status'){
+      if(v){ td.appendChild(mk('span',
+        'stx s-' + v.toLowerCase().replace(/[^a-z0-9]+/g, '-'), v)); }
+      return;
+    }
+    if(mode === 'url'){
+      if(/^https?:\\/\\//i.test(v)){
+        var a = mk('a', 'ulink',
+                   (ULAB[td.getAttribute('data-field')] || '🔗 Open') + ' ↗');
+        a.href = v; a.target = '_blank'; a.rel = 'noopener'; a.title = v;
+        td.appendChild(a);
+      } else {
+        td.appendChild(mk('span', 'uempty', v || '＋ add link'));
+      }
+      var pen = mk('button', 'pen', '✎');
+      pen.type = 'button'; pen.title = 'Edit link';
+      pen.setAttribute('data-edit', '');
+      td.appendChild(pen);
+      return;
+    }
+    td.textContent = v;
+  }
+  document.addEventListener('click', function(e){
+    var b = e.target.closest ? e.target.closest('[data-edit]') : null;
+    if(!b) return;
+    e.preventDefault();
+    var td = b.closest('td.ed');
+    if(td){ startEdit(td); }
+  });
   document.addEventListener('dblclick', function(e){
-    var td = e.target.closest ? e.target.closest('td.ed') : null;
-    if(!td || td.querySelector('input,select')) return;
+    if(!e.target.closest || e.target.closest('a')) return;  // let links open
+    var td = e.target.closest('td.ed');
+    if(td){ startEdit(td); }
+  });
+  function startEdit(td){
+    if(td.querySelector('input,select')) return;
     var cur = td.getAttribute('data-value') || '';
     var opts = td.getAttribute('data-options');
     var el;
@@ -256,14 +330,14 @@ AUTOSAVE_JS = """
       if(ev.key === 'Enter'){ ev.preventDefault(); el.blur(); }
       if(ev.key === 'Escape'){ done = true; render(td); }
     });
-  });
+  }
   window.topsNote = function(id, action){
-    var labels = {clarify: 'What needs clarifying?',
-                  blocked: 'Why is this report blocked?',
+    var labels = {clarify: 'What should this person improve? (they get notified)',
+                  blocked: 'Why are you rejecting this report?',
                   note: 'Manager note for this report:'};
     var note = prompt(labels[action] || 'Note:');
     if(note === null) return;
-    if(action !== 'blocked' && !note.trim()){ return; }
+    if(!note.trim()){ return; }
     var f = document.getElementById('tops-note-form');
     f.action = '/team/ops/reports/' + id + '/action';
     f.querySelector('input[name="action"]').value = action;
@@ -1185,12 +1259,50 @@ def register(app, page, login_required, current_user, log, esc_raw, safe_url, cs
                 'Staff use this page to report daily Etsy work: designs completed, '
                 'listings created, keywords researched, and Drive folders.</p>')
 
-    def _report_row_badges(r):
-        out = ""
+    # Cell rendering shared with AUTOSAVE_JS's render() — keep the two in step so
+    # a cell looks the same after an inline save as it did on page load.
+    URL_LABELS = {"link_folder_google_drive": "📁 Drive folder",
+                  "listing_url": "🔗 Listing"}
+
+    def status_badge(v):
+        v = (v or "").strip()
+        if not v:
+            return ""
+        return ('<span class="stx s-'
+                + "".join(c if c.isalnum() else "-" for c in v.lower())
+                + '">' + esc(v) + '</span>')
+
+    def _cell_html(field, val, mode, allowed):
+        if mode == "status":
+            return status_badge(val)
+        if mode == "url":
+            pen = ('<button class="pen" type="button" data-edit '
+                   'title="Edit link">✎</button>') if allowed else ""
+            href = safe_url(val) if val else ""
+            if href:
+                return ('<a class="ulink" href="' + esc(href) + '" target="_blank" '
+                        'rel="noopener" title="' + esc(href) + '">'
+                        + URL_LABELS.get(field, "🔗 Open") + ' ↗</a>' + pen)
+            return ('<span class="uempty">'
+                    + (esc(val[:48]) if val else "＋ add link") + '</span>' + pen)
+        return esc(val[:48])
+
+    def review_badge(r, by=""):
+        """Manager verdict: Approved / Needs improvement / Rejected / Pending."""
+        note = esc(r.get("manager_note") or "")
         if r.get("verified_by_manager_id"):
-            out += '<span class="tag d-ontrack">✔ Verified</span>'
-        else:
-            out += '<span class="tag">Submitted</span>'
+            return ('<span class="rv approved" title="' + note + '">✅ Approved'
+                    + (' · ' + esc(by) if by else "") + '</span>')
+        state = (r.get("review_state") or "").lower()
+        if state == "rejected":
+            return '<span class="rv rejected" title="' + note + '">⛔ Rejected</span>'
+        if state == "improve":
+            return ('<span class="rv improve" title="' + note
+                    + '">✏️ Needs improvement</span>')
+        return '<span class="rv pending">⏳ Pending review</span>'
+
+    def _report_row_badges(r):
+        out = review_badge(r)
         if r.get("edited_after_lock_by"):
             out += ('<span class="tag d-soon" title="'
                     + esc(r.get("edited_after_lock_reason") or "")
@@ -1273,7 +1385,7 @@ def register(app, page, login_required, current_user, log, esc_raw, safe_url, cs
                      '<td>' + esc(r.get("seed_phrase_keyword") or "—") + '</td>'
                      '<td>' + esc(T._int(r.get("design_count"))) + '</td>'
                      '<td>' + esc(T._int(r.get("listing_count"))) + '</td>'
-                     '<td>' + esc(r.get("status") or "") + '</td>'
+                     '<td>' + status_badge(r.get("status")) + '</td>'
                      '<td>' + links + '</td>'
                      '<td>' + _report_row_badges(r) + '</td>'
                      '<td>' + edit + '</td></tr>')
@@ -1360,7 +1472,7 @@ def register(app, page, login_required, current_user, log, esc_raw, safe_url, cs
                  ("notes", "Notes", "text", None)]
         head = ('<tr><th>Staff Name</th><th>Role</th>'
                 + "".join('<th>' + esc(lbl) + '</th>' for _f, lbl, _t, _o in cells)
-                + '<th>Last Updated</th><th>Edited After Lock</th><th>Verified</th>'
+                + '<th>Last Updated</th><th>Edited After Lock</th><th>Review</th>'
                 '<th>Actions</th></tr>')
         n_cols = 2 + len(cells) + 4
         trs = ""
@@ -1369,39 +1481,45 @@ def register(app, page, login_required, current_user, log, esc_raw, safe_url, cs
             tds = ""
             for field, _lbl, ftype, options in cells:
                 val = "" if r.get(field) is None else str(r.get(field))
+                mode = ("url" if ftype == "url"
+                        else "status" if field == "status" else "")
                 attrs = (' data-field="' + field + '" data-value="' + esc(val)
-                         + '" data-type="' + ftype + '"')
+                         + '" data-type="' + ftype + '"'
+                         + (' data-render="' + mode + '"' if mode else ""))
                 if options:
                     attrs += ' data-options="' + esc("|".join(options)) + '"'
                 tds += ('<td class="' + ("ed" if allowed else "locked") + '"'
                         + (attrs if allowed else "")
                         + ' title="' + esc(val if allowed else why) + '">'
-                        + esc(val[:48]) + '</td>')
+                        + _cell_html(field, val, mode, allowed) + '</td>')
             lock = ('<span class="tag d-soon" title="'
                     + esc(r.get("edited_after_lock_reason") or "") + '">Yes</span>'
                     if r.get("edited_after_lock_by") else '<span class="tag">No</span>')
-            ver = ('<span class="tag d-ontrack" title="'
-                   + esc(T.to_local(r.get("verified_at"), user)) + '">✔ '
-                   + esc(who(r.get("verified_by_manager_id"), names)) + '</span>'
-                   if r.get("verified_by_manager_id")
-                   else '<span class="tag">Submitted</span>')
-            acts = ""
+            ver = review_badge(r, who(r.get("verified_by_manager_id"), names)
+                               if r.get("verified_by_manager_id") else "")
+            acts = '<div class="acts">'
             if not r.get("verified_by_manager_id"):
-                acts += ('<button class="tbtn sm" type="submit" form="vf'
-                         + str(r["id"]) + '">Verify</button>')
-            acts += ('<button class="tbtn sm" type="button" '
-                     'onclick="topsNote(' + str(r["id"]) + ',&quot;clarify&quot;)">'
-                     'Clarify</button>'
-                     '<button class="tbtn sm" type="button" '
+                acts += ('<button class="tbtn sm ok" type="submit" form="vf'
+                         + str(r["id"]) + '" title="Approve — signs this report off '
+                         'so it counts as verified">✅ Approve</button>')
+            acts += ('<button class="tbtn sm imp" type="button" '
+                     'title="Improve — ask the staff member to fix it; they get '
+                     'notified" onclick="topsNote(' + str(r["id"])
+                     + ',&quot;clarify&quot;)">✏️ Improve</button>'
+                     '<button class="tbtn sm danger" type="button" '
+                     'title="Reject — marks the report Blocked with your reason" '
                      'onclick="topsNote(' + str(r["id"]) + ',&quot;blocked&quot;)">'
-                     'Block</button>'
-                     '<button class="tbtn sm" type="button" '
+                     '⛔ Reject</button>'
+                     '<button class="tbtn sm ic" type="button" '
+                     'title="Add a manager note (no verdict)" '
                      'onclick="topsNote(' + str(r["id"]) + ',&quot;note&quot;)">'
-                     'Note</button>')
+                     '📝</button>')
             if allowed:
-                acts += ('<button class="tbtn sm danger" type="submit" form="df'
-                         + str(r["id"]) + '" onclick="return confirm('
-                         '&quot;Soft-delete this report?&quot;)">✕</button>')
+                acts += ('<button class="tbtn sm ic" type="submit" form="df'
+                         + str(r["id"]) + '" title="Soft-delete this report" '
+                         'onclick="return confirm('
+                         '&quot;Soft-delete this report?&quot;)">🗑</button>')
+            acts += '</div>'
             mnote = ('<div class="cprev" title="' + esc(r.get("manager_note") or "")
                      + '">📝 ' + esc((r.get("manager_note") or "")[:40]) + '</div>'
                      if r.get("manager_note") else "")
@@ -1452,8 +1570,10 @@ def register(app, page, login_required, current_user, log, esc_raw, safe_url, cs
                 'Double-click a cell to edit; it saves on blur. Staff may edit only '
                 'Today and Yesterday — rows lock 48 hours after they are created. A '
                 'Manager/Owner edit after the lock records a reason in the audit '
-                'trail and flags the row until it is verified. <b>Submitted</b> is '
-                'what staff typed; <b>Verified</b> is what a manager signed off.</p>')
+                'trail and flags the row until it is verified. Review each row with '
+                '<b>✅ Approve</b> (signs it off — it now counts as verified), '
+                '<b>✏️ Improve</b> (asks the staff member to fix it) or '
+                '<b>⛔ Reject</b> (marks it Blocked with your reason).</p>')
         actions = ('<a class="tbtn primary" href="/team/ops/reports?view=mine">'
                    '➕ Add My Report</a>'
                    '<a class="tbtn" href="/team/ops/export/logs.csv?'

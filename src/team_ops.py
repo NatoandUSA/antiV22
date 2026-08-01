@@ -353,6 +353,7 @@ CREATE TABLE IF NOT EXISTS proactive_work_logs (
     verified_by_manager_id  INTEGER,
     verified_at             TEXT,
     manager_note            TEXT,
+    review_state            TEXT,
     created_at              TEXT NOT NULL,
     updated_at              TEXT NOT NULL,
     deleted_at              TEXT,
@@ -461,7 +462,7 @@ _USER_COLS = [
 # Columns added to proactive_work_logs after the table first shipped. CREATE
 # TABLE IF NOT EXISTS never alters an existing table, so upgrades come through
 # here — the daily-report rows staff already filed are kept, never rebuilt.
-_LOG_COLS = [("manager_note", "TEXT")]
+_LOG_COLS = [("manager_note", "TEXT"), ("review_state", "TEXT")]
 
 
 def init_schema(force=False):
@@ -1435,7 +1436,8 @@ def verify_log(lid, manager, note=""):
         return None, "outside your team"
     now = now_iso()
     appdb.execute("UPDATE proactive_work_logs SET verified_by_manager_id=?, "
-                  "verified_at=?, manager_note=COALESCE(?, manager_note), "
+                  "verified_at=?, review_state='approved', "
+                  "manager_note=COALESCE(?, manager_note), "
                   "updated_at=? WHERE id=?",
                   (manager["user_id"], now, (note or "").strip()[:1000] or None,
                    now, lid))
@@ -1448,13 +1450,16 @@ def verify_log(lid, manager, note=""):
 # Manager row actions on a daily report (spec §4). Verify is separate above
 # because it also unlocks the row for KPI.
 MANAGER_ACTIONS = {
-    "clarify": ("REPORT_CLARIFY", "Clarification requested",
-                "A manager asked about this daily report"),
-    "blocked": ("REPORT_BLOCKED", "Report marked blocked",
-                "A manager marked this daily report blocked"),
+    "clarify": ("REPORT_CLARIFY", "Improvement requested",
+                "A manager asked you to improve this daily report"),
+    "blocked": ("REPORT_BLOCKED", "Report rejected",
+                "A manager rejected this daily report"),
     "note": ("REPORT_NOTE", "Manager note added",
              "A manager left a note on your daily report"),
 }
+
+# The verdict shown in the Review column. `note` is neutral and leaves it alone.
+REVIEW_STATE_BY_ACTION = {"clarify": "improve", "blocked": "rejected"}
 
 
 def manager_action(lid, manager, action, note=""):
@@ -1478,16 +1483,19 @@ def manager_action(lid, manager, action, note=""):
     if action in ("clarify", "note") and not note:
         return None, "a note is required"
     now = now_iso()
+    state = REVIEW_STATE_BY_ACTION.get(action)
     if action == "blocked":
         old = log.get("status")
         appdb.execute("UPDATE proactive_work_logs SET status='Blocked', "
-                      "manager_note=?, updated_at=? WHERE id=?", (note, now, lid))
+                      "review_state=?, manager_note=?, updated_at=? WHERE id=?",
+                      (state, note, now, lid))
         # status is KPI-sensitive, so a manager forcing it is audited like any edit
         _audit_log(lid, manager["user_id"], "status", old, "Blocked", note,
                    log_locked(log))
     else:
-        appdb.execute("UPDATE proactive_work_logs SET manager_note=?, updated_at=? "
-                      "WHERE id=?", (note, now, lid))
+        appdb.execute("UPDATE proactive_work_logs SET manager_note=?, "
+                      "review_state=COALESCE(?, review_state), updated_at=? "
+                      "WHERE id=?", (note, state, now, lid))
     ntype, title, _desc = MANAGER_ACTIONS[action]
     if log.get("staff_id"):
         notify(log["staff_id"], ntype, title,
@@ -2141,6 +2149,7 @@ LOG_CSV_COLS = ["id", "date", "staff", "role", "account_store", "work_type",
                 "listing_url", "design_count", "listing_count", "status", "notes",
                 "edited_after_lock_by", "edited_after_lock_reason",
                 "verified_by_manager_id", "verified_at", "manager_note",
+                "review_state",
                 "created_at_utc", "updated_at_utc", "deleted_at_utc",
                 "delete_reason"]
 
