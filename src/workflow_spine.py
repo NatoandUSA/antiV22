@@ -27,8 +27,12 @@ STEPS = [
     {
         "n": 1, "key": "feed", "name": "MCP / YTrends keyword feed",
         "route": "/trending", "owner": RESEARCHER,
-        "need": "Live YTrends index (harvest runs on the PC — the VPS IP is blocked)",
-        "action": ("Harvest keywords", "/trending"),
+        "need": "Live YTrends index. Harvest itself runs on the PC: `py main.py harvest`",
+        # /trending BROWSES the live index; it cannot harvest. Harvest is
+        # `py main.py harvest` on the PC because the VPS IP is blocked from
+        # YTrends. Labelling this "Harvest keywords" promised an action the
+        # page does not perform.
+        "action": ("Browse trending keywords", "/trending"),
         "output": "keyword_data.csv — the master every later step ranks",
         "why": "Raw keyword supply. Nothing downstream can rank what was never pulled.",
     },
@@ -100,7 +104,10 @@ STEPS = [
         "n": 10, "key": "rerank", "name": "Send candidates to Re-rank / Inbox",
         "route": "/rerank", "owner": RESEARCHER,
         "need": "Candidates from step 9",
-        "action": ("Send to Re-rank / Inbox", "/rerank"),
+        # The SEND is POST /send-to-rerank and its button lives on /imports
+        # (and /pattern-miner). GET /rerank only REVIEWS what was already
+        # sent, so pointing the action here sent nothing and looked broken.
+        "action": ("Pick candidates & send", "/imports"),
         "output": "Candidates in the master tagged winner:<listing_id>, re-ranked",
         "why": ("Closes the loop back to step 4. One click — no retyping. "
                 "Capped at CONFIRM_FIRST; the frozen engine still decides."),
@@ -147,27 +154,33 @@ PHASES = [
      "vi": "Tìm & lọc", "en": "Find & filter", "icon": "\U0001F50E",
      "route": "/trending", "owner": RESEARCHER,
      "vi_do": "Gom từ khoá, xem tín hiệu Pinterest, kiểm nhà cung cấp làm được hay không",
-     "vi_out": "Danh sách từ khoá thô đã qua cổng lọc"},
+     "vi_out": "Danh sách từ khoá thô đã qua cổng lọc",
+     "en_do": "Let the engine score them and say what to work on first", "en_out": "Final action per keyword: Build now / Confirm / Watch / Skip",
+     "en_do": "Collect keywords, check the Pinterest signal, confirm a supplier can make it", "en_out": "Raw keywords that passed the early gates"},
     {"p": 2, "key": "rank", "steps": (4,),
      "vi": "Xếp hạng", "en": "Rank", "icon": "\U0001F3C6",
      "route": "/inbox", "owner": RESEARCHER,
      "vi_do": "Để máy chấm điểm và nói rõ nên làm cái nào trước",
-     "vi_out": "Hành động cuối cho từng từ khoá: Làm ngay / Kiểm tra / Theo dõi / Bỏ"},
+     "vi_out": "Hành động cuối cho từng từ khoá: Làm ngay / Kiểm tra / Theo dõi / Bỏ",
+     "en_do": "Let the engine score them and say what to work on first", "en_out": "Final action per keyword: Build now / Confirm / Watch / Skip"},
     {"p": 3, "key": "learn", "steps": (5, 6, 7, 8),
      "vi": "Học người thắng", "en": "Learn from winners", "icon": "\U0001F52C",
      "route": "/imports", "owner": RESEARCHER,
      "vi_do": "Nhập bằng chứng HeyEtsy, mở listing top, đọc ra công thức thắng",
-     "vi_out": "Tiêu đề · tag · ảnh · giá · cá nhân hoá · góc nhìn người mua"},
+     "vi_out": "Tiêu đề · tag · ảnh · giá · cá nhân hoá · góc nhìn người mua",
+     "en_do": "Import HeyEtsy evidence, open the top listings, read the winning recipe", "en_out": "Title · tags · photos · price · personalization · buyer angle"},
     {"p": 4, "key": "newkw", "steps": (9, 10),
      "vi": "Từ khoá mới", "en": "New keywords", "icon": "\U0001F4A1",
      "route": "/imports", "owner": RESEARCHER,
      "vi_do": "Tool tự sinh từ khoá từ winner — bấm một nút đẩy lại vào Inbox",
-     "vi_out": "Từ khoá mới có gắn nguồn winner, được xếp hạng lại"},
+     "vi_out": "Từ khoá mới có gắn nguồn winner, được xếp hạng lại",
+     "en_do": "The tool derives keywords from a winner — one button sends them back", "en_out": "New keywords tagged with their source winner, re-ranked"},
     {"p": 5, "key": "ship", "steps": (11, 12),
      "vi": "Làm & giao", "en": "Build & ship", "icon": "\U0001F680",
      "route": "/launch-kit", "owner": SELLER,
      "vi_do": "Lên listing + ảnh, giao việc cho team, đo kết quả Ngày 3 / Ngày 7",
-     "vi_out": "Listing hoàn chỉnh (tiếng Anh) + việc đã có người nhận"},
+     "vi_out": "Listing hoàn chỉnh (tiếng Anh) + việc đã có người nhận",
+     "en_do": "Build the listing + photos, assign the team, measure Day 3 / Day 7", "en_out": "A finished listing (English) with an owner on every task"},
 ]
 
 

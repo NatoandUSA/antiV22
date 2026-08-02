@@ -681,9 +681,6 @@ def build_app(password, secret):
             clabel, chref = cur["action"]
             done = sum(1 for s in _ws.STEPS
                        if (_st.get(s["key"]) or {}).get("state") == "ready")
-            _VI = {"Owner": "Chủ shop", "Seller": "Seller",
-                   "Designer": "Designer", "Manager": "Quản lý",
-                   "Researcher": "Nghiên cứu"}
             _cards = []
             for ph in _ws.PHASES:
                 x = _ps[ph["key"]]
@@ -697,10 +694,10 @@ def build_app(password, secret):
                     f'<a class="phc {x["state"]}{" here" if here else ""}" '
                     f'href="{ph["route"]}">'
                     f'<div class="phc-top"><span class="phc-i">{ph["icon"]}</span>'
-                    f'<span class="phc-n">Giai đoạn {ph["p"]}</span>'
+                    f'<span class="phc-n">Phase {ph["p"]}</span>'
                     f'<span class="phc-c">{x["done"]}/{x["total"]}</span></div>'
-                    f'<div class="phc-t">{_h_esc(ph["vi"])}</div>'
-                    f'<div class="phc-w">{_h_esc(ph["vi_do"])}</div>'
+                    f'<div class="phc-t">{_h_esc(ph["en"])}</div>'
+                    f'<div class="phc-w">{_h_esc(ph["en_do"])}</div>'
                     f'<div class="phc-chips">{chips}</div></a>')
             _sup = "".join(
                 f'<div class="supg"><b>{_h_esc(g)}</b><span>' + " ".join(
@@ -708,21 +705,19 @@ def build_app(password, secret):
                 + '</span></div>' for g, rs in _ws.SUPPORT_ROUTES)
             spine = (
                 '<section class="nowcard">'
-                f'<div class="now-k">Làm bước này tiếp · giai đoạn {_curph["p"]}/5'
-                f' · {_h_esc(_VI.get(cur["owner"], cur["owner"]))}</div>'
+                f'<div class="now-k">Do this next · phase {_curph["p"]} of 5'
+                f' · {_h_esc(cur["owner"])}</div>'
                 f'<h2 class="now-h">{_h_esc(cur["name"])}</h2>'
                 f'<p class="now-s">{_h_esc(cstat.get("detail") or "")}</p>'
                 '<div class="now-a">'
                 f'<a class="now-go" href="{chref}">{_h_esc(clabel)} →</a>'
-                f'<span class="now-nx">Xong bước này sẽ tạo ra: '
-                f'{_h_esc(_curph["vi_out"])}</span>'
+                f'<span class="now-nx">Creates: {_h_esc(_curph["en_out"])}</span>'
                 '</div></section>'
-                '<div class="wsrail-h"><b>Quy trình · 5 giai đoạn</b>'
-                f'<span>{done}/12 bước đã xong</span>'
-                '<a href="/workflow">xem chi tiết →</a></div>'
+                '<div class="wsrail-h"><b>Workflow · 5 phases</b>'
+                f'<span>{done} of 12 steps done</span>'
+                '<a href="/how-to-use">hướng dẫn tiếng Việt →</a></div>'
                 f'<div class="phgrid">{"".join(_cards)}</div>'
-                '<details class="supwrap"><summary>Công cụ nâng cao &amp; '
-                'đường dẫn phụ</summary>' + _sup + '</details>')
+                '<details class="supwrap"><summary>Advanced &amp; support routes</summary>' + _sup + '</details>')
         except Exception:  # noqa: BLE001 — the spine is additive, never breaks home
             spine = ""
 
@@ -2444,15 +2439,16 @@ def build_app(password, secret):
                     + _stage_nav("feed", "", request.args.get("mode") or "")
                     + content)
 
-    _STAGES_NAV = [("feed", "\U0001F4E5 Feed", "/imports"),
-                   ("rank", "\U0001F3C6 Rank", "/inbox"),
-                   ("pattern", "\U0001F52C Pattern", "/pattern-miner"),
-                   ("lab", "\U0001F4A1 Keywords", "/keyword-lab"),
-                   ("rerank", "\U0001F3AF Re-rank", "/rerank"),
-                   ("build", "\U0001F4DD Build", "/launch-kit"),
-                   ("images", "\U0001F5BC️ Images", "/photo-brief"),
-                   ("ads", "\U0001F4E3 Ads", "/ads-plan"),
-                   ("learn", "\U0001F4C9 Learn", "/feedback")]
+    # V37.11: the strip on every tool page used to show a NINE-stage model
+    # (Feed/Rank/Pattern/Keywords/Re-rank/Build/Images/Ads/Learn) while home
+    # showed the five phases. Clicking a phase card landed you on a page telling
+    # you a different workflow with different numbers — the single worst
+    # inconsistency in the app, and invisible from the home page alone. Both now
+    # render from workflow_spine.PHASES, so there is exactly one model.
+    # The old stage keys stay valid so all 8 call sites keep working.
+    _STAGE_TO_PHASE = {"feed": "find", "rank": "rank", "pattern": "learn",
+                       "lab": "newkw", "rerank": "newkw", "build": "ship",
+                       "images": "ship", "ads": "ship", "learn": "ship"}
 
     def _stage_nav(current, q="", mode=""):
         """The workflow strip ON every stage page: every stage one click away,
@@ -2464,10 +2460,17 @@ def build_app(password, secret):
         if mode in ("pod", "embroidery", "both"):
             qs.append("mode=" + _qp(mode))
         tail = ("?" + "&".join(qs)) if qs else ""
+        try:
+            from src import workflow_spine as _ws2
+            phases = _ws2.PHASES
+        except Exception:  # noqa: BLE001 - nav is never allowed to break a page
+            return ""
+        here = _STAGE_TO_PHASE.get(current, current)
         items = "".join(
-            f'<a class="stgn{" on" if key == current else ""}"'
-            f' href="{href}{tail}">{i + 1} {label}</a>'
-            for i, (key, label, href) in enumerate(_STAGES_NAV))
+            f'<a class="stgn{" on" if ph["key"] == here else ""}"'
+            f' href="{ph["route"]}{tail}">{ph["p"]} {ph["icon"]} '
+            f'{_h_esc(ph["en"])}</a>'
+            for ph in phases)
         return ('<style>.stgnav{display:flex;gap:4px;flex-wrap:wrap;margin:0 0 10px}'
                 '.stgn{font-size:11px;font-weight:700;padding:4px 10px;'
                 'border:1px solid var(--line);border-radius:20px;text-decoration:none;'
