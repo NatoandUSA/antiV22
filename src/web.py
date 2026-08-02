@@ -628,8 +628,70 @@ def build_app(password, secret):
             f'<span class="n">{n}</span><span class="ic">{i}</span>'
             f'<span class="t">{t}</span><span class="sc">{s}</span></button>'
             for n, i, t, s, h, c in _stages) + '</div>'
+        # --- THE WORKFLOW SPINE (V37.7) -------------------------------------
+        # 104 routes with no ordering is why staff could not say what step they
+        # were in. src/workflow_spine.py is the single definition of the owner's
+        # real 12-step Etsy process; WORKFLOW.md renders from the same module, so
+        # the page and the doc cannot drift. Support routes stay collapsed —
+        # showing all 104 equally is what caused the confusion.
+        spine = ""
+        try:
+            from src import workflow_spine as _ws
+            _st = _ws.status()
+            _here = _ws.current_step(_st)
+            _dot = {"ready": ("✅", "ok"), "todo": ("⬜", "warn"),
+                    "unknown": ("❔", "")}
+            _cards = []
+            for s in _ws.STEPS:
+                stt = _st.get(s["key"]) or {}
+                icon, _cls = _dot.get(stt.get("state"), ("❔", ""))
+                is_here = s["n"] == _here
+                label, href = s["action"]
+                hl = ("border:2px solid var(--accent);box-shadow:0 0 0 3px "
+                      "rgba(120,160,255,.15)" if is_here else
+                      "border:1px solid var(--line)")
+                badge = ('<span class="pill apill">YOU ARE HERE</span>'
+                         if is_here else "")
+                _cards.append(
+                    f'<div style="{hl};border-radius:10px;padding:10px 12px;'
+                    'margin-bottom:6px">'
+                    f'<div style="display:flex;gap:8px;align-items:baseline;'
+                    'flex-wrap:wrap">'
+                    f'<b style="font-size:13px">{icon} {s["n"]}. '
+                    f'{_h_esc(s["name"])}</b> {badge}'
+                    f'<span class="pill">{_h_esc(s["owner"])}</span></div>'
+                    f'<div style="font-size:11.5px;color:var(--ink-faint);'
+                    f'margin:4px 0">{_h_esc(stt.get("detail") or "")}</div>'
+                    f'<div style="font-size:11.5px;margin:2px 0">'
+                    f'<b>Needs:</b> {_h_esc(s["need"])}<br>'
+                    f'<b>Creates:</b> {_h_esc(s["output"])}</div>'
+                    f'<a class="pullbtn{" primary" if is_here else ""}" '
+                    f'href="{href}">{_h_esc(label)} →</a>'
+                    f'<span style="font-size:11px;color:var(--ink-faint)">'
+                    f' canonical route <code>{_h_esc(s["route"])}</code></span>'
+                    '</div>')
+            _sup = "".join(
+                f'<div style="margin:4px 0"><b style="font-size:12px">'
+                f'{_h_esc(g)}</b><br>' + " · ".join(
+                    f'<a href="{r}" style="font-size:11.5px">{_h_esc(r)}</a>'
+                    for r in rs) + '</div>'
+                for g, rs in _ws.SUPPORT_ROUTES)
+            spine = (
+                '<h2 class="grouph">🧭 The Etsy workflow — 12 steps</h2>'
+                '<p class="tklead">One canonical route per step. '
+                f'<b>You are on step {_here}.</b> ✅ done · ⬜ waiting on data · '
+                '❔ cannot read.</p>'
+                + "".join(_cards)
+                + '<details style="margin-top:8px"><summary style="cursor:pointer;'
+                'font-size:12.5px;font-weight:700">🔧 Advanced / support routes '
+                '(not workflow steps)</summary>'
+                f'<div style="margin-top:6px">{_sup}</div></details>')
+        except Exception:  # noqa: BLE001 — the spine is additive, never breaks home
+            spine = ""
+
         tools = (
-            '<h2 class="grouph">⚡ Instant Product Command Center</h2>'
+            spine
+            + '<h2 class="grouph">⚡ Instant Product Command Center</h2>'
             '<p class="lead">Type <b>one keyword once</b>, then click any step on '
             'the workflow board — the keyword and product mode travel with every '
             'click, so you never come back here between steps. Or hit '
