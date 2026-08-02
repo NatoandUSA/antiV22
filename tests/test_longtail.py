@@ -66,6 +66,27 @@ def test_room_beats_a_crowded_market():
     assert open_mkt["score"] > crowded["score"]
 
 
+# --- V37.6: the two legs that were doing no ranking work ----------------------
+
+def test_money_leg_still_separates_the_richest_rows():
+    """The curve used to top out at $2,512/listing, so 7 of the top 26 rows all
+    pinned at exactly 100 and the leg stopped discriminating in the band where
+    the build decision is actually made."""
+    assert lt._money(2512) < lt._money(4000) < lt._money(6117)
+    assert lt._money(6117) <= 100.0
+
+
+def test_word_count_is_no_longer_a_scoring_leg():
+    """It gave 99 of 106 scored rows the identical value - 15% of the ranking
+    budget carrying no information. The MIN_WORDS filter enforces long-tail-ness
+    instead; two rows with identical economics must now tie regardless of length."""
+    assert "specific" not in lt.WEIGHTS
+    assert abs(sum(lt.WEIGHTS.values()) - 1.0) < 1e-9
+    three = lt.sellability(_row("custom crew tshirt"))
+    five = lt.sellability(_row("custom crew tshirt for new dad"))
+    assert three["score"] == five["score"]
+
+
 def test_page_renders_and_reports_what_it_dropped(monkeypatch):
     monkeypatch.setattr(lt, "shortlist", lambda *a, **k: {
         "rows": [lt.sellability(_row("custom couple shirts", conv=0.05,
@@ -142,6 +163,28 @@ def test_momentum_is_measured_or_blank(tmp_path):
     got = {r["keyword"]: r for r in csv.DictReader(p.open(encoding="utf-8"))}
     assert got["searched kw"]["momentum"] == ""
     assert got["trending kw"]["momentum"] == "55.0"
+
+
+def test_vendor_opportunity_score_survives_the_csv_round_trip(tmp_path):
+    """V37.6: only a source that actually returns an opportunity/gem score may
+    fill the column. The positional `score` is provenance (trending passes
+    momentum, search a flat 40) and must never leak into it - that would
+    double-count the velocity leg, the failure V30.1 removed."""
+    store = {}
+    harvest._add(store, "scouted kw", 92.6, "opportunity", listings=38,
+                 momentum=47.4, opportunity=92.6)
+    harvest._add(store, "trending kw", 55, "trending", listings=40, momentum=55.0)
+    harvest._add(store, "searched kw", 40, "search")
+    p = tmp_path / "kd.csv"
+    harvest.write_keyword_data(store, str(p))
+    got = {r["keyword"]: r for r in csv.DictReader(p.open(encoding="utf-8"))}
+    assert got["scouted kw"]["opportunity_score"] == "92.6"
+    assert got["trending kw"]["opportunity_score"] == ""   # momentum is not O
+    assert got["searched kw"]["opportunity_score"] == ""   # a flat 40 is not O
+    # and it survives a re-harvest that does not return the keyword again
+    store2 = {}
+    harvest.merge_existing(store2, str(p))
+    assert store2["scouted kw"]["opportunity"] == 92.6
 
 
 def test_absent_metrics_are_blank_not_zero(tmp_path):

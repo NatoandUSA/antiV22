@@ -73,7 +73,7 @@ def _clean(tag):
 
 
 _METRICS = ("age", "listings", "sellers", "comp", "price", "conv", "revenue",
-            "revenue_total", "momentum", "sold", "views")
+            "revenue_total", "momentum", "sold", "views", "opportunity")
 
 
 def _est_views(views, sold, conv):
@@ -91,7 +91,7 @@ def _est_views(views, sold, conv):
 
 def _add(store, tag, score, source, listings=None, comp=None, price=None,
          conv=None, sellers=None, revenue=None, sold=None, views=None, age=None,
-         revenue_total=None, momentum=None):
+         revenue_total=None, momentum=None, opportunity=None):
     """Merge one pulled tag into the store.
 
     `revenue` is ALWAYS revenue per listing and `revenue_total` is ALWAYS the
@@ -102,6 +102,14 @@ def _add(store, tag, score, source, listings=None, comp=None, price=None,
     trending-sourced one and swung the demand sub-score by ~60 points on
     provenance alone. `momentum` is the measured momentum only — never a
     stand-in score, so a row without one stays an honest null.
+
+    `opportunity` is YTrends' OWN opportunity/gem score — an independent vendor
+    estimate — and must be passed ONLY by the callers that actually receive one.
+    Do not route the positional `score` here: it is whatever number the source
+    happened to return (opportunity 66-91, rank 38-75, trending = momentum,
+    search a flat 40), so it is provenance, not signal. Feeding momentum in as
+    an opportunity signal would double-count the velocity leg, which is the
+    failure V30.1 removed.
     """
     c = _clean(tag)
     if not c:
@@ -115,7 +123,8 @@ def _add(store, tag, score, source, listings=None, comp=None, price=None,
            "listings": listings, "sellers": sellers, "comp": comp,
            "price": price, "conv": conv, "revenue": revenue,
            "revenue_total": revenue_total, "momentum": momentum, "sold": sold,
-           "views": _est_views(views, sold, conv) or None, "age": age}
+           "views": _est_views(views, sold, conv) or None, "age": age,
+           "opportunity": opportunity}
     cur = store.get(c)
     if cur is None or rec["score"] > cur["score"]:
         if cur:  # keep any metrics we already learned from another source
@@ -158,6 +167,7 @@ def _pull(store, log=lambda s: None):
                      revenue=r.get("avg_revenue"),
                      revenue_total=r.get("total_revenue_usd"),
                      momentum=r.get("momentum_score"),
+                     opportunity=r.get("opportunity_score"),
                      sold=r.get("avg_sold_24h"))
         except Exception:
             pass
@@ -176,7 +186,9 @@ def _pull(store, log=lambda s: None):
              price=r.get("avg_price_usd"), conv=r.get("avg_conversion_rate"),
              revenue=r.get("avg_revenue"),
              revenue_total=r.get("total_revenue_usd"),
-             momentum=r.get("momentum_score"), sold=r.get("avg_sold_24h"))
+             momentum=r.get("momentum_score"),
+             opportunity=r.get("opportunity_score"),
+             sold=r.get("avg_sold_24h"))
 
     # 3) this week's risers (broad)
     try:
@@ -236,7 +248,8 @@ def _num(v, cast=float, default=0):
 # product_manager.load_keyword_data expects.
 KDATA_FIELDS = ["keyword", "etsy_listings", "seller_count", "views_24h",
                 "avg_price", "avg_revenue", "total_revenue", "conversion_rate",
-                "momentum", "niche_age_days", "tm_risk", "source", "collected_at"]
+                "momentum", "opportunity_score", "niche_age_days", "tm_risk",
+                "source", "collected_at"]
 
 
 def merge_existing(store, path="keyword_data.csv"):
@@ -281,6 +294,7 @@ def merge_existing(store, path="keyword_data.csv"):
             "revenue_total": _f(row, "total_revenue"),
             "momentum": _f(row, "momentum"), "sold": None,
             "views": _f(row, "views_24h"), "age": _f(row, "niche_age_days"),
+            "opportunity": _f(row, "opportunity_score"),
         }
         carried += 1
     return carried
@@ -421,6 +435,10 @@ def write_keyword_data(store, path="keyword_data.csv"):
                 # velocity leg of the market score was provenance, not market.
                 # No measurement -> honest null, exactly like every other field.
                 "momentum": _opt(r.get("momentum")),
+                # YTrends' OWN opportunity/gem score — an independent vendor
+                # estimate, written only where a source actually returned one.
+                # Never the positional `score` (see _add): that is provenance.
+                "opportunity_score": _opt(r.get("opportunity")),
                 "niche_age_days": _num(r.get("age"), int) if r.get("age") is not None else "",
                 "tm_risk": _risk(r["tag"]),
                 # keep the TRUE channel: only bare MCP view names get the mcp:

@@ -1,11 +1,17 @@
 """Long-tail lane — the specific phrases a small shop can actually sell.
 
-Rank (opportunity_inbox) asks "how big is this market?", so it structurally
-favours 1-2 word head terms: GO needs an overall >= 80 and the demand leg is
-revenue+views, which a long-tail can never win on absolute volume. Measured on
-the current master, the highest-scoring 4-word keyword reaches 73.6 — so no
-long-tail is ever promoted on merit, and the only rows that reach Build now are
-head terms carried there by the Etsy-proof override.
+Rank (opportunity_inbox) asks "how big is this market?"; this lane asks whether
+a specific phrase is already selling. Two questions, same frozen engine.
+
+CORRECTION (V37.6) — this module was originally justified by "the engine
+structurally cannot promote a long-tail: the best 4-word keyword reaches 73.6".
+That was true of the base it was measured on, but the cause was a data bug, not
+a word-count bias, and it is fixed: the demand leg was being fed per-listing
+revenue on a curve calibrated for niche totals, which held the WHOLE base down.
+Re-measured on the live master, long-tails are not penalised at all — among
+demand-grounded rows they score marginally HIGHER than head terms (max 76.2 vs
+74.3, median 53.7 vs 48.8). Keep this lane for the question it asks, not for a
+bias that does not exist.
 
 This module asks the other question: **which specific phrases are already
 selling, in a market small enough to enter?** It is a VIEW — it re-reads the
@@ -20,9 +26,18 @@ Two hard rules, both inherited from the rest of the codebase:
 import math
 import re
 
-# Ranked over four legs. Money and conversion dominate because the question is
-# "does this actually sell", not "is this niche big".
-WEIGHTS = {"money": 0.35, "conversion": 0.30, "room": 0.20, "specific": 0.15}
+# Ranked over three MEASURED legs. Money and conversion dominate because the
+# question is "does this actually sell", not "is this niche big".
+#
+# A fourth leg scored word count at 15%. Measured on the live base it was dead
+# weight: 99 of 106 scored rows got the identical 3-word value and not one
+# keyword in the master reaches 5 words, so it spent 15% of the ranking budget
+# nudging every row toward the same number. Same failure the V30.1 review found
+# in opportunity_signal ("a constant 85 for every row - pure score inflation
+# with zero ranking information"). Dropping it widened the p10-p90 spread from
+# 26.9 to 28.6. Long-tail-ness is already enforced by the MIN_WORDS filter, and
+# "small enough to enter" is measured directly by `room`.
+WEIGHTS = {"money": 0.41, "conversion": 0.35, "room": 0.24}
 PUSH, TEST, WATCH = "PUSH", "TEST", "WATCH"
 MIN_WORDS = 3            # 1-2 words is the price war the engine already rejects
 MAX_LISTINGS = 2000      # above this a new shop does not get seen
@@ -52,8 +67,15 @@ def _rev_per_listing(row):
 
 
 def _money(rpl):
-    """$25/listing -> 0, $250 -> 50, $2500 -> 100 (log — revenue spans decades)."""
-    return min(100.0, max(0.0, (math.log10(rpl) - 1.4) / 2.0 * 100.0))
+    """$25/listing -> 0, $400 -> 50, ~$6.3k -> 100 (log — revenue spans decades).
+
+    The top of the curve used to sit at $2,512, which the live base runs clean
+    past: 15 of 106 scored rows pinned at >=95 and 7 of the top 26 at exactly
+    100, so the leg stopped separating rows precisely in the band where the
+    build decision gets made. The real maximum is $6,117/listing, so the scale
+    now runs to ~$6.3k and $2.5k vs $4k vs $6k are three different scores again.
+    """
+    return min(100.0, max(0.0, (math.log10(rpl) - 1.4) / 2.4 * 100.0))
 
 
 def _conversion(cr):
@@ -72,10 +94,6 @@ def _room(listings, sellers=None):
     if sellers and listings and sellers > 0 and listings / sellers >= 3:
         score *= 0.75            # 3+ listings per seller = concentrated holders
     return max(0.0, score)
-
-
-def _specific(n):
-    return {3: 60.0, 4: 85.0}.get(n, 100.0 if n >= 5 else 0.0)
 
 
 def sellability(row, min_words=MIN_WORDS, max_listings=MAX_LISTINGS):
@@ -98,8 +116,7 @@ def sellability(row, min_words=MIN_WORDS, max_listings=MAX_LISTINGS):
         return None                       # no competition read, or too crowded
     parts = {"money": round(_money(rpl), 1),
              "conversion": round(_conversion(cr), 1),
-             "room": round(_room(listings, row.get("sellers")), 1),
-             "specific": _specific(n)}
+             "room": round(_room(listings, row.get("sellers")), 1)}
     total = round(sum(parts[k] * w for k, w in WEIGHTS.items()), 1)
     return {"keyword": kw, "score": total, "parts": parts, "words": n,
             "rev_per_listing": round(rpl, 2), "conv": cr, "listings": listings,
@@ -189,12 +206,10 @@ def page(mode=None, q="", min_words=MIN_WORDS, limit=40):
     r = shortlist(mode, min_words=min_words, limit=limit, q=q or None)
     rows = r["rows"]
     L = ["# \U0001F48E Long-tail lane — what can actually sell", "",
-         "_**Rank** asks how big a market is, so 1-2 word head terms win it and "
-         "a long-tail can never clear the GO band on volume. This lane asks the "
-         "other question: **which specific phrases are already selling, in a "
-         "market small enough to enter?** Same data, same frozen engine — a "
-         "different question. Ranked on money per listing, conversion, room to "
-         "rank, and specificity._", ""]
+         "_**Rank** asks how big a market is. This lane asks the other question: "
+         "**which specific phrases are already selling, in a market small enough "
+         "to enter?** Same data, same frozen engine — a different question. "
+         "Ranked on money per listing, conversion, and room to rank._", ""]
     L += [f"> Scanned **{r['n_total']}** ranked keywords · **{r['n_long']}** are "
           f"{min_words}+ words · **{r['n_scored']}** carry real sales evidence "
           f"(revenue **and** conversion). The other **{r['dropped_no_evidence']}** "

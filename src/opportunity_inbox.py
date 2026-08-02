@@ -64,6 +64,16 @@ def _to_scorer(row):
     rev = _num(row.get("avg_revenue") or row.get("revenue"))
     if rev is not None:
         d["avg_revenue"] = rev
+    # The demand leg is calibrated for the NICHE TOTAL, but avg_revenue has been
+    # strictly per-listing since V37.5, so hand the scorer the total explicitly:
+    # the harvested column when we have it, else per-listing x listings (exactly
+    # the inverse of harvest._add's conversion). Without this every row entered
+    # the curve ~57 demand points low and nothing could reach GO.
+    rev_total = _num(row.get("total_revenue"))
+    if rev_total is None and rev is not None and comp:
+        rev_total = rev * comp
+    if rev_total is not None and rev_total > 0:
+        d["niche_revenue"] = rev_total
     price = _num(row.get("avg_price"))
     if price is not None:
         d["avg_price"] = price
@@ -82,6 +92,17 @@ def _to_scorer(row):
     # REAL discriminating signal exists (explicit gem/opportunity score column),
     # its weight renormalises away, and core = Market+Competition so its absence
     # no longer caps the verdict at WATCH. Provenance stays visible as `source`.
+    #
+    # V37.6: that "REAL discriminating signal" now arrives. scout_opportunities
+    # returns its own `opportunity_score` (independent of, and different from,
+    # momentum_score and competition_score), which harvest used to discard into
+    # the dedup field and now writes to the master. NOT sourced from
+    # discovered_keywords.opportunity: that column is discover.score(), which is
+    # log10(revenue) x conversion x momentum / listings - every input already a
+    # leg here, so it would double-count all four and amplify them.
+    opp = _num(row.get("opportunity_score"))
+    if opp is not None:
+        d["opportunity_score"] = opp
     d["source"] = str(row.get("source") or "").strip()
     lvl = (row.get("competition_level") or "").strip()
     if lvl:

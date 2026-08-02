@@ -23,8 +23,8 @@ service `etsy-web`. Live: https://etsy.theglobalserviceteam.site
 No new Python deps, no DB migration (one additive nullable column), no Chrome-extension change.
 
 **Runtime state:** local `keyword_data.csv` was re-harvested 2026-08-02 19:49 with the fixes applied
-(1523 rows, new `total_revenue` column). Whether the VPS has been pulled/synced since is unconfirmed —
-see §6.
+(1523 rows, new `total_revenue` column). **DEPLOYED AND VERIFIED 2026-08-02** — see §6. Do not tell the
+owner the deploy is unconfirmed.
 
 ---
 
@@ -38,8 +38,13 @@ Diagnosis (measured, not assumed):
 - The **word-count rule already favours long-tails** — `ranking_engine` forces ≤2-word terms down to
   Pattern Miner. It was never the blocker. Head terms reach Build only via the **Etsy-proof override**
   (`ranking_engine.py:94-98`), which bypasses the word rule; big terms are exactly the ones with sales proof.
-- **GO needs overall ≥ 80** (`opportunity_score.py:347`). The highest-scoring long-tail in the whole base
-  was **73.6**. No long-tail could ever be promoted on merit.
+- ~~**GO needs overall ≥ 80** (`opportunity_score.py:347`). The highest-scoring long-tail in the whole base
+  was **73.6**. No long-tail could ever be promoted on merit.~~
+  **⚠️ CORRECTED IN V37.6 — this reading was wrong.** The 73.6 ceiling was real but it was not a long-tail
+  problem: it held the *entire base* down, head terms included, and it was caused by a data-unit bug this
+  very session introduced (see the V37.6 block at the end of §2). Re-measured on the live master,
+  long-tails score marginally **higher** than head terms among demand-grounded rows (max 76.2 vs 74.3,
+  median 53.7 vs 48.8). There is no word-count bias in the engine to correct.
 - Only **54 of 1123** keywords were ≥4 words (4.8%); 50% were ≤2 words.
 - Real long-tails were sitting at WATCH with genuine sales, e.g. `funny shirt for dad` — $80.5K niche
   revenue, 3.0% conversion, 175 listings → WATCH.
@@ -68,6 +73,74 @@ Zero lost. Conversion literal-zeros: 0. Momentum blank on 558/698 search and 251
 
 ---
 
+### ⚠️ V37.6 — bug #1's fix had a silent regression, plus two older bugs of the same family
+
+Bug #1 correctly made `avg_revenue` mean *per listing* everywhere. But **nothing converted it back**, and
+`opportunity_score._demand_from`'s curve is calibrated for the **niche total** ($100 → demand 0,
+$316k → 100). So every row entered the demand leg on the wrong scale.
+
+| # | Bug | Evidence | Fix |
+|---|---|---|---|
+| 7 | **Demand leg fed per-listing revenue on a niche-total curve.** The V37.5 unit fix made all sources *consistent* — consistently ~57 demand points too low. | Median per-listing **$627 → demand 22.8** vs median niche total **$64,142 → demand 80.2**. Whole base pushed under the GO band. | `_to_scorer` passes `niche_revenue` (harvested `total_revenue`, else per-listing × listings); `_demand_from` reads it first. |
+| 8 | **A fabricated seasonality constant capped every score.** `_feasibility` inserted `60.0` for a signal that has no source (`seasonal.py` is a holiday *calendar*, not a per-tag score), costing every row 14 points and hard-capping F at **79.25** — so every composite was dragged toward 79. | Same anti-pattern as the flat-50 private boost (V33) and the constant-85 opportunity signal (V30.1), both already removed. | Renormalise the 80 movable points onto the measured signal. Widens spread both ways: launchable 79.2 → 88.0, unmakeable 56.8 → 48.0. |
+| 9 | **Missing legs RAISED the score.** Renormalising over present components is right, but dropping a low leg lifts the average — so **561 rows with no market data at all** scored 76–87 on competition-from-listing-count plus the deterministic feasibility read, and sorted at the **top** of the inbox above every measured row. | Ungrounded median 68.6 vs grounded 48.8 — measuring a keyword *cost* it ~20 points. | `overall_score` is now `None` when core (M or C) is missing, and a new `evidence_weight` reports how much was actually measured. Consumers already guard with `score or 0`, so nulls sort last. |
+
+**Backtest on the live 1523-row master:** **156 flips (10.2%)** — SKIP→WATCH 101, WATCH→CONDITIONAL 52,
+CONDITIONAL→**GO 3**. Nothing was downgraded except genuinely weak rows (SKIP 225 → 124).
+
+**Before: 0 of 1523 keywords could reach GO.** Measured rows topped out at 76.2 (below the ≥80 threshold);
+unmeasured rows scored up to 87.2 but were force-capped at WATCH by the demand-grounded gate. A perfect
+deadlock: *measure a keyword and it can't score 80; don't measure it and it's capped regardless.*
+**After: GO is reachable** — 3 GO, 83 CONDITIONAL, and the top of the inbox is measured rows
+(`patriotic soft tee` 81.0) instead of dataless ones (`wood look sign` 87.2).
+
+Still **0 BUILD_NOW**, and that part is *correct*: all 3 GO rows are 3-word, and L4's long-tail rule
+(`ranking_engine.py:176-186`) deliberately routes anything under 4 words to Pattern Miner first. Reaching
+BUILD_NOW needs 4+ word keywords with real data — only 82 of 1523 rows are 4+ words, which is the
+long-tail **supply** problem, not a scoring one.
+
+**Not a ranking-math issue:** `DESIGN_PREP_READY` / `PUBLISH_READY` being false is a separate listing-QA
+gate (`product_manager.py:588` — `not fails and exactly_13_tags`), unrelated to GO.
+
+### V37.6b — the O leg now has a real source (and one that was nearly a trap)
+
+`opportunity_signal` was null on all 1523 rows. It now fills from
+`scout_opportunities`' own **`opportunity_score`** — a vendor estimate that arrives alongside, and is
+distinct from, `momentum_score` and `competition_score` (e.g. `icecreamnlove`: opportunity 92.6,
+momentum 47.4, competition 39.2). harvest already received it and threw it away into the internal dedup
+`score`; it is now captured as a metric and written to a new `opportunity_score` column.
+
+**Rejected source — read this before "improving" it.** `discovered_keywords.opportunity` in `agent.db`
+looks ideal (11,680 rows, 449 distinct, p10 0.1 → p90 97.5) and is **the wrong column**. It is
+`discover.score()` = `log10(revenue+1) × conv × (1+momentum/100) × 100 / listings` — every input is
+already a leg in the composite (revenue→demand, conv→conversion, momentum→velocity, listings→competition).
+Feeding it to O would double-count all four and, being a product, amplify them: V30.1's failure in a worse
+form. Only an explicit vendor column may populate O. Pinned by
+`test_o_leg_is_never_fed_a_derived_score`.
+
+**Guards:** the vendor score is passed only from the two `scout_opportunities` call sites — never from
+trending (whose `score` is momentum), rankings (a rank score) or search (a flat 40). Pinned by
+`test_vendor_opportunity_score_survives_the_csv_round_trip`.
+
+**Measured impact** (56 master keywords have a cached vendor score): mean **+3.4** points, max +5.1,
+**11 rows WATCH → CONDITIONAL**, no GO change, nothing downgraded.
+
+**Known bias, accepted:** `scout_opportunities` only returns tags it already considers opportunities, so
+the score is never low where present (observed range 58.1–92.6). O is therefore a one-directional bonus
+that fires only on scout-sourced rows. At +3.4 mean that is small, and the values genuinely discriminate
+(69 distinct across 91 tags) — but if scout coverage grows a lot, so does the provenance skew. The new
+`evidence_weight` field makes it visible.
+
+**Not retroactive:** the column is only written by a harvest run, so O stays null until the next
+`py main.py harvest` (step 1/4 of `push-to-vps.ps1`). Older CSVs load fine — readers use `DictReader`.
+
+**Left on the table (measured, not built):** `competition_level` is returned by both trending and scout
+and is captured into the harvest store, but `KDATA_FIELDS` has no column for it, so it is discarded on
+write and the C leg — 28% of the weight, more than O — falls back to the listing-count heuristic on every
+row. `agent.db` holds 7,777 real labels. Same one-column plumbing as this fix.
+
+---
+
 ## 3 · New: the Long-tail lane (`/longtail`)
 
 `src/longtail.py` (new, ~340 lines) + route + `main.py longtail` CLI.
@@ -89,6 +162,16 @@ or action anywhere.
 **Result on live data: 106 evidence-backed long-tails, 26 PUSH**, where Rank shows 0 buildable ones.
 Top rows: `custom crew t-shirt` $2,188/listing 5.1% conv 30 listings · `40th birthday cozies` $1,704 9.7%
 39 · `hair bow monogram` $1,353 10.2% 30.
+
+**V37.6 update — two of the four legs were doing no ranking work:**
+- `specific` (word count, 15%) gave **99 of 106 scored rows the identical value**, and the master contains
+  no 5+ word keyword at all. Removed; weights renormalised to money .41 / conversion .35 / room .24.
+  Dropping it widened the p10–p90 spread 26.9 → 28.6. MIN_WORDS already enforces long-tail-ness.
+- `money` saturated at **$2,512/listing** — 7 of the top 26 rows pinned at exactly 100, so the leg stopped
+  separating rows exactly where the build decision is made. Scale now runs to ~$6.3k (real max $6,117).
+
+Post-fix the lane scores **140 rows** (up from 106 — the engine fixes made more rows launchable) with
+**13 PUSH**, a tighter and better-separated shortlist.
 
 **Supply** — `longtail.pull()` reads YTrends `research_keyword` → `related_keywords`, which arrive **with
 per-tag revenue + conversion**, so they are demand-grounded on arrival and can score immediately. Contrast
@@ -131,24 +214,34 @@ Readers use `DictReader`, so older files still load.
 
 ---
 
-## 6 · Deploy state — what still needs doing
+## 6 · Deploy state — DONE, verified 2026-08-02
 
+**Nothing outstanding. V37.5 is live.** Evidence, not assumption:
+
+- VPS `git fetch && git reset --hard origin/main` → `HEAD is now at 319ebf9`, service restarted.
+- Verified from outside: `https://etsy.theglobalserviceteam.site/longtail` serves the login page while an
+  unknown path (`/zzz-not-a-real-route`) returns HTTP 404. The new route exists on the running process,
+  so the restart picked up V37.5 code.
+- `push-to-vps.ps1` ran twice post-fix (20:36, 20:47). Step 3/4 reported
+  `carried in 0 VPS-only keyword(s), enriched 0` both times — the merge path works and destroyed nothing.
+  1523 keywords on both machines.
+
+**How to re-verify in one command** (do this instead of repeating "unconfirmed"):
 ```bash
-# VPS
-cd ~/etsy-agent && git fetch origin && git reset --hard origin/main && sudo systemctl restart etsy-web
+curl -s -o /dev/null -w '%{http_code}\n' https://etsy.theglobalserviceteam.site/longtail   # 200/302 = V37.5 live, 404 = stale
 ```
+
+Routine sync from the PC (the VPS IP is blocked from YTrends, so the PC harvests):
 ```powershell
-# PC — the fixes only reach the data when harvest rewrites it (already run once, 19:49 on 08-02)
 cd D:\Claude\22etsy-agent
-py main.py harvest
-powershell -ExecutionPolicy Bypass -File deploy\push-to-vps.ps1
+powershell -ExecutionPolicy Bypass -File deploy\push-to-vps.ps1   # step 1/4 already runs harvest
 ```
+Restart `etsy-web` on the VPS only when code changed; data alone needs no restart.
 
-Watch for `carried in N VPS-only keyword(s)` in step 3/4 — keywords the old script would have deleted.
-
-**Unresolved:** the VPS held ~30 `keyword-lab` keywords. If `push-to-vps.ps1` was run before `9ef457d`
-landed, they were overwritten and cannot be recovered (the growth ledger stores counts, not phrases).
-`py main.py longtail "<seed>"` regenerates that class of keyword with real metrics attached.
+**Closed:** the ~30 VPS `keyword-lab` keywords were lost in a pre-`9ef457d` push and are unrecoverable
+(the growth ledger stores counts, not phrases). Confirmed: the current 1523-row master contains **zero**
+`keyword-lab` rows — sources are `mcp:search` 698, `mcp:ranking` 482, `mcp:trending` 259,
+`mcp:opportunity` 84. `py main.py longtail "<seed>"` regenerates that class with real metrics attached.
 
 ---
 
@@ -173,5 +266,18 @@ landed, they were overwritten and cannot be recovered (the growth ledger stores 
 ## 8 · Guardrails upheld
 
 PUBLISH_AUTOMATION=false · no Seller-Central connection · honest-nulls (strengthened this session) ·
-owner approval gates · **L0–L4 ranking math frozen** — `opportunity_score.py` and `ranking_engine.py`
-were not modified. Every fix was to the data feeding them or to a view beside them.
+owner approval gates.
+
+**Freeze status — changed in V37.6.** V37.5 kept `opportunity_score.py` and `ranking_engine.py`
+untouched. V37.6 **did modify `opportunity_score.py`** (owner-authorised), because the GO band had become
+unreachable for all 1523 keywords and the causes were all inside it. `ranking_engine.py` is still
+untouched — the L4 word-count and proof-override rules are unchanged.
+
+Three edits, all of them *removing fabricated values* rather than retuning the math — no weight, band or
+curve was moved to make numbers look better:
+1. `_demand_from` reads `niche_revenue` first (unit fix; the curve's own calibration was never changed).
+2. `_feasibility` no longer inserts a `60.0` for an unmeasured seasonality signal.
+3. `score()` returns `overall_score=None` when core data is missing, and adds `evidence_weight`.
+
+Verified: **509 passed, 1 failed** — the failure is `test_full_selftest_pipeline`, the known offline MCP
+pagination check, confirmed failing on a stashed baseline without these changes.

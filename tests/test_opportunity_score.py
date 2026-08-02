@@ -95,3 +95,43 @@ def test_feasibility_blend_now_active_for_embroidery():
     hard = osc._feasibility("watercolor galaxy portrait embroidery", "embroidery")[0]
     easy = osc._feasibility("bold monogram embroidery", "embroidery")[0]
     assert hard < easy
+
+
+# --- V37.6: the three fixes that made the GO band reachable again -------------
+
+def test_demand_reads_the_niche_total_not_per_listing_revenue():
+    """The demand curve is calibrated for the NICHE TOTAL. avg_revenue has been
+    strictly per-listing since V37.5, so feeding it raw put every row ~57 demand
+    points low and no keyword in the base could reach GO."""
+    per_listing = osc._demand_from({"avg_revenue": 2188.0})
+    niche = osc._demand_from({"avg_revenue": 2188.0, "niche_revenue": 65638.0})
+    assert niche > per_listing + 30      # measured gap at the median is ~57
+    # explicit demand still wins over both
+    assert osc._demand_from({"demand": 85, "niche_revenue": 10.0}) == 85
+
+
+def test_no_market_score_is_reported_without_core_data():
+    """561 rows carrying no market data at all were scoring 76-87 - on
+    competition-from-listing-count plus the deterministic feasibility read - and
+    sorting ABOVE every measured row. A verdict cap alone didn't stop that."""
+    s = osc.score({"tag": "custom dog mom mug"})
+    assert s["core_complete"] is False
+    assert s["overall_score"] is None
+    assert s["verdict"] == "WATCH"
+
+
+def test_evidence_weight_reports_how_much_was_measured():
+    full = osc.score(_strong())
+    thin = osc.score({"tag": "x", "momentum_score": 90, "competition_level": "low"})
+    assert full["evidence_weight"] > thin["evidence_weight"]
+    assert 0.0 < thin["evidence_weight"] <= 1.0
+
+
+def test_feasibility_is_not_capped_by_a_fabricated_seasonality():
+    """There is no per-keyword seasonality source, so the leg was a hardcoded 60
+    that cost every row 14 points and capped F at 79.25 - pulling every composite
+    toward 79. Removing it must widen the spread in BOTH directions."""
+    good = osc._feasibility("custom crew t-shirt", "pod")[0]
+    junk = osc._feasibility("mercury retrograde spell", "pod")[0]
+    assert good > 79.25          # a real product is no longer stuck under the cap
+    assert junk < good - 20      # and an unmakeable term still falls well below

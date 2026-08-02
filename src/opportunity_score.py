@@ -103,11 +103,21 @@ def _demand_from(row):
     with a views term. Revenue is log-scaled ($100 -> ~0, ~$300k -> 100) because
     niche revenue spans four orders of magnitude; views are a lighter secondary
     signal on a daily-count scale. Uses only the fields present (honest-nulls):
-    with neither revenue nor views, demand is None and can't fabricate a score."""
+    with neither revenue nor views, demand is None and can't fabricate a score.
+
+    UNITS (V37.6): this curve is calibrated for the NICHE TOTAL, not per-listing
+    revenue - "how much money moves in this market". Read `niche_revenue` first,
+    which is the only field guaranteed to carry that. V37.5 made harvest write
+    `avg_revenue` as strictly per-listing (correctly - it had been mixing the two
+    and one source read ~250x richer than another), but nothing then converted it
+    back, so every row entered this curve ~57 demand points low at the median and
+    NO keyword in the base could reach the GO band. `avg_revenue`/`revenue` stay
+    as fallbacks for callers that still pass a niche figure there.
+    """
     d = _first(row, "demand", "demand_score")
     if d is not None:
         return min(100.0, max(0.0, d))
-    rev = _first(row, "avg_revenue", "revenue")
+    rev = _first(row, "niche_revenue", "avg_revenue", "revenue")
     v = _first(row, "views_24h", "views")
     parts = []
     if rev is not None and rev > 0:
@@ -261,7 +271,17 @@ def _feasibility(keyword, mode):
     except Exception:  # noqa: BLE001
         pass
     ip_pen = _ip_penalties()[ip_risk]
-    feas = max(0.0, (design * 0.45) + (60.0 * 0.35) + 20.0 + ip_pen)  # 60 = seasonality neutral
+    # 20 baseline + 80 movable points, originally split design .45 / seasonality
+    # .35. There is no per-keyword seasonality source (seasonal.py is a holiday
+    # CALENDAR, not a per-tag score), so that leg was a hardcoded "neutral" 60 -
+    # a fabricated constant that cost every row in the system 14 points and
+    # capped F at 79.25 (design tops out at 85), dragging every composite toward
+    # 79. Same anti-pattern as the flat-50 private boost (V33) and the constant-85
+    # opportunity signal (V30.1), both already removed. Honest-nulls: renormalise
+    # the 80 movable points onto the signal we actually measure. This widens the
+    # spread in BOTH directions - a launchable product rises (79.2 -> 88.0), an
+    # unmakeable one falls (56.8 -> 48.0) - instead of everything hugging 79.
+    feas = max(0.0, (design * 0.80) + 20.0 + ip_pen)
     return round(min(100.0, feas), 1), ip_risk
 
 
@@ -322,6 +342,14 @@ def score(row, keyword=None, mode=None, private=None, category=None,
     avail = [(v, wt_map[k]) for k, v in subs.items() if v is not None]
     overall = (round(sum(v * wt for v, wt in avail) / sum(wt for _, wt in avail), 1)
                if avail else None)
+    # How much of the scoring weight is actually MEASURED (1.0 = every component
+    # present). Renormalising over present components is right - it stops a
+    # missing signal being read as a zero - but it also means a missing LOW leg
+    # silently RAISES the average, so a data-poor row can outrank a data-rich one.
+    # Surfaced here so views can rank complete evidence above thin evidence
+    # without anyone inventing a number to fill the gap.
+    evidence_weight = (round(sum(wt for _, wt in avail) / sum(wt_map.values()), 3)
+                       if avail else 0.0)
     # CORE = Market + Competition only (V30.1, external review): the opportunity
     # signal is a bonus/discriminator, not a prerequisite - its absence must NOT
     # cap a fully-measured market row at WATCH. When O is absent its weight is
@@ -329,6 +357,16 @@ def score(row, keyword=None, mode=None, private=None, category=None,
     # F .118 with the default weights).
     core_missing = any(subs[k] is None for k in
                        ("market_potential", "competition_health"))
+    # V37.6: with the core missing there is no market score to report. The number
+    # was still being published (and sorted on), and because the remaining legs -
+    # competition-from-listing-count and the deterministic feasibility read - are
+    # both HIGH for an obscure keyword, 561 rows carrying no market data at all
+    # scored ~76-87 and sat at the TOP of the inbox above every measured row.
+    # A verdict cap alone didn't stop that; the score itself has to be honest.
+    # (interactive.py already refused to display these - now it's the same
+    # everywhere. Consumers guard with `score or 0`, so nulls sort last.)
+    if core_missing:
+        overall = None
     # V35.2 trust hotfix (3-review consensus): DEMAND-GROUNDED check. A market
     # score standing only on velocity/conversion - with NO real demand data
     # (no revenue, no views, no explicit demand score) - must never mint a
@@ -355,6 +393,7 @@ def score(row, keyword=None, mode=None, private=None, category=None,
     return {"keyword": keyword, "overall_score": overall, "verdict": verdict,
             "sub_scores": subs, "missing": missing, "ip_risk": ip_risk,
             "core_complete": not core_missing,
+            "evidence_weight": evidence_weight,
             "demand_grounded": demand_grounded,
             "rationale": _rationale(subs, missing, ip_risk, core_missing,
                                     gtrends_dir)

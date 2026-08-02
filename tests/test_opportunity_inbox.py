@@ -29,6 +29,35 @@ def test_missing_o_does_not_cap_verdict():
     assert s["verdict"] != "WATCH" or s["overall_score"] < 65
 
 
+def test_vendor_opportunity_score_lights_up_the_o_leg():
+    """V37.6: scout_opportunities returns its own opportunity_score, independent
+    of momentum_score and competition_score. harvest used to discard it into the
+    dedup field; now it reaches the O leg that V30.1 left as an honest null."""
+    base = {"keyword": "bridal gift bags", "etsy_listings": "38",
+            "avg_revenue": "1398", "conversion_rate": "0.043",
+            "momentum": "47.4", "source": "mcp:opportunity"}
+    d, *_ = oi._to_scorer(base)
+    assert osc.score(d, keyword=d["tag"])["sub_scores"]["opportunity_signal"] is None
+    d2, *_ = oi._to_scorer({**base, "opportunity_score": "92.6"})
+    s2 = osc.score(d2, keyword=d2["tag"])
+    assert s2["sub_scores"]["opportunity_signal"] == 92.6
+    assert "opportunity_signal" not in s2["missing"]
+    assert s2["evidence_weight"] > osc.score(d, keyword=d["tag"])["evidence_weight"]
+
+
+def test_o_leg_is_never_fed_a_derived_score():
+    """discovered_keywords.opportunity is discover.score() = log10(revenue) x
+    conversion x momentum / listings - every input is already a leg here, so
+    routing it into O would double-count all four and amplify them. Only an
+    explicit vendor column may populate O."""
+    d, *_ = oi._to_scorer({"keyword": "summer pouch", "etsy_listings": "34",
+                           "avg_revenue": "5493", "conversion_rate": "0.0308",
+                           "momentum": "60.6", "source": "mcp:trending"})
+    assert "opportunity_score" not in d
+    assert "gem_score" not in d
+    assert osc.score(d, keyword=d["tag"])["sub_scores"]["opportunity_signal"] is None
+
+
 def test_ledger_counts_reconcile():
     d = oi.build_inbox(limit=100000)
     c = d["counts"]
