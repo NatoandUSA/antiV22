@@ -175,6 +175,58 @@ def test_harvest_merge_keeps_keywords_the_pull_did_not_return(tmp_path):
     assert "fresh from mcp" in got
 
 
+def _write_master(p, rows):
+    cols = ["keyword", "etsy_listings", "avg_revenue", "conversion_rate",
+            "momentum", "source", "collected_at"]
+    with p.open("w", newline="", encoding="utf-8") as fh:
+        w = csv.DictWriter(fh, fieldnames=cols)
+        w.writeheader()
+        for r in rows:
+            w.writerow({c: r.get(c, "") for c in cols})
+
+
+def test_merge_master_keeps_vps_only_keywords(tmp_path):
+    """deploy/push-to-vps.ps1 used to scp the PC's master straight over the
+    server's, deleting every keyword the TEAM added on the VPS."""
+    local, remote = tmp_path / "local.csv", tmp_path / "vps.csv"
+    _write_master(local, [{"keyword": "harvested kw", "avg_revenue": "500",
+                           "source": "mcp:trending", "collected_at": "2026-08-02"}])
+    _write_master(remote, [{"keyword": "harvested kw", "avg_revenue": "9",
+                            "source": "mcp:trending", "collected_at": "2026-07-01"},
+                           {"keyword": "team added long tail", "avg_revenue": "640",
+                            "source": "keyword-lab", "collected_at": "2026-07-15"}])
+    carried, _ = harvest.merge_master(str(remote), str(local))
+    got = {r["keyword"]: r for r in csv.DictReader(local.open(encoding="utf-8"))}
+    assert carried == 1
+    assert "team added long tail" in got, "the VPS-only keyword was destroyed"
+    assert got["team added long tail"]["source"] == "keyword-lab"
+    # local stays authoritative on metrics it actually has
+    assert got["harvested kw"]["avg_revenue"] == "500"
+    # ...but the earliest first-seen date wins, so growth history isn't reset
+    assert got["harvested kw"]["collected_at"] == "2026-07-01"
+
+
+def test_merge_master_fills_local_blanks_and_keeps_provenance(tmp_path):
+    local, remote = tmp_path / "local.csv", tmp_path / "vps.csv"
+    _write_master(local, [{"keyword": "shared kw", "avg_revenue": "",
+                           "conversion_rate": "0.04", "source": "mcp:search"}])
+    _write_master(remote, [{"keyword": "shared kw", "avg_revenue": "777",
+                            "conversion_rate": "0.01", "source": "keyword-lab"}])
+    _carried, enriched = harvest.merge_master(str(remote), str(local))
+    row = next(csv.DictReader(local.open(encoding="utf-8")))
+    assert enriched == 1
+    assert row["avg_revenue"] == "777"        # blank filled from the other side
+    assert row["conversion_rate"] == "0.04"   # a value we HAVE is never replaced
+    assert row["source"] == "keyword-lab"     # who added it beats a bare mcp pull
+
+
+def test_merge_master_no_remote_file_is_a_noop(tmp_path):
+    local = tmp_path / "local.csv"
+    _write_master(local, [{"keyword": "only kw", "source": "mcp:search"}])
+    assert harvest.merge_master(str(tmp_path / "missing.csv"), str(local)) == (0, 0)
+    assert len(list(csv.DictReader(local.open(encoding="utf-8")))) == 1
+
+
 def test_merge_keeps_original_source_for_a_rediscovered_keyword(tmp_path):
     p = tmp_path / "kd.csv"
     p.write_text("keyword,source,collected_at\nshared kw,keyword-lab,2026-07-01\n",

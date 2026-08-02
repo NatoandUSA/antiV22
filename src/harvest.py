@@ -286,6 +286,79 @@ def merge_existing(store, path="keyword_data.csv"):
     return carried
 
 
+# Channels that record WHO added a keyword. When the same keyword exists on both
+# machines, this provenance wins over a bare mcp: pull — the MCP would have found
+# it anyway, but only one side knows a human/lab put it there first.
+def _is_provenance(src):
+    s = (src or "").strip()
+    return bool(s) and not s.startswith("mcp:")
+
+
+def merge_master(other_path, path="keyword_data.csv"):
+    """Union another machine's keyword master into this one. Never deletes.
+
+    The PC harvests (the VPS IP is blocked from YTrends) and the VPS collects
+    what the team adds through the web UI — Keyword Lab, long-tail pulls,
+    extension imports. deploy/push-to-vps.ps1 used to scp the PC's file straight
+    over the server's, so every keyword added ON the VPS was destroyed on the
+    next data sync — the same deletion bug as merge_existing(), across the
+    machine boundary.
+
+    Rows only the other side has are carried in. For a keyword both sides hold,
+    the local (freshly harvested) metrics win, but any field local left BLANK is
+    filled from the other side, the non-mcp provenance is kept, and the earliest
+    collected_at survives. Returns (carried_in, enriched).
+    """
+    try:
+        with open(other_path, encoding="utf-8-sig") as fh:
+            other = list(csv.DictReader(fh))
+    except OSError:
+        return 0, 0
+    try:
+        with open(path, encoding="utf-8-sig") as fh:
+            rd = csv.DictReader(fh)
+            header = rd.fieldnames or list(KDATA_FIELDS)
+            local = list(rd)
+    except OSError:
+        header, local = list(KDATA_FIELDS), []
+    for col in KDATA_FIELDS:                 # tolerate an older/newer schema
+        if col not in header:
+            header.append(col)
+    by_kw = {(r.get("keyword") or "").strip().lower(): r for r in local}
+    carried = enriched = 0
+    for row in other:
+        kw = (row.get("keyword") or "").strip().lower()
+        if not kw:
+            continue
+        cur = by_kw.get(kw)
+        if cur is None:
+            by_kw[kw] = row
+            local.append(row)
+            carried += 1
+            continue
+        filled = False
+        for col in header:                   # never lose a value we don't have
+            if col in ("keyword", "source", "collected_at"):
+                continue
+            if not str(cur.get(col) or "").strip() and str(row.get(col) or "").strip():
+                cur[col] = row[col]
+                filled = True
+        if _is_provenance(row.get("source")) and not _is_provenance(cur.get("source")):
+            cur["source"] = row["source"]
+            filled = True
+        a, b = (cur.get("collected_at") or ""), (row.get("collected_at") or "")
+        if b and (not a or b < a):
+            cur["collected_at"] = b
+        if filled:
+            enriched += 1
+    with open(path, "w", newline="", encoding="utf-8") as fh:
+        w = csv.DictWriter(fh, fieldnames=header, extrasaction="ignore")
+        w.writeheader()
+        for r in local:
+            w.writerow({c: r.get(c, "") for c in header})
+    return carried, enriched
+
+
 def write_keyword_data(store, path="keyword_data.csv"):
     from datetime import date
     today = str(date.today())
