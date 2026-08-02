@@ -360,25 +360,56 @@ def build_app(password, secret):
         # the portal's own theme vars so it matches light + dark automatically. ===
         _plcss = (
             '<style>'
-            '.plpipe{display:grid;grid-template-columns:repeat(9,1fr);gap:7px}'
-            '.plstep{border:1px solid var(--line);border-radius:12px;padding:11px 8px;'
+            # --- V37.9 workflow rail: one instruction, then a compact map ---
+            '.nowcard{background:var(--accent-bg);border:1px solid var(--accent);'
+            'border-radius:16px;padding:20px 22px;margin:6px 0 18px}'
+            '.now-k{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;'
+            'text-transform:uppercase;color:var(--accent);font-weight:700}'
+            '.now-h{font-size:1.45rem;font-weight:800;letter-spacing:-.02em;'
+            'margin:5px 0 0;line-height:1.2}'
+            '.now-s{font-size:.9rem;color:var(--ink-soft);margin:6px 0 0;max-width:62ch}'
+            '.now-a{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:14px}'
+            '.now-go{background:var(--accent);color:var(--paper);font-weight:700;'
+            'font-size:.95rem;padding:12px 20px;border-radius:11px;text-decoration:none}'
+            '.now-go:hover{filter:brightness(1.08)}'
+            '.now-nx{font-size:.8rem;color:var(--ink-soft)}'
+            '.wsrail-h{display:flex;align-items:baseline;gap:10px;margin:0 0 8px}'
+            '.wsrail-h b{font-size:.78rem;letter-spacing:.1em;text-transform:uppercase;'
+            'color:var(--ink-faint);font-family:var(--mono)}'
+            '.wsrail-h span{font-size:.78rem;color:var(--ink-faint)}'
+            '.wsrail-h a{margin-left:auto;font-size:.78rem;color:var(--accent);font-weight:700}'
+            '.wsrail{display:grid;grid-template-columns:repeat(6,1fr);gap:7px;margin-bottom:18px}'
+            '.wsx{display:flex;flex-direction:column;gap:2px;padding:9px 10px;'
+            'border:1px solid var(--line);border-left:3px solid var(--line-strong);'
+            'border-radius:9px;background:var(--surface);text-decoration:none;'
+            'transition:border-color .12s,transform .12s;min-width:0}'
+            '.wsx:hover{border-color:var(--accent);transform:translateY(-1px)}'
+            '.wsx.ready{border-left-color:var(--ok)}'
+            '.wsx.todo{border-left-color:#B45309}'
+            '.wsx.unknown{border-left-color:var(--line-strong)}'
+            '.wsx.here{border-color:var(--accent);background:var(--accent-bg);'
+            'box-shadow:0 0 0 2px var(--accent) inset}'
+            '.wsx-n{font-family:var(--mono);font-size:9.5px;font-weight:700;'
+            'color:var(--ink-faint);letter-spacing:.06em}'
+            '.wsx.here .wsx-n{color:var(--accent)}'
+            '.wsx-t{font-size:11.5px;font-weight:700;line-height:1.22;color:var(--ink)}'
+            '.wsx-d{font-size:10px;color:var(--ink-faint);line-height:1.3;'
+            'overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'
+            '.supwrap{margin:0 0 20px}'
+            '.supwrap summary{cursor:pointer;font-size:.8rem;font-weight:700;'
+            'color:var(--ink-soft)}'
+            '.supg{margin:8px 0;font-size:11.5px}'
+            '.supg b{display:block;color:var(--ink-soft);margin-bottom:2px}'
+            '.supg a{color:var(--accent);margin-right:9px;white-space:nowrap}'
+            '@media(max-width:900px){.wsrail{grid-template-columns:repeat(3,1fr)}}'
+            '@media(max-width:540px){.wsrail{grid-template-columns:repeat(2,1fr)}'
+            '.now-h{font-size:1.2rem}}'
             'position:relative;display:flex;flex-direction:column;align-items:center;'
             'text-align:center;background:var(--surface);text-decoration:none;transition:.15s}'
-            'a.plstep:hover,button.plstep:hover{border-color:var(--accent);transform:translateY(-1px)}'
-            'button.plstep{font-family:inherit;width:100%;cursor:pointer;margin:0}'
-            '.plstep::after{content:"\\2192";position:absolute;right:-7px;top:22px;'
             'color:var(--line-strong);font-size:13px;z-index:1}'
-            '.plstep:last-child::after{display:none}'
-            '.plstep.hot{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset;background:var(--accent-bg)}'
-            '.plstep .n{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;'
             'font-size:11px;font-weight:800;color:#fff;margin-bottom:5px;background:var(--accent)}'
-            '.plstep.plfin .n{background:var(--ok)}'
-            '.plstep .ic{font-size:17px;line-height:1;margin-bottom:3px}'
-            '.plstep h3,.plstep .t{margin:0;font-size:11.5px;color:var(--ink);'
             'font-weight:700;line-height:1.2;display:block}'
-            '.plsteph{font-size:11px;font-weight:700;letter-spacing:.05em;'
             'text-transform:uppercase;color:var(--ink-soft);margin:12px 0 7px}'
-            '.plstep .sc{font-size:10px;color:var(--ink-soft);margin-top:2px}'
             '.plnudge{display:flex;align-items:center;gap:12px;margin:14px 0 8px;'
             'background:var(--accent-bg);border:1px solid var(--line);border-radius:12px;padding:11px 14px}'
             '.plnudge .t{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;'
@@ -399,8 +430,6 @@ def build_app(password, secret):
             '.plmeta b{color:var(--ink-soft)}'
             '.plkind{width:100%;font-size:11px;padding:8px 6px;border:1px solid var(--line);'
             'border-radius:7px;background:var(--surface);color:var(--ink);margin-bottom:6px}'
-            '@media(max-width:960px){.plpipe{grid-template-columns:repeat(3,1fr)}.plstep::after{display:none}}'
-            '@media(max-width:520px){.plpipe{grid-template-columns:repeat(2,1fr)}}'
             '</style>')
         _csrf_tok = _csrf()
         try:   # newest import: powers both the next-step nudge and the "last
@@ -612,22 +641,6 @@ def build_app(password, secret):
         # going back to the homepage between steps (owner directive).
         _mchk = {"embroidery": "", "pod": "", "both": ""}
         _mchk[active if active in ("pod", "embroidery") else "both"] = " checked"
-        _stages = [
-            ("1", "\U0001F4E5", "Feed", "Import Center", "/imports", ""),
-            ("2", "\U0001F3C6", "Rank", "Opportunity Inbox", "/inbox", " hot"),
-            ("3", "\U0001F52C", "Pattern", "Pattern Miner", "/pattern-miner", ""),
-            ("4", "\U0001F4A1", "Keywords", "Keyword Lab", "/keyword-lab", ""),
-            ("5", "\U0001F3AF", "Re-rank", "Decide on generated", "/rerank", ""),
-            ("6", "\U0001F4DD", "Build", "Launch Kit", "/launch-kit", ""),
-            ("7", "\U0001F5BC\uFE0F", "Images", "Photo prompts", "/photo-brief", ""),
-            ("8", "\U0001F4E3", "Ads", "Ads plan", "/ads-plan", ""),
-            ("9", "\U0001F4C9", "Learn", "Sales feedback", "/feedback", " plfin"),
-        ]
-        _plboard = '<div class="plpipe">' + "".join(
-            f'<button class="plstep{c}" type="submit" formaction="{h}">'
-            f'<span class="n">{n}</span><span class="ic">{i}</span>'
-            f'<span class="t">{t}</span><span class="sc">{s}</span></button>'
-            for n, i, t, s, h, c in _stages) + '</div>'
         # --- THE WORKFLOW SPINE (V37.7) -------------------------------------
         # 104 routes with no ordering is why staff could not say what step they
         # were in. src/workflow_spine.py is the single definition of the owner's
@@ -641,61 +654,59 @@ def build_app(password, secret):
             _here = _ws.current_step(_st)
             _dot = {"ready": ("✅", "ok"), "todo": ("⬜", "warn"),
                     "unknown": ("❔", "")}
-            _cards = []
+            # ONE focused instruction, then a compact rail. The first cut of this
+            # rendered all 12 steps as tall cards carrying Needs/Creates/route —
+            # ~11 screens of text on the page staff open every morning, stacked on
+            # top of the older 9-step pipeline. Detail moved to /workflow; home now
+            # answers only "what do I do next" and "where is everything else".
+            cur = next(s for s in _ws.STEPS if s["n"] == _here)
+            cstat = _st.get(cur["key"]) or {}
+            clabel, chref = cur["action"]
+            nxt = next((s for s in _ws.STEPS if s["n"] == _here + 1), None)
+            done = sum(1 for s in _ws.STEPS
+                       if (_st.get(s["key"]) or {}).get("state") == "ready")
+            _tiles = []
             for s in _ws.STEPS:
                 stt = _st.get(s["key"]) or {}
-                icon, _cls = _dot.get(stt.get("state"), ("❔", ""))
+                state = stt.get("state") or "unknown"
                 is_here = s["n"] == _here
-                label, href = s["action"]
-                hl = ("border:2px solid var(--accent);box-shadow:0 0 0 3px "
-                      "rgba(120,160,255,.15)" if is_here else
-                      "border:1px solid var(--line)")
-                badge = ('<span class="pill apill">YOU ARE HERE</span>'
-                         if is_here else "")
-                _cards.append(
-                    f'<div style="{hl};border-radius:10px;padding:10px 12px;'
-                    'margin-bottom:6px">'
-                    f'<div style="display:flex;gap:8px;align-items:baseline;'
-                    'flex-wrap:wrap">'
-                    f'<b style="font-size:13px">{icon} {s["n"]}. '
-                    f'{_h_esc(s["name"])}</b> {badge}'
-                    f'<span class="pill">{_h_esc(s["owner"])}</span></div>'
-                    f'<div style="font-size:11.5px;color:var(--ink-faint);'
-                    f'margin:4px 0">{_h_esc(stt.get("detail") or "")}</div>'
-                    f'<div style="font-size:11.5px;margin:2px 0">'
-                    f'<b>Needs:</b> {_h_esc(s["need"])}<br>'
-                    f'<b>Creates:</b> {_h_esc(s["output"])}</div>'
-                    f'<a class="pullbtn{" primary" if is_here else ""}" '
-                    f'href="{href}">{_h_esc(label)} →</a>'
-                    f'<span style="font-size:11px;color:var(--ink-faint)">'
-                    f' canonical route <code>{_h_esc(s["route"])}</code></span>'
-                    '</div>')
+                _tiles.append(
+                    f'<a class="wsx {state}{" here" if is_here else ""}" '
+                    f'href="{s["route"]}" title="{_h_esc(s["need"])}">'
+                    f'<span class="wsx-n">{s["n"]}</span>'
+                    f'<span class="wsx-t">{_h_esc(s["name"])}</span>'
+                    f'<span class="wsx-d">{_h_esc(stt.get("detail") or "")}</span>'
+                    '</a>')
             _sup = "".join(
-                f'<div style="margin:4px 0"><b style="font-size:12px">'
-                f'{_h_esc(g)}</b><br>' + " · ".join(
-                    f'<a href="{r}" style="font-size:11.5px">{_h_esc(r)}</a>'
-                    for r in rs) + '</div>'
-                for g, rs in _ws.SUPPORT_ROUTES)
+                f'<div class="supg"><b>{_h_esc(g)}</b><span>' + " ".join(
+                    f'<a href="{r}">{_h_esc(r)}</a>' for r in rs)
+                + '</span></div>' for g, rs in _ws.SUPPORT_ROUTES)
             spine = (
-                '<h2 class="grouph">🧭 The Etsy workflow — 12 steps</h2>'
-                '<p class="tklead">One canonical route per step. '
-                f'<b>You are on step {_here}.</b> ✅ done · ⬜ waiting on data · '
-                '❔ cannot read.</p>'
-                + "".join(_cards)
-                + '<details style="margin-top:8px"><summary style="cursor:pointer;'
-                'font-size:12.5px;font-weight:700">🔧 Advanced / support routes '
-                '(not workflow steps)</summary>'
-                f'<div style="margin-top:6px">{_sup}</div></details>')
+                '<section class="nowcard">'
+                '<div class="now-k">Do this next · step '
+                f'{_here} of 12 · {cur["owner"]}</div>'
+                f'<h2 class="now-h">{_h_esc(cur["name"])}</h2>'
+                f'<p class="now-s">{_h_esc(cstat.get("detail") or "")} — '
+                f'needs {_h_esc(cur["need"].lower())}.</p>'
+                '<div class="now-a">'
+                f'<a class="now-go" href="{chref}">{_h_esc(clabel)} →</a>'
+                + (f'<span class="now-nx">then step {nxt["n"]}: '
+                   f'{_h_esc(nxt["name"])}</span>' if nxt else "")
+                + '</div></section>'
+                '<div class="wsrail-h"><b>Workflow</b>'
+                f'<span>{done} of 12 ready</span>'
+                '<a href="/workflow">full guide →</a></div>'
+                f'<div class="wsrail">{"".join(_tiles)}</div>'
+                '<details class="supwrap"><summary>Advanced &amp; support routes'
+                '</summary>' + _sup + '</details>')
         except Exception:  # noqa: BLE001 — the spine is additive, never breaks home
             spine = ""
 
         tools = (
             spine
-            + '<h2 class="grouph">⚡ Instant Product Command Center</h2>'
-            '<p class="lead">Type <b>one keyword once</b>, then click any step on '
-            'the workflow board — the keyword and product mode travel with every '
-            'click, so you never come back here between steps. Or hit '
-            '<b>Build full workspace</b> for everything on one page.</p>'
+            + '<h2 class="grouph">⚡ Work one keyword</h2>'
+            '<p class="lead">Type a keyword once and the mode travels with every '
+            'step, so you never come back here between them.</p>'
             '<form class="cmdbar" method="get" action="/run">'
             '<div class="modetoggle"><span>Product mode</span>'
             f'<label><input type="radio" name="mode" value="embroidery"{_mchk["embroidery"]}>'
@@ -709,9 +720,11 @@ def build_app(password, secret):
             'placeholder="Main keyword, e.g. patchwork usa tee">'
             '<button class="primary" type="submit">Build full workspace →</button>'
             '</div>'
-            '<div class="plsteph">🧭 Your workflow — feed → rank → pattern → '
-            'keywords → re-rank → build → images → ads → learn</div>'
-            + _plboard +
+            # The old 9-step button pipeline lived here. It described a DIFFERENT
+            # workflow to the 12-step rail above (it had no Pinterest, no supplier,
+            # no evidence step) so home showed two competing processes at once —
+            # the exact confusion this was all meant to remove. The rail is now the
+            # single map; these stay as quick single-step jumps.
             '<details class="cmdmore"><summary>＋ More single-step tools</summary>'
             '<div class="cmdbtns">'
             '<button formaction="/should-sell">Should I sell?</button>'
@@ -727,6 +740,12 @@ def build_app(password, secret):
             # helpers. Everything else lives under Advanced (owner directive:
             # "what staff need to read only, not a bunch of reports"). ---
             # SECTION 1 — TREND FEEDS: find what's rising (read these first).
+            # Three always-open grids (Trend Feeds + Execution Helpers + Guides =
+            # 19 cards) sat above a 13-card Advanced block. All of it is reachable
+            # from the rail's canonical routes, so it now opens on demand instead
+            # of pushing the day's actual work off-screen.
+            '<details class="archive advtools"><summary>🧭 All tools — trend feeds, '
+            'execution helpers &amp; guides</summary>'
             '<h2 class="grouph">📈 Trend Feeds — tìm cái đang lên</h2>'
             '<div class="toolgrid">'
             '<a class="toolcard" href="/build-queue"><b>🎯 Build Queue</b>'
@@ -806,7 +825,7 @@ def build_app(password, secret):
             '<span>How the team works: find → collect → ship</span></a>'
             '<a class="toolcard" href="/cheatsheet"><b>📖 Cheat Sheet</b>'
             '<span>Every command + workflow, in plain English</span></a>'
-            '</div>')
+            '</div></details>')
 
         # Operator's daily reports kept reachable, but tucked away — the
         # Command Center above is the main workflow (no big Archive card).
