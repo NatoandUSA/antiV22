@@ -1,156 +1,119 @@
-# 🧭 The 22Etsy workflow — 12 steps
+# 🧭 Quy trình Etsy — 5 giai đoạn (12 bước)
 
-_This file is generated from `src/workflow_spine.py`, the SAME definition the
-home page renders. If the two ever disagree, the module wins — regenerate this
-file rather than editing it by hand._
+_File này được sinh ra từ `src/workflow_spine.py` — **cùng một nguồn** với trang chủ.
+Nếu hai bên khác nhau thì module đúng, hãy sinh lại file này thay vì sửa tay._
 
-> **The old 9-step V30 flow (FEED → RANK → PATTERN MINER → KEYWORD LAB → RE-RANK
-> → BUILD → PHOTO → ADS → LEARN) is DEPRECATED.** It never described the real
-> process: Pinterest and supplier feasibility were treated as late optional
-> badges instead of early gates, and it named Alura/EverBee for evidence when the
-> shop actually runs on HeyEtsy exports.
+> **Quy trình 9 bước cũ (V30) đã BỎ.** Nó không mô tả đúng cách làm thật: Pinterest và
+> nhà cung cấp bị coi là badge phụ ở cuối thay vì cổng lọc ở đầu, và nó ghi Alura/EverBee
+> trong khi shop đang chạy bằng export HeyEtsy.
 
-## Rules
+## Vì sao gộp thành 5 giai đoạn
 
-- **One canonical route per step.** The dashboard has 104 routes; only 12 are
-  workflow steps. Everything else is a support route (listed at the bottom) and
-  is deliberately kept off the main path.
-- **Status is read from real data.** A step is only ✅ when its output exists on
-  disk. Nothing is assumed.
-- **Nothing auto-publishes.** `PUBLISH_AUTOMATION` is `False`; a human lists on
-  Etsy manually, always.
+12 bước là **checklist đúng** nhưng **điều hướng sai**. Nhiều bước thực ra là *một lần ngồi
+làm* trên *một trang*: bước 6/7/8 đều là “học người thắng” (`/imports` → `/pattern-miner`),
+còn bước 9/10 đã gộp thành **một nút bấm** từ khi khoá được vòng lặp winner → Inbox (V37.7).
+Tách ra thành 12 ô trên trang chủ làm việc trông giống bản kế hoạch dự án hơn là việc trong ngày.
+Vì vậy: **màn hình hiện 5 giai đoạn, 12 bước nằm bên trong.** Không mất gì.
 
-## The 12 steps
+## Quy tắc
 
-| # | Step | Route | Owner | Needs | Creates | Next |
-|---|---|---|---|---|---|---|
-| 1 | **MCP / YTrends keyword feed** | `/trending` | Researcher | Live YTrends index (harvest runs on the PC — the VPS IP is blocked) | keyword_data.csv — the master every later step ranks | → 2 |
-| 2 | **Pinterest trend signal** | `/pinterest-trends` | Researcher | Pinterest export or capture for the niche | Demand corroboration badge on matching keywords | → 3 |
-| 3 | **Supplier feasibility** | `/suppliers` | Owner | Supplier library (CSV import or saved suppliers) | Can we actually make and ship it, at what cost | → 4 |
-| 4 | **Find good keyword / Rank** | `/inbox` | Researcher | keyword_data.csv from step 1 | Final action per keyword: Build now / Confirm first / Watch / Skip | → 5 |
-| 5 | **Pattern Miner on real Etsy results** | `/pattern-miner` | Researcher | A keyword from step 4 | Why the current winners rank for this keyword | → 6 |
-| 6 | **HeyEtsy evidence** | `/imports` | Researcher | HeyEtsy Detail + Etsy Reviews export (Evidence Exporter extension) | Views · sold · favorites · listing age · shop proof, per listing | → 7 |
-| 7 | **Open the best 5 / 10 / 20 listings** | `/imports` | Researcher | Imported evidence from step 6 | The actual Etsy listing pages of the winners | → 8 |
-| 8 | **Extract the winning pattern** | `/pattern-miner` | Researcher | Evidence + reviews from step 6 | Title · tags · photos · price · personalization · reviews · buyer angle | → 9 |
-| 9 | **Generate new keyword candidates** | `/imports` | Researcher | A dissected winner from step 8 | Keywords from the winner's title, real tags and review language | → 10 |
-| 10 | **Send candidates to Re-rank / Inbox** | `/rerank` | Researcher | Candidates from step 9 | Candidates in the master tagged winner:<listing_id>, re-ranked | → 11 |
-| 11 | **Build listing / design / photo plan** | `/launch-kit` | Seller | A keyword the engine cleared at step 4 or 10 | Title · 13 tags · description · personalization · photo brief | → 12 |
-| 12 | **Assign Team Ops + learn Day 3 / Day 7** | `/team/ops` | Manager | A built listing from step 11 | Owned tasks, then the Day 3 / Day 7 keep-fix-drop-scale call | loop / done |
+- **Mỗi bước chỉ có MỘT đường dẫn chính.** Dashboard có 104 route nhưng chỉ 12 là bước quy
+  trình; phần còn lại là route hỗ trợ (xem cuối file).
+- **Trạng thái đọc từ dữ liệu thật.** Chỉ ✅ khi output có thật trên đĩa. Không đoán.
+- **Hướng dẫn cho team viết tiếng Việt. Nội dung listing (tiêu đề · 13 tag · mô tả) viết
+  tiếng Anh** vì người mua ở Mỹ.
+- **Không tự đăng bán.** `PUBLISH_AUTOMATION = False`; người thật đăng tay trên Etsy.
 
-## Why each step exists
+## 5 giai đoạn
 
-### 1. MCP / YTrends keyword feed
-- **Route:** `/trending` · **Owner:** Researcher
-- **Needs:** Live YTrends index (harvest runs on the PC — the VPS IP is blocked)
-- **Creates:** keyword_data.csv — the master every later step ranks
-- **Action:** Harvest keywords
-- Raw keyword supply. Nothing downstream can rank what was never pulled.
+| # | Giai đoạn | Làm gì | Bước | Route chính | Người phụ trách |
+|---|---|---|---|---|---|
+| 1 | 🔎 **Tìm & lọc** (Find & filter) | Gom từ khoá, xem tín hiệu Pinterest, kiểm nhà cung cấp làm được hay không | 1·2·3 | `/trending` | Researcher |
+| 2 | 🏆 **Xếp hạng** (Rank) | Để máy chấm điểm và nói rõ nên làm cái nào trước | 4 | `/inbox` | Researcher |
+| 3 | 🔬 **Học người thắng** (Learn from winners) | Nhập bằng chứng HeyEtsy, mở listing top, đọc ra công thức thắng | 5·6·7·8 | `/imports` | Researcher |
+| 4 | 💡 **Từ khoá mới** (New keywords) | Tool tự sinh từ khoá từ winner — bấm một nút đẩy lại vào Inbox | 9·10 | `/imports` | Researcher |
+| 5 | 🚀 **Làm & giao** (Build & ship) | Lên listing + ảnh, giao việc cho team, đo kết quả Ngày 3 / Ngày 7 | 11·12 | `/launch-kit` | Seller |
 
-### 2. Pinterest trend signal
-- **Route:** `/pinterest-trends` · **Owner:** Researcher
-- **Needs:** Pinterest export or capture for the niche
-- **Creates:** Demand corroboration badge on matching keywords
-- **Action:** Open Pinterest trends
-- Second, independent read on demand before spending time on a niche.
+### 🔎 Giai đoạn 1 — Tìm & lọc
 
-### 3. Supplier feasibility
-- **Route:** `/suppliers` · **Owner:** Owner
-- **Needs:** Supplier library (CSV import or saved suppliers)
-- **Creates:** Can we actually make and ship it, at what cost
-- **Action:** Check supplier fit
-- A keyword you cannot produce profitably is not an opportunity.
+- **Làm gì:** Gom từ khoá, xem tín hiệu Pinterest, kiểm nhà cung cấp làm được hay không
+- **Tạo ra:** Danh sách từ khoá thô đã qua cổng lọc
+- **Route chính:** `/trending` · **Phụ trách:** Researcher
 
-### 4. Find good keyword / Rank
-- **Route:** `/inbox` · **Owner:** Researcher
-- **Needs:** keyword_data.csv from step 1
-- **Creates:** Final action per keyword: Build now / Confirm first / Watch / Skip
-- **Action:** Open Opportunity Inbox
-- The layered L0–L4 engine decides. Work the top of this list, not a hunch.
+| Bước | Tên | Route | Cần có | Tạo ra |
+|---|---|---|---|---|
+| 1 | MCP / YTrends keyword feed | `/trending` | Live YTrends index (harvest runs on the PC — the VPS IP is blocked) | keyword_data.csv — the master every later step ranks |
+| 2 | Pinterest trend signal | `/pinterest-trends` | Pinterest export or capture for the niche | Demand corroboration badge on matching keywords |
+| 3 | Supplier feasibility | `/suppliers` | Supplier library (CSV import or saved suppliers) | Can we actually make and ship it, at what cost |
 
-### 5. Pattern Miner on real Etsy results
-- **Route:** `/pattern-miner` · **Owner:** Researcher
-- **Needs:** A keyword from step 4
-- **Creates:** Why the current winners rank for this keyword
-- **Action:** Mine the pattern
-- Read the real SERP before designing anything.
+### 🏆 Giai đoạn 2 — Xếp hạng
 
-### 6. HeyEtsy evidence
-- **Route:** `/imports` · **Owner:** Researcher
-- **Needs:** HeyEtsy Detail + Etsy Reviews export (Evidence Exporter extension)
-- **Creates:** Views · sold · favorites · listing age · shop proof, per listing
-- **Action:** Import evidence
-- Third-party estimates, capped at CONFIRM_FIRST — never treated as real Etsy sales.
+- **Làm gì:** Để máy chấm điểm và nói rõ nên làm cái nào trước
+- **Tạo ra:** Hành động cuối cho từng từ khoá: Làm ngay / Kiểm tra / Theo dõi / Bỏ
+- **Route chính:** `/inbox` · **Phụ trách:** Researcher
 
-### 7. Open the best 5 / 10 / 20 listings
-- **Route:** `/imports` · **Owner:** Researcher
-- **Needs:** Imported evidence from step 6
-- **Creates:** The actual Etsy listing pages of the winners
-- **Action:** Open winner listings
-- Look at the real listings. The evidence card links straight to them.
+| Bước | Tên | Route | Cần có | Tạo ra |
+|---|---|---|---|---|
+| 4 | Find good keyword / Rank | `/inbox` | keyword_data.csv from step 1 | Final action per keyword: Build now / Confirm first / Watch / Skip |
 
-### 8. Extract the winning pattern
-- **Route:** `/pattern-miner` · **Owner:** Researcher
-- **Needs:** Evidence + reviews from step 6
-- **Creates:** Title · tags · photos · price · personalization · reviews · buyer angle
-- **Action:** Read the winning pattern
-- Turn a winner into a repeatable recipe instead of a screenshot.
+### 🔬 Giai đoạn 3 — Học người thắng
 
-### 9. Generate new keyword candidates
-- **Route:** `/imports` · **Owner:** Researcher
-- **Needs:** A dissected winner from step 8
-- **Creates:** Keywords from the winner's title, real tags and review language
-- **Action:** See derived candidates
-- New keywords grounded in something that already sells, not guesswork.
+- **Làm gì:** Nhập bằng chứng HeyEtsy, mở listing top, đọc ra công thức thắng
+- **Tạo ra:** Tiêu đề · tag · ảnh · giá · cá nhân hoá · góc nhìn người mua
+- **Route chính:** `/imports` · **Phụ trách:** Researcher
 
-### 10. Send candidates to Re-rank / Inbox
-- **Route:** `/rerank` · **Owner:** Researcher
-- **Needs:** Candidates from step 9
-- **Creates:** Candidates in the master tagged winner:<listing_id>, re-ranked
-- **Action:** Send to Re-rank / Inbox
-- Closes the loop back to step 4. One click — no retyping. Capped at CONFIRM_FIRST; the frozen engine still decides.
+| Bước | Tên | Route | Cần có | Tạo ra |
+|---|---|---|---|---|
+| 5 | Pattern Miner on real Etsy results | `/pattern-miner` | A keyword from step 4 | Why the current winners rank for this keyword |
+| 6 | HeyEtsy evidence | `/imports` | HeyEtsy Detail + Etsy Reviews export (Evidence Exporter extension) | Views · sold · favorites · listing age · shop proof, per listing |
+| 7 | Open the best 5 / 10 / 20 listings | `/imports` | Imported evidence from step 6 | The actual Etsy listing pages of the winners |
+| 8 | Extract the winning pattern | `/pattern-miner` | Evidence + reviews from step 6 | Title · tags · photos · price · personalization · reviews · buyer angle |
 
-### 11. Build listing / design / photo plan
-- **Route:** `/launch-kit` · **Owner:** Seller
-- **Needs:** A keyword the engine cleared at step 4 or 10
-- **Creates:** Title · 13 tags · description · personalization · photo brief
-- **Action:** Open Launch Kit
-- English-only output. Nothing is ever auto-published.
+### 💡 Giai đoạn 4 — Từ khoá mới
 
-### 12. Assign Team Ops + learn Day 3 / Day 7
-- **Route:** `/team/ops` · **Owner:** Manager
-- **Needs:** A built listing from step 11
-- **Creates:** Owned tasks, then the Day 3 / Day 7 keep-fix-drop-scale call
-- **Action:** Assign and track
-- Work only counts once someone owns it and the result is measured.
+- **Làm gì:** Tool tự sinh từ khoá từ winner — bấm một nút đẩy lại vào Inbox
+- **Tạo ra:** Từ khoá mới có gắn nguồn winner, được xếp hạng lại
+- **Route chính:** `/imports` · **Phụ trách:** Researcher
 
-## The closed loop (steps 8 → 9 → 10 → 4)
+| Bước | Tên | Route | Cần có | Tạo ra |
+|---|---|---|---|---|
+| 9 | Generate new keyword candidates | `/imports` | A dissected winner from step 8 | Keywords from the winner's title, real tags and review language |
+| 10 | Send candidates to Re-rank / Inbox | `/rerank` | Candidates from step 9 | Candidates in the master tagged winner:<listing_id>, re-ranked |
 
-This is the loop that used to be open, and the reason the tool felt like it ran
-back and forth:
+### 🚀 Giai đoạn 5 — Làm & giao
+
+- **Làm gì:** Lên listing + ảnh, giao việc cho team, đo kết quả Ngày 3 / Ngày 7
+- **Tạo ra:** Listing hoàn chỉnh (tiếng Anh) + việc đã có người nhận
+- **Route chính:** `/launch-kit` · **Phụ trách:** Seller
+
+| Bước | Tên | Route | Cần có | Tạo ra |
+|---|---|---|---|---|
+| 11 | Build listing / design / photo plan | `/launch-kit` | A keyword the engine cleared at step 4 or 10 | Title · 13 tags · description · personalization · photo brief |
+| 12 | Assign Team Ops + learn Day 3 / Day 7 | `/team/ops` | A built listing from step 11 | Owned tasks, then the Day 3 / Day 7 keep-fix-drop-scale call |
+
+## Vòng lặp đã khoá (giai đoạn 3 → 4 → 2)
+
+Đây chính là vòng lặp trước kia bị hở, và là lý do tool cảm giác chạy tới chạy lui:
 
 ```
-  6/7  import a winner  ──►  8  extract the pattern
-                                   │  title · real tags · review language
-                                   ▼
-                             9  candidates generated automatically
-                                   │  shown on /imports AND /pattern-miner
-                                   ▼
-                            10  ONE CLICK: Send to Re-rank / Inbox
-                                   │  tagged winner:<listing_id>
-                                   ▼
-                             4  ranked again by the frozen L0–L4 engine
+  Nhập winner (HeyEtsy)  ──►  Đọc ra công thức thắng
+                                  │  tiêu đề · tag thật · lời review
+                                  ▼
+                         Tool TỰ SINH từ khoá ứng viên
+                                  │  hiện ở /imports và /pattern-miner
+                                  ▼
+                        MỘT NÚT: Send to Re-rank / Inbox
+                                  │  gắn nhãn winner:<listing_id>
+                                  ▼
+                         Xếp hạng lại bằng engine L0–L4
 ```
 
-Before V37.7 step 10 did not exist as an action: the candidates were computed
-and stored, `candidates_for_rerank()` had no production caller, and staff
-**retyped keywords by hand**. Every push is capped at `CONFIRM_FIRST` and is
-recorded in `data/imports/rerank_pushes/` with the source listing, the reason
-and an evidence summary, so any keyword in the Inbox can be traced back to the
-listing that justified it.
+Trước V37.7 bước này **không tồn tại**: ứng viên được tính rồi bỏ đó, `candidates_for_rerank()`
+không ai gọi, và nhân viên **gõ lại từ khoá bằng tay**. Mỗi lần đẩy đều bị chặn trần ở
+`CONFIRM_FIRST` và ghi lại trong `data/imports/rerank_pushes/` kèm listing nguồn, lý do và
+tóm tắt bằng chứng — nên mọi từ khoá trong Inbox đều truy ngược được.
 
-## Advanced / support routes
-
-Real tools, but **not** workflow steps. Kept off the main path on purpose.
+## Route hỗ trợ (không phải bước quy trình)
 
 - **Research + discovery:** `/opportunities` · `/gems` · `/newest` · `/research` · `/research-queue` · `/longtail` · `/keyword-lab` · `/should-sell` · `/shortlist` · `/winners` · `/etsy-spy` · `/spy` · `/kw-history`
 - **Evidence + imports:** `/import-file` · `/score-import` · `/listings` · `/shops` · `/enrich-leads` · `/imports/add`
@@ -159,9 +122,9 @@ Real tools, but **not** workflow steps. Kept off the main path on purpose.
 - **Monitoring:** `/alerts` · `/trackers` · `/profit` · `/status` · `/daily-brief` · `/build-queue` · `/feedback`
 - **Reference:** `/workflow` · `/how-to-use` · `/cheatsheet` · `/training`
 
-## Guardrails
+## Nguyên tắc an toàn
 
-- `PUBLISH_AUTOMATION = False` — no publish path exists in code.
-- No automation connects to Etsy, Amazon, eBay or OTA accounts to take actions.
-- L0–L4 ranking math is owner-gated; `ranking_engine.py` is unchanged.
-- Honest-nulls: a missing measurement stays blank and is never scored as zero.
+- `PUBLISH_AUTOMATION = False` — trong code không có đường đăng bán.
+- Không tự động kết nối Etsy / Amazon / eBay / OTA để thao tác.
+- Toán xếp hạng L0–L4 do chủ shop quyết; `ranking_engine.py` không đổi.
+- Honest-nulls: thiếu số đo thì để trống, không tính thành 0.

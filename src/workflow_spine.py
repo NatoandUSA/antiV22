@@ -125,6 +125,100 @@ STEPS = [
 
 # Everything else. Real tools, but NOT workflow steps — listing them all on the
 # home page is what made the dashboard unreadable.
+# --------------------------------------------------------------------------
+# PHASES — what the team actually navigates by (V37.10).
+#
+# The 12 steps above are the right CHECKLIST but the wrong NAVIGATION. Several
+# are one sitting-down job on one route: 6/7/8 are all "study the winners"
+# (/imports -> /pattern-miner), and 9/10 became a SINGLE BUTTON once the
+# winner->Inbox loop was closed in V37.7 — keeping them apart invented work that
+# no longer exists. Twelve tiles on the page staff open every morning read as a
+# project plan, not a day's work.
+#
+# So: five phases on screen, the twelve steps preserved inside them. Nothing is
+# lost — WORKFLOW.md still documents all 12, and every canonical route is
+# unchanged.
+#
+# Guide/instruction text is VIETNAMESE (team-facing). Listing OUTPUT — title,
+# 13 tags, description — stays English, because the buyers are American. That
+# split is the project's long-standing rule, not a new decision.
+PHASES = [
+    {"p": 1, "key": "find", "steps": (1, 2, 3),
+     "vi": "Tìm & lọc", "en": "Find & filter", "icon": "\U0001F50E",
+     "route": "/trending", "owner": RESEARCHER,
+     "vi_do": "Gom từ khoá, xem tín hiệu Pinterest, kiểm nhà cung cấp làm được hay không",
+     "vi_out": "Danh sách từ khoá thô đã qua cổng lọc"},
+    {"p": 2, "key": "rank", "steps": (4,),
+     "vi": "Xếp hạng", "en": "Rank", "icon": "\U0001F3C6",
+     "route": "/inbox", "owner": RESEARCHER,
+     "vi_do": "Để máy chấm điểm và nói rõ nên làm cái nào trước",
+     "vi_out": "Hành động cuối cho từng từ khoá: Làm ngay / Kiểm tra / Theo dõi / Bỏ"},
+    {"p": 3, "key": "learn", "steps": (5, 6, 7, 8),
+     "vi": "Học người thắng", "en": "Learn from winners", "icon": "\U0001F52C",
+     "route": "/imports", "owner": RESEARCHER,
+     "vi_do": "Nhập bằng chứng HeyEtsy, mở listing top, đọc ra công thức thắng",
+     "vi_out": "Tiêu đề · tag · ảnh · giá · cá nhân hoá · góc nhìn người mua"},
+    {"p": 4, "key": "newkw", "steps": (9, 10),
+     "vi": "Từ khoá mới", "en": "New keywords", "icon": "\U0001F4A1",
+     "route": "/imports", "owner": RESEARCHER,
+     "vi_do": "Tool tự sinh từ khoá từ winner — bấm một nút đẩy lại vào Inbox",
+     "vi_out": "Từ khoá mới có gắn nguồn winner, được xếp hạng lại"},
+    {"p": 5, "key": "ship", "steps": (11, 12),
+     "vi": "Làm & giao", "en": "Build & ship", "icon": "\U0001F680",
+     "route": "/launch-kit", "owner": SELLER,
+     "vi_do": "Lên listing + ảnh, giao việc cho team, đo kết quả Ngày 3 / Ngày 7",
+     "vi_out": "Listing hoàn chỉnh (tiếng Anh) + việc đã có người nhận"},
+]
+
+
+def steps_of(phase):
+    """The STEPS dicts belonging to a phase, in order."""
+    return [s for s in STEPS if s["n"] in phase["steps"]]
+
+
+def phase_status(st=None):
+    """Roll the 12 step states up to 5 phase states.
+
+    A phase is ready only when every step in it is ready; it is 'todo' when any
+    step is waiting on data. Same honest-nulls rule as status() — we never call a
+    phase done because most of it happens to be.
+    """
+    st = st or status()
+    out = {}
+    for ph in PHASES:
+        kids = [(st.get(s["key"]) or {}) for s in steps_of(ph)]
+        states = [k.get("state") for k in kids]
+        if states and all(x == "ready" for x in states):
+            state = "ready"
+        elif "todo" in states:
+            state = "todo"
+        else:
+            state = "unknown"
+        first_open = next((s for s in steps_of(ph)
+                           if (st.get(s["key"]) or {}).get("state") != "ready"),
+                          None)
+        out[ph["key"]] = {
+            "state": state,
+            "done": sum(1 for x in states if x == "ready"),
+            "total": len(states),
+            "next_step": first_open,
+            "detail": ((st.get(first_open["key"]) or {}).get("detail")
+                       if first_open else
+                       (kids[-1].get("detail") if kids else "")),
+        }
+    return out
+
+
+def current_phase(st=None):
+    """The phase containing the step the team is actually on."""
+    st = st or status()
+    n = current_step(st)
+    for ph in PHASES:
+        if n in ph["steps"]:
+            return ph
+    return PHASES[-1]
+
+
 SUPPORT_ROUTES = [
     ("Research + discovery", ["/opportunities", "/gems", "/newest", "/research",
                               "/research-queue", "/longtail", "/keyword-lab",

@@ -378,32 +378,42 @@ def build_app(password, secret):
             'color:var(--ink-faint);font-family:var(--mono)}'
             '.wsrail-h span{font-size:.78rem;color:var(--ink-faint)}'
             '.wsrail-h a{margin-left:auto;font-size:.78rem;color:var(--accent);font-weight:700}'
-            '.wsrail{display:grid;grid-template-columns:repeat(6,1fr);gap:7px;margin-bottom:18px}'
-            '.wsx{display:flex;flex-direction:column;gap:2px;padding:9px 10px;'
-            'border:1px solid var(--line);border-left:3px solid var(--line-strong);'
-            'border-radius:9px;background:var(--surface);text-decoration:none;'
-            'transition:border-color .12s,transform .12s;min-width:0}'
-            '.wsx:hover{border-color:var(--accent);transform:translateY(-1px)}'
-            '.wsx.ready{border-left-color:var(--ok)}'
-            '.wsx.todo{border-left-color:#B45309}'
-            '.wsx.unknown{border-left-color:var(--line-strong)}'
-            '.wsx.here{border-color:var(--accent);background:var(--accent-bg);'
-            'box-shadow:0 0 0 2px var(--accent) inset}'
-            '.wsx-n{font-family:var(--mono);font-size:9.5px;font-weight:700;'
-            'color:var(--ink-faint);letter-spacing:.06em}'
-            '.wsx.here .wsx-n{color:var(--accent)}'
-            '.wsx-t{font-size:11.5px;font-weight:700;line-height:1.22;color:var(--ink)}'
-            '.wsx-d{font-size:10px;color:var(--ink-faint);line-height:1.3;'
-            'overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'
+            '.phgrid{display:grid;grid-template-columns:repeat(5,1fr);gap:9px;margin-bottom:20px}'
+            '.phc{display:flex;flex-direction:column;gap:5px;padding:13px 14px 12px;'
+            'border:1px solid var(--line);border-top:3px solid var(--line-strong);'
+            'border-radius:13px;background:var(--surface);text-decoration:none;'
+            'transition:border-color .12s,transform .12s,box-shadow .12s;min-width:0}'
+            '.phc:hover{border-color:var(--accent);transform:translateY(-2px);'
+            'box-shadow:0 8px 20px -14px rgba(0,0,0,.5)}'
+            '.phc.ready{border-top-color:var(--ok)}'
+            '.phc.todo{border-top-color:#B45309}'
+            '.phc.unknown{border-top-color:var(--line-strong)}'
+            '.phc.here{border-color:var(--accent);background:var(--accent-bg)}'
+            '.phc-top{display:flex;align-items:center;gap:6px}'
+            '.phc-i{font-size:15px;line-height:1}'
+            '.phc-n{font-family:var(--mono);font-size:9.5px;font-weight:700;'
+            'letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint)}'
+            '.phc.here .phc-n{color:var(--accent)}'
+            '.phc-c{margin-left:auto;font-family:var(--mono);font-size:10px;'
+            'font-weight:700;color:var(--ink-faint);font-variant-numeric:tabular-nums}'
+            '.phc-t{font-size:14px;font-weight:800;letter-spacing:-.01em;'
+            'color:var(--ink);line-height:1.2}'
+            '.phc-w{font-size:11px;color:var(--ink-soft);line-height:1.38}'
+            '.phc-chips{display:flex;flex-wrap:wrap;gap:3px;margin-top:3px}'
+            '.phchip{font-size:9.5px;line-height:1.5;padding:1px 6px;border-radius:20px;'
+            'background:var(--paper);color:var(--ink-faint);border:1px solid var(--line);'
+            'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}'
+            '.phchip.ready{border-color:var(--ok);color:var(--ok)}'
+            '.phchip.todo{border-color:#B45309;color:#B45309}'
             '.supwrap{margin:0 0 20px}'
             '.supwrap summary{cursor:pointer;font-size:.8rem;font-weight:700;'
             'color:var(--ink-soft)}'
             '.supg{margin:8px 0;font-size:11.5px}'
             '.supg b{display:block;color:var(--ink-soft);margin-bottom:2px}'
             '.supg a{color:var(--accent);margin-right:9px;white-space:nowrap}'
-            '@media(max-width:900px){.wsrail{grid-template-columns:repeat(3,1fr)}}'
-            '@media(max-width:540px){.wsrail{grid-template-columns:repeat(2,1fr)}'
-            '.now-h{font-size:1.2rem}}'
+            '@media(max-width:980px){.phgrid{grid-template-columns:repeat(3,1fr)}}'
+            '@media(max-width:620px){.phgrid{grid-template-columns:repeat(2,1fr)}'
+            '.now-h{font-size:1.2rem}.phc-w{display:none}}'
             'position:relative;display:flex;flex-direction:column;align-items:center;'
             'text-align:center;background:var(--surface);text-decoration:none;transition:.15s}'
             'color:var(--line-strong);font-size:13px;z-index:1}'
@@ -659,46 +669,60 @@ def build_app(password, secret):
             # ~11 screens of text on the page staff open every morning, stacked on
             # top of the older 9-step pipeline. Detail moved to /workflow; home now
             # answers only "what do I do next" and "where is everything else".
+            # V37.10: five PHASES on screen, the twelve steps living inside them.
+            # Twelve tiles read as a project plan; several were the same sitting-
+            # down job on one route, and 9/10 became one button once the loop was
+            # closed. Guide text is Vietnamese (team-facing); listing OUTPUT stays
+            # English because the buyers are American.
+            _ps = _ws.phase_status(_st)
+            _curph = _ws.current_phase(_st)
             cur = next(s for s in _ws.STEPS if s["n"] == _here)
             cstat = _st.get(cur["key"]) or {}
             clabel, chref = cur["action"]
-            nxt = next((s for s in _ws.STEPS if s["n"] == _here + 1), None)
             done = sum(1 for s in _ws.STEPS
                        if (_st.get(s["key"]) or {}).get("state") == "ready")
-            _tiles = []
-            for s in _ws.STEPS:
-                stt = _st.get(s["key"]) or {}
-                state = stt.get("state") or "unknown"
-                is_here = s["n"] == _here
-                _tiles.append(
-                    f'<a class="wsx {state}{" here" if is_here else ""}" '
-                    f'href="{s["route"]}" title="{_h_esc(s["need"])}">'
-                    f'<span class="wsx-n">{s["n"]}</span>'
-                    f'<span class="wsx-t">{_h_esc(s["name"])}</span>'
-                    f'<span class="wsx-d">{_h_esc(stt.get("detail") or "")}</span>'
-                    '</a>')
+            _VI = {"Owner": "Chủ shop", "Seller": "Seller",
+                   "Designer": "Designer", "Manager": "Quản lý",
+                   "Researcher": "Nghiên cứu"}
+            _cards = []
+            for ph in _ws.PHASES:
+                x = _ps[ph["key"]]
+                here = ph["key"] == _curph["key"]
+                chips = "".join(
+                    '<span class="phchip {0}">{1}</span>'.format(
+                        (_st.get(s["key"]) or {}).get("state") or "unknown",
+                        _h_esc(s["name"]))
+                    for s in _ws.steps_of(ph))
+                _cards.append(
+                    f'<a class="phc {x["state"]}{" here" if here else ""}" '
+                    f'href="{ph["route"]}">'
+                    f'<div class="phc-top"><span class="phc-i">{ph["icon"]}</span>'
+                    f'<span class="phc-n">Giai đoạn {ph["p"]}</span>'
+                    f'<span class="phc-c">{x["done"]}/{x["total"]}</span></div>'
+                    f'<div class="phc-t">{_h_esc(ph["vi"])}</div>'
+                    f'<div class="phc-w">{_h_esc(ph["vi_do"])}</div>'
+                    f'<div class="phc-chips">{chips}</div></a>')
             _sup = "".join(
                 f'<div class="supg"><b>{_h_esc(g)}</b><span>' + " ".join(
                     f'<a href="{r}">{_h_esc(r)}</a>' for r in rs)
                 + '</span></div>' for g, rs in _ws.SUPPORT_ROUTES)
             spine = (
                 '<section class="nowcard">'
-                '<div class="now-k">Do this next · step '
-                f'{_here} of 12 · {cur["owner"]}</div>'
+                f'<div class="now-k">Làm bước này tiếp · giai đoạn {_curph["p"]}/5'
+                f' · {_h_esc(_VI.get(cur["owner"], cur["owner"]))}</div>'
                 f'<h2 class="now-h">{_h_esc(cur["name"])}</h2>'
-                f'<p class="now-s">{_h_esc(cstat.get("detail") or "")} — '
-                f'needs {_h_esc(cur["need"].lower())}.</p>'
+                f'<p class="now-s">{_h_esc(cstat.get("detail") or "")}</p>'
                 '<div class="now-a">'
                 f'<a class="now-go" href="{chref}">{_h_esc(clabel)} →</a>'
-                + (f'<span class="now-nx">then step {nxt["n"]}: '
-                   f'{_h_esc(nxt["name"])}</span>' if nxt else "")
-                + '</div></section>'
-                '<div class="wsrail-h"><b>Workflow</b>'
-                f'<span>{done} of 12 ready</span>'
-                '<a href="/workflow">full guide →</a></div>'
-                f'<div class="wsrail">{"".join(_tiles)}</div>'
-                '<details class="supwrap"><summary>Advanced &amp; support routes'
-                '</summary>' + _sup + '</details>')
+                f'<span class="now-nx">Xong bước này sẽ tạo ra: '
+                f'{_h_esc(_curph["vi_out"])}</span>'
+                '</div></section>'
+                '<div class="wsrail-h"><b>Quy trình · 5 giai đoạn</b>'
+                f'<span>{done}/12 bước đã xong</span>'
+                '<a href="/workflow">xem chi tiết →</a></div>'
+                f'<div class="phgrid">{"".join(_cards)}</div>'
+                '<details class="supwrap"><summary>Công cụ nâng cao &amp; '
+                'đường dẫn phụ</summary>' + _sup + '</details>')
         except Exception:  # noqa: BLE001 — the spine is additive, never breaks home
             spine = ""
 
