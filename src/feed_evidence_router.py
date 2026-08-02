@@ -32,6 +32,7 @@ Pure stdlib (csv/json/re/html/hashlib/pathlib). No network. No publish. No marke
 automation. It does not import or alter the frozen L0-L4 ranking math.
 """
 import csv
+import datetime as _dt
 import hashlib
 import html
 import json
@@ -49,6 +50,10 @@ MAP_DIR = IMPORTS / "listing_keyword_map"
 # Miner "why winners win" + turns real listing tags into re-rankable candidates.
 # Distinct from DETAIL_DIR (which is HeyEtsy third-party sales estimates).
 STRUCTURE_DIR = IMPORTS / "etsy_listing_structure"
+# V37.7: audit trail for keywords pushed from a mined winner back into the Inbox
+# (workflow step 10 -> 11). Records WHERE each keyword came from so a row in the
+# Inbox can always be traced back to the listing that justified it.
+RERANK_DIR = IMPORTS / "rerank_pushes"
 
 # Evidence provenance label -- deliberately NOT "real Etsy sales".
 DETAIL_EVIDENCE_TYPE = "heyetsy_estimated_listing_evidence"
@@ -83,8 +88,15 @@ RECIPIENT_NOUNS = {
     "children", "baby", "boy", "girl", "mom", "mum", "mother", "dad", "father",
     "grandma", "grandmother", "grandpa", "grandfather", "wife", "husband",
     "sister", "brother", "friend", "teacher", "nurse", "coworker", "bride",
-    "flower", "graduate",
+    "graduate",
 }
+# Recipients whose meaning only exists as a PHRASE. "flower" was in the set above
+# as a stand-in for "flower girl", but the match is per-token, so any review
+# mentioning flowers (a floral PATTERN, not a person) was read as a recipient and
+# generated candidates like "personalized tote for flower". Matched on the raw
+# text instead, so the token can no longer fire on its own.
+RECIPIENT_PHRASES = ("flower girl", "ring bearer", "maid of honor",
+                     "maid of honour", "best friend")
 OCCASION_NOUNS = {
     "birthday", "christmas", "graduation", "wedding", "anniversary", "baptism",
     "communion", "shower", "retirement", "valentine", "easter", "halloween",
@@ -270,8 +282,24 @@ def normalize_detail(headers, rows, source_hint=None):
                                "review_count", exclude=("shop",)),
         "tags": _ci(headers, "tags", exclude=("count", "categor")),
         "tags_count": _ci(headers, "tags_count", "tag count"),
-        "image_count": _ci(headers, "image_count", "images", "image count"),
-        "url": _ci(headers, "url", "link", "heyetsy"),
+        "image_count": _ci(headers, "image_count", "image count"),
+        # V37.7 BUG: this was _ci(headers, "url", "link", "heyetsy") with no
+        # exclude. _ci returns the FIRST header containing a needle in FILE
+        # order, and the v3.4 export puts shop_url (col 20) before etsy_url
+        # (col 24) -- so the stored "listing" link was the HeyEtsy SHOP page and
+        # the real Etsy listing URL was dropped. Step 7 of the workflow is "open
+        # the best 5-20 listings", so the team was being sent to the wrong page.
+        # image_urls also contains "url", hence the image exclusions.
+        "url": _ci(headers, "etsy_url", "listing_url", "url", "link",
+                   exclude=("shop", "heyetsy", "image", "img", "photo")),
+        "heyetsy_url": _ci(headers, "heyetsy_url", "heyetsy"),
+        # V37.7: the winner's PHOTOS. Never captured before, so Pattern Miner and
+        # the photo brief had no reference shots to learn the winning layout from
+        # (workflow step 8: "photos").
+        "images": _ci(headers, "image_urls", "image urls", "images"),
+        "main_image": _ci(headers, "main_image", "main image", "primary_image",
+                          "thumbnail"),
+        "shop_rating": _ci(headers, "shop_rating", "shop rating"),
     }
     row = rows[0]  # a Detail export is one listing per file
     listing_id = clean_text(_row_get(row, idx["listing_id"]))
@@ -287,6 +315,22 @@ def normalize_detail(headers, rows, source_hint=None):
     age_days = parse_market_number(_row_get(row, idx["age_days"]))
     raw_tags = clean_text(_row_get(row, idx["tags"])) or ""
     tags = [t.strip() for t in re.split(r"[;|,]", raw_tags) if t.strip()]
+    # The exporter writes image_urls as a JSON array; older builds used a plain
+    # delimited list. Accept both, keep only real http(s) URLs.
+    raw_images = clean_text(_row_get(row, idx["images"])) or ""
+    images = []
+    if raw_images:
+        try:
+            parsed = json.loads(raw_images)
+            if isinstance(parsed, list):
+                images = [str(u).strip() for u in parsed if str(u).strip()]
+        except Exception:  # noqa: BLE001 - not JSON, fall back to a split
+            images = [u.strip() for u in re.split(r"[;|,\s]+", raw_images)
+                      if u.strip()]
+    images = [u for u in images if u.lower().startswith("http")][:24]
+    main_image = clean_text(_row_get(row, idx["main_image"])) or (
+        images[0] if images else None)
+    listing_url = clean_text(_row_get(row, idx["url"]))
     shop_reviews = parse_market_number(_row_get(row, idx["shop_reviews"]))
     # BUG-004: a 0 from the detail export is UNKNOWN, not authoritative -- a
     # reviews file may carry the real positive count. Store 0 as None here.
@@ -313,8 +357,15 @@ def normalize_detail(headers, rows, source_hint=None):
         "listing_review_count": parse_market_number(_row_get(row, idx["listing_reviews"])),
         "tags": tags,
         "tags_count": int(parse_market_number(_row_get(row, idx["tags_count"])) or len(tags)),
-        "image_count": parse_market_number(_row_get(row, idx["image_count"])),
-        "heyetsy_url": clean_text(_row_get(row, idx["url"])),
+        "image_count": (parse_market_number(_row_get(row, idx["image_count"]))
+                        or (len(images) if images else None)),
+        "images": images,
+        "main_image": main_image,
+        "shop_rating": parse_market_number(_row_get(row, idx["shop_rating"])),
+        # the real Etsy listing page (workflow step 7 opens this), kept separate
+        # from the HeyEtsy mirror so neither can shadow the other again
+        "etsy_url": listing_url,
+        "heyetsy_url": clean_text(_row_get(row, idx["heyetsy_url"])),
         "evidence_type": DETAIL_EVIDENCE_TYPE,
         "shop_spread": 1,   # a single detail file = one shop/listing. Never proof.
         "collected_at": date.today().isoformat(),
@@ -563,6 +614,10 @@ def review_intel(listing_id=None, reviews=None):
                 occ[t] = occ.get(t, 0) + 1
             if t in ("personalized", "personalised", "custom", "name", "monogram"):
                 personalization_mentions += 1
+        low = text.lower()
+        for phrase in RECIPIENT_PHRASES:
+            if re.search(r"\b" + re.escape(phrase) + r"\b", low):
+                recip[phrase] = recip.get(phrase, 0) + 1
         for w, cat in _COMPLAINT_SIGNS.items():
             if re.search(r"\b" + re.escape(w) + r"\b", text.lower()):
                 complaints[cat] = complaints.get(cat, 0) + 1
@@ -727,6 +782,130 @@ def candidates_for_rerank(listing_id):
 
 
 # ----------------------------------------------------------------------------
+# Step 10 -> 11: push a mined winner's keywords back into the Inbox to re-rank.
+#
+# The keyword map has been built on every import since V37.4, but until V37.7
+# nothing read candidates_for_rerank() outside the tests: staff could see a
+# winner dissected and then had to RETYPE its keywords into Keyword Lab by hand.
+# That open loop is what made the workflow feel like it ran back and forth.
+# ----------------------------------------------------------------------------
+def candidates_for_keyword(keyword, max_listings=6):
+    """Re-rank candidates for a MINED KEYWORD (Pattern Miner is keyword-keyed,
+    the keyword map is listing-keyed). Uses the same CF007-guarded join as
+    evidence_for_keyword, so candidates can never attach to the wrong keyword.
+
+    Each candidate carries source_listing_id/source_title so the push can record
+    exactly which winner justified it. Deduped, best confidence wins.
+    """
+    ev = evidence_for_keyword(keyword, max_listings=max_listings)
+    if not ev.get("has_evidence"):
+        return []
+    best = {}
+    for L in ev.get("listings", []):
+        lid = L.get("listing_id")
+        for c in candidates_for_rerank(lid):
+            kw = (c.get("keyword") or "").strip().lower()
+            if not kw:
+                continue
+            cur = best.get(kw)
+            if cur and (cur.get("match_confidence") or 0) >= (c.get("match_confidence") or 0):
+                continue
+            best[kw] = dict(c, source_listing_id=lid, source_title=L.get("title"))
+    return sorted(best.values(),
+                  key=lambda c: -(c.get("match_confidence") or 0))
+
+
+def _evidence_summary(detail, intel):
+    """One-line, honest provenance blurb stored with a push."""
+    bits = []
+    if detail.get("estimated_sold") is not None:
+        bits.append(f"~{int(detail['estimated_sold']):,} sold (est)")
+    if detail.get("estimated_revenue_usd") is not None:
+        bits.append(f"~${int(detail['estimated_revenue_usd']):,} rev (est)")
+    if detail.get("conversion_rate") is not None:
+        bits.append(f"{detail['conversion_rate'] * 100:.1f}% conv")
+    if detail.get("listing_age_days") is not None:
+        bits.append(f"{int(detail['listing_age_days'])}d old")
+    n = (intel or {}).get("reviews_scanned") or 0
+    if n:
+        bits.append(f"{n} reviews read")
+    return " · ".join(bits) or "no metrics captured"
+
+
+def send_to_rerank(listing_id=None, keyword=None, keywords=None, mode=None,
+                   actor=None):
+    """Push winner-derived keywords into keyword_data.csv so the Inbox re-ranks
+    them (workflow step 10 -> 11). Returns a result dict; never raises.
+
+    Reuses keyword_lab.save_candidates — the SAME path the Keyword Lab uses — so
+    there is one way keywords enter the master, not two. The CSV `source` column
+    gets `winner:<listing_id>`, which harvest treats as provenance and therefore
+    never overwrites on a re-harvest.
+
+    Nothing here promotes anything: every candidate is capped at CONFIRM_FIRST by
+    the keyword map, and the frozen L0-L4 engine still decides the final action.
+    """
+    pool = []
+    if listing_id:
+        pool = [dict(c, source_listing_id=listing_id)
+                for c in candidates_for_rerank(listing_id)]
+    elif keyword:
+        pool = candidates_for_keyword(keyword)
+    if not pool:
+        return {"ok": False, "added": 0, "enriched": 0, "sent": [],
+                "reason": "no candidates for this listing/keyword"}
+    wanted = None
+    if keywords:
+        wanted = {re.sub(r"\s+", " ", str(k)).strip().lower() for k in keywords}
+    chosen = [c for c in pool
+              if wanted is None or (c.get("keyword") or "").lower() in wanted]
+    if not chosen:
+        return {"ok": False, "added": 0, "enriched": 0, "sent": [],
+                "reason": "none of the selected keywords are valid candidates"}
+    lid = listing_id or (chosen[0].get("source_listing_id") or "")
+    detail = load_detail(lid) or {}
+    intel = review_intel(lid) if lid else {}
+    summary = _evidence_summary(detail, intel)
+    kws = [c["keyword"] for c in chosen]
+    try:
+        from src import keyword_lab as kl
+        added, enriched = kl.save_candidates(
+            kws, mode, source=("winner:" + str(lid) if lid else "winner"))
+    except Exception as exc:  # noqa: BLE001 - never let a push break the page
+        return {"ok": False, "added": 0, "enriched": 0, "sent": [],
+                "reason": f"save failed: {str(exc)[:120]}"}
+    rec = {
+        "pushed_at": _dt.datetime.now().isoformat(timespec="seconds"),
+        "actor": actor or "unknown",
+        "source_listing_id": lid,
+        "source_title": detail.get("title") or (chosen[0].get("source_title")),
+        "source_keyword": keyword or detail.get("title"),
+        "reason": "keywords derived from a mined winner (title / real tags / "
+                  "review language), pushed back for re-ranking",
+        "evidence_summary": summary,
+        "evidence_type": detail.get("evidence_type") or DETAIL_EVIDENCE_TYPE,
+        "action_cap": "CONFIRM_FIRST",
+        "mode": mode or "",
+        "keywords": [{"keyword": c.get("keyword"),
+                      "match_type": c.get("match_type"),
+                      "match_confidence": c.get("match_confidence")}
+                     for c in chosen],
+        "added": added, "already_present": len(chosen) - added,
+        "enriched": enriched,
+    }
+    try:
+        RERANK_DIR.mkdir(parents=True, exist_ok=True)
+        stamp = _dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+        (RERANK_DIR / f"{lid or 'kw'}-{stamp}.json").write_text(
+            json.dumps(rec, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:  # noqa: BLE001 - the ledger is an audit aid, not the action
+        pass
+    rec["ok"] = True
+    rec["sent"] = kws
+    return rec
+
+
+# ----------------------------------------------------------------------------
 # Recent evidence (read-only card for the Feed / Import Center)
 # ----------------------------------------------------------------------------
 def recent_evidence(limit=12):
@@ -768,6 +947,14 @@ def recent_evidence(limit=12):
             "complaints": intel.get("complaints") or {},
             "photo_expectation_signals": intel.get("photo_expectation_signals", 0),
             "max_action": act["max_action"],
+            # V37.7: the real listing link (step 7 "open the best listings"),
+            # the winner's photos (step 8) and shop trust signals. All three were
+            # captured-but-dropped or mis-mapped before.
+            "etsy_url": d.get("etsy_url"),
+            "main_image": d.get("main_image"),
+            "image_count": d.get("image_count"),
+            "shop_rating": d.get("shop_rating"),
+            "shop_sales": d.get("shop_sales"),
             "collected_at": d.get("collected_at"),
         })
     return out

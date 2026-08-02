@@ -4,6 +4,7 @@ Standalone (stdlib + pytest). Uses tmp_path as cwd so the lanes are written unde
 a throwaway data/imports/. Fixtures mirror the REAL captured listing 4412078408
 (TinyBarns "Personalized Name Tote Handbag") that the CEO review read.
 """
+import json
 import os
 import sys
 from pathlib import Path
@@ -339,3 +340,109 @@ def test_photo_brief_prove_notes_end_to_end_from_lanes():
     # the "thin material" review complaint should surface on a proof slot
     joined = " ".join(p for s in slots for p in s.get("prove", []))
     assert "granddaughter" in joined  # top recipient reaches the gift slot
+
+
+# --- V37.7: step 10 -> 11, the loop that used to be open ---------------------
+def test_candidates_reach_a_keyword_not_just_a_listing():
+    """Pattern Miner is keyword-keyed but the map is listing-keyed. Without this
+    join staff could see a dissected winner and still had to retype its keywords."""
+    fer.save_detail(DETAIL_HEADERS, [DETAIL_ROW])
+    fer.save_reviews(REVIEW_HEADERS, REVIEW_ROWS)
+    cands = fer.candidates_for_keyword("personalized name tote handbag")
+    assert cands, "a mined keyword must expose the winner's candidates"
+    assert all(c.get("source_listing_id") for c in cands), "provenance required"
+    # the CF007 guard must still hold: an unrelated keyword gets nothing
+    assert fer.candidates_for_keyword("stainless steel dog tag") == []
+
+
+def test_send_to_rerank_writes_the_master_and_an_audit_record():
+    fer.save_detail(DETAIL_HEADERS, [DETAIL_ROW])
+    fer.save_reviews(REVIEW_HEADERS, REVIEW_ROWS)
+    picked = [c["keyword"] for c in fer.candidates_for_rerank("4412078408")][:2]
+    res = fer.send_to_rerank(listing_id="4412078408", keywords=picked,
+                             mode="pod", actor="tester")
+    assert res["ok"] is True and res["added"] >= 1
+    # keywords land in the master the Inbox ranks, tagged with their origin
+    master = Path("keyword_data.csv").read_text(encoding="utf-8")
+    assert "winner:4412078408" in master
+    for k in picked:
+        assert k in master
+    # and the push is auditable: where it came from and why
+    files = list((Path("data/imports/rerank_pushes")).glob("*.json"))
+    assert len(files) == 1
+    rec = json.loads(files[0].read_text(encoding="utf-8"))
+    assert rec["source_listing_id"] == "4412078408"
+    assert rec["actor"] == "tester"
+    assert rec["action_cap"] == "CONFIRM_FIRST"      # never promotes to BUILD
+    assert rec["reason"] and rec["evidence_summary"]
+    assert "sold (est)" in rec["evidence_summary"]
+
+
+def test_send_to_rerank_never_duplicates_an_existing_keyword():
+    fer.save_detail(DETAIL_HEADERS, [DETAIL_ROW])
+    fer.save_reviews(REVIEW_HEADERS, REVIEW_ROWS)
+    picked = [c["keyword"] for c in fer.candidates_for_rerank("4412078408")][:2]
+    first = fer.send_to_rerank(listing_id="4412078408", keywords=picked, mode="pod")
+    second = fer.send_to_rerank(listing_id="4412078408", keywords=picked, mode="pod")
+    assert first["added"] >= 1
+    assert second["added"] == 0                       # re-import must not pollute
+    assert second["already_present"] == len(picked)
+
+
+def test_send_to_rerank_is_honest_when_there_is_nothing_to_send():
+    res = fer.send_to_rerank(listing_id="does-not-exist")
+    assert res["ok"] is False and res["added"] == 0 and res["reason"]
+
+
+# --- V37.7 step 2: import bugs found by running the real 4412078408 export ---
+def test_listing_url_is_the_etsy_listing_not_the_shop_page():
+    """_ci returns the FIRST header containing a needle in FILE order, and the
+    v3.4 export puts shop_url before etsy_url -- so "open listing" sent the team
+    to the HeyEtsy shop page and the real listing URL was dropped entirely."""
+    headers = ["listing_id", "title", "shop", "estimated_sold", "shop_url",
+               "image_urls", "main_image", "etsy_url", "heyetsy_url"]
+    row = ["999", "Custom Name Tote", "TinyBarns", "100",
+           "https://www.heyetsy.com/shop/TinyBarns",
+           '["https://i.etsystatic.com/a.jpg","https://i.etsystatic.com/b.jpg"]',
+           "https://i.etsystatic.com/a.jpg",
+           "https://www.etsy.com/listing/999/custom-name-tote",
+           "https://heyetsy.com/listing/999"]
+    d = fer.normalize_detail(headers, [row])
+    assert d["etsy_url"] == "https://www.etsy.com/listing/999/custom-name-tote"
+    assert d["heyetsy_url"] == "https://heyetsy.com/listing/999"
+    assert "shop/TinyBarns" not in (d["etsy_url"] or "")
+
+
+def test_winner_photos_are_captured_for_pattern_learning():
+    headers = ["listing_id", "title", "estimated_sold", "image_urls",
+               "main_image", "shop_rating"]
+    row = ["999", "Custom Name Tote", "100",
+           '["https://i.etsystatic.com/a.jpg","https://i.etsystatic.com/b.jpg"]',
+           "https://i.etsystatic.com/a.jpg", "4.9"]
+    d = fer.normalize_detail(headers, [row])
+    assert d["images"] == ["https://i.etsystatic.com/a.jpg",
+                           "https://i.etsystatic.com/b.jpg"]
+    assert d["main_image"] == "https://i.etsystatic.com/a.jpg"
+    assert d["image_count"] == 2          # derived when the export omits a count
+    assert d["shop_rating"] == 4.9
+
+
+def test_missing_photo_and_url_columns_stay_honest_nulls():
+    """An older export without these columns must not invent them."""
+    d = fer.normalize_detail(["listing_id", "title", "estimated_sold"],
+                             ["999", "Custom Name Tote", "100"] and
+                             [["999", "Custom Name Tote", "100"]])
+    assert d["images"] == [] and d["main_image"] is None
+    assert d["etsy_url"] is None and d["shop_rating"] is None
+
+
+def test_flower_is_not_a_recipient_but_flower_girl_is():
+    """A bare "flower" token matched floral PATTERN mentions and generated the
+    nonsense candidate "personalized tote for flower"."""
+    rows = [_review_row("p1", "5", "Love the flower pattern on this bag.", "{}"),
+            _review_row("p2", "5", "Perfect for my flower girl!", "{}")]
+    fer.save_detail(DETAIL_HEADERS, [DETAIL_ROW])
+    fer.save_reviews(REVIEW_HEADERS, rows)
+    vals = [r["value"] for r in fer.review_intel("4412078408")["recipient_nouns"]]
+    assert "flower" not in vals
+    assert "flower girl" in vals

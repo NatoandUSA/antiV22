@@ -2061,6 +2061,24 @@ def build_app(password, secret):
             [("LISTING_DRAFT", "Assign Listing Draft"), ("DESIGN", "Assign Design"),
              ("PHOTO_STUDIO", "Assign Photo Studio"),
              ("REVIEW_QA", "Assign Manager Review")], keyword=q)
+        # Confirmation for a winner->Inbox push (step 10 -> 11). Without this the
+        # staff member clicks "Send to Re-rank" and lands on a page that looks
+        # unchanged, which is exactly the "what just happened?" the loop was
+        # meant to remove.
+        pushed = (request.args.get("pushed") or "").strip()
+        if pushed.isdigit():
+            n = int(pushed)
+            if request.args.get("pusherr"):
+                bar += ('<div class="warn">Nothing was pushed — no candidates '
+                        'matched. Import a HeyEtsy Detail / Reviews export for '
+                        'that listing first.</div>')
+            elif n:
+                bar += (f'<div class="ok">✅ {n} winner-derived keyword(s) added '
+                        'to the master and ranked below — tagged with the source '
+                        'listing. No retyping needed.</div>')
+            else:
+                bar += ('<div class="ok">Already in the master — nothing '
+                        'duplicated. The existing rows are ranked below.</div>')
         try:
             return _render_tool("Re-rank", interactive.rerank(mode, q), switch=bar)
         except (SystemExit, Exception) as exc:  # noqa: BLE001
@@ -2388,9 +2406,51 @@ def build_app(password, secret):
             [("DESIGN", "Assign Designer"), ("LISTING_DRAFT", "Assign Seller"),
              ("KEYWORD_RERANK", "Send candidates to Re-rank"),
              ("LISTING_UPLOAD", "Create Build Listing task")], keyword=q)
+        # Step 10 -> 11. The team-ops strip above only files a TASK saying
+        # "send candidates to re-rank"; this actually sends them. Candidates come
+        # from the imported winners joined to this keyword by the CF007-guarded
+        # bridge, so they can never attach to an unrelated keyword.
+        candform = ""
+        if q:
+            try:
+                from src import feed_evidence_router as _fer3
+                cands = _fer3.candidates_for_keyword(q)
+                if cands:
+                    boxes = []
+                    for c in cands[:25]:
+                        k = _h_esc(c.get("keyword") or "")
+                        conf = c.get("match_confidence") or 0
+                        mt = _h_esc(str(c.get("match_type") or "").replace("_", " "))
+                        src = _h_esc(str(c.get("source_listing_id") or ""))
+                        boxes.append(
+                            '<label style="display:inline-block;margin:2px 10px 2px 0;'
+                            'font-size:12.5px">'
+                            f'<input type="checkbox" name="cand" value="{k}" checked> '
+                            f'<b>{k}</b> <span style="color:var(--ink-faint)">'
+                            f'({mt} · {conf:.2f} · listing {src})</span></label>')
+                    candform = (
+                        '<form method="post" action="/send-to-rerank" '
+                        'style="margin:10px 0 4px">'
+                        f'<input type="hidden" name="_csrf" value="{_csrf()}">'
+                        f'<input type="hidden" name="q" value="{_h_esc(q)}">'
+                        f'<input type="hidden" name="mode" value="{_h_esc(m or "")}">'
+                        '<details open style="border:1px solid var(--line);'
+                        'border-radius:10px;padding:8px 12px;margin-bottom:8px">'
+                        '<summary style="font-size:12.5px;font-weight:700;'
+                        f'cursor:pointer">💡 {len(cands)} keyword candidate(s) from '
+                        'the winners you imported — pick and send</summary>'
+                        f'<div style="margin:8px 0">{"".join(boxes)}</div></details>'
+                        '<button class="pullbtn primary" type="submit">➡ Send to '
+                        'Re-rank / Inbox</button> '
+                        '<span style="font-size:.78rem;color:var(--ink-soft)">'
+                        'no retyping · tagged with the source listing · capped at '
+                        'CONFIRM_FIRST</span></form>')
+            except Exception:  # noqa: BLE001 - additive, never blocks mining
+                candform = ""
         try:
             return _render_tool("Pattern Miner",
-                                interactive.pattern_miner(q, mode), switch=bar)
+                                interactive.pattern_miner(q, mode),
+                                switch=bar + candform)
         except (SystemExit, Exception) as exc:  # noqa: BLE001
             return _tool_error("Pattern Miner", exc)
 
@@ -2489,6 +2549,46 @@ def build_app(password, secret):
             parts.append(f"mode={m}")
         tail = ("?" + "&".join(parts)) if parts else ""
         return redirect(f"/rerank{tail}")
+
+    @app.route("/send-to-rerank", methods=["POST"])
+    @login_required
+    def send_to_rerank():
+        """Workflow step 10 -> 11: push a mined winner's keywords into the Inbox.
+
+        Before V37.7 the keyword map was built on every import and then read by
+        nobody, so staff retyped candidates by hand. This is the one action that
+        closes that loop; it reuses keyword_lab.save_candidates so keywords enter
+        the master through a single path, and records the source listing, reason
+        and evidence summary for the audit trail. Promotes nothing: candidates
+        are capped at CONFIRM_FIRST and the frozen engine still ranks them.
+        """
+        _check_csrf()
+        from src import feed_evidence_router as _fer
+        from urllib.parse import quote_plus as _uq4
+        u = current_user() or {}
+        m = request.form.get("mode")
+        mode = m if m in ("pod", "embroidery") else None
+        lid = (request.form.get("listing_id") or "").strip()[:32] or None
+        kw = (request.form.get("q") or "").strip()[:80] or None
+        picked = [k.strip() for k in request.form.getlist("cand") if k.strip()][:25]
+        res = _fer.send_to_rerank(
+            listing_id=lid, keyword=kw, keywords=picked or None, mode=mode,
+            actor=(u.get("display_name") or u.get("email") or "unknown"))
+        try:
+            activity.log("send_to_rerank", module="feed_evidence_router",
+                         action=(f"{res.get('added', 0)} keyword(s) from "
+                                 f"listing {lid or '-'}"))
+        except Exception:  # noqa: BLE001
+            pass
+        parts = []
+        if kw:
+            parts.append("q=" + _uq4(kw))
+        if mode:
+            parts.append("mode=" + mode)
+        parts.append("pushed=" + str(res.get("added", 0)))
+        if not res.get("ok"):
+            parts.append("pusherr=1")
+        return redirect("/rerank?" + "&".join(parts))
 
     @app.route("/winners")
     @login_required
@@ -3624,16 +3724,70 @@ def build_app(password, secret):
                         else f'{r["conversion_rate"] * 100:.1f}%')
                 buys = _h_esc(r.get("top_recipient") or "—")
                 revn = r.get("review_count") or 0
-                return (f'<tr><td><b>{title}</b><br><span style="color:var(--ink-faint);'
-                        f'font-size:11px">{shop} · id {_h_esc(r.get("listing_id"))}</span></td>'
+                # step 7: open the REAL Etsy listing. This used to be the HeyEtsy
+                # shop page because of a header-matching bug.
+                url = r.get("etsy_url") or ""
+                link = (f' · <a href="{_h_esc(url)}" target="_blank" '
+                        'rel="noopener noreferrer">open listing ↗</a>'
+                        if url.startswith("http") else "")
+                rating = r.get("shop_rating")
+                trust = (f' · ★{rating:.1f}' if isinstance(rating, (int, float))
+                         else "")
+                nimg = r.get("image_count")
+                photos = f' · {int(nimg)} photos' if nimg else ""
+                thumb = ""
+                if (r.get("main_image") or "").startswith("http"):
+                    thumb = (f'<img src="{_h_esc(r["main_image"])}" alt="" '
+                             'style="width:40px;height:40px;object-fit:cover;'
+                             'border-radius:6px;margin-right:8px;vertical-align:middle" '
+                             'loading="lazy">')
+                return (f'<tr><td>{thumb}<b>{title}</b><br><span style="color:var(--ink-faint);'
+                        f'font-size:11px">{shop}{trust} · id '
+                        f'{_h_esc(r.get("listing_id"))}{photos}{link}</span></td>'
                         f'<td>{_num(r.get("estimated_sold"))}</td>'
                         f'<td>{_money(r.get("estimated_revenue_usd"))}</td>'
                         f'<td>{conv}</td>'
                         f'<td>{revn}</td>'
                         f'<td>{buys}</td>'
                         f'<td>{_act_pill(r.get("max_action"))}</td></tr>')
+            def _cand_block(lid):
+                """Step 10 -> 11: the winner's derived keywords, pickable, with a
+                one-click push into the Inbox. This is what staff used to retype."""
+                cands = _fer.candidates_for_rerank(lid)
+                if not cands:
+                    return ""
+                boxes = []
+                for c in cands[:25]:
+                    k = _h_esc(c.get("keyword") or "")
+                    conf = c.get("match_confidence") or 0
+                    mt = _h_esc(str(c.get("match_type") or "").replace("_", " "))
+                    boxes.append(
+                        '<label style="display:inline-block;margin:2px 10px 2px 0;'
+                        'font-size:12.5px">'
+                        f'<input type="checkbox" name="cand" value="{k}" checked> '
+                        f'<b>{k}</b> <span style="color:var(--ink-faint)">'
+                        f'({mt} · {conf:.2f})</span></label>')
+                return (
+                    f'<tr><td colspan="7" style="background:var(--bg-soft)">'
+                    '<form method="post" action="/send-to-rerank">'
+                    f'<input type="hidden" name="_csrf" value="{_csrf()}">'
+                    f'<input type="hidden" name="listing_id" value="{_h_esc(lid)}">'
+                    '<details style="margin:2px 0"><summary style="cursor:pointer;'
+                    'font-size:12.5px;font-weight:700">💡 '
+                    f'{len(cands)} keyword candidate(s) derived from this winner '
+                    '— pick and send</summary>'
+                    f'<div style="margin:8px 0">{"".join(boxes)}</div>'
+                    '<button class="pullbtn primary" type="submit">➡ Send to '
+                    'Re-rank / Inbox</button> '
+                    '<span style="font-size:.78rem;color:var(--ink-soft)">'
+                    'saves to keyword_data.csv tagged '
+                    f'<code>winner:{_h_esc(lid)}</code> · capped at CONFIRM_FIRST '
+                    '· the layered engine still ranks them</span>'
+                    '</details></form></td></tr>')
+
             if ev:
-                evrows = "".join(_ev_row(r) for r in ev)
+                evrows = "".join(_ev_row(r) + _cand_block(r.get("listing_id"))
+                                 for r in ev)
                 evcard = (
                     '<h2>🗣 Listing evidence (v3.4.0 lanes)</h2>'
                     '<p class="tklead">HeyEtsy Detail &amp; Etsy Reviews land here as '
