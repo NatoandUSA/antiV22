@@ -155,33 +155,70 @@ PHASES = [
      "route": "/trending", "owner": RESEARCHER,
      "vi_do": "Gom từ khoá, xem tín hiệu Pinterest, kiểm nhà cung cấp làm được hay không",
      "vi_out": "Danh sách từ khoá thô đã qua cổng lọc",
-     "en_do": "Let the engine score them and say what to work on first", "en_out": "Final action per keyword: Build now / Confirm / Watch / Skip",
-     "en_do": "Collect keywords, check the Pinterest signal, confirm a supplier can make it", "en_out": "Raw keywords that passed the early gates"},
+     "en_do": "Collect keywords, check the Pinterest signal, confirm a supplier can make it",
+     "en_out": "Raw keywords that passed the early gates",
+     "tools": (("Trending now", "/trending"), ("Pinterest trends", "/pinterest-trends"),
+               ("Supplier fit", "/suppliers"))},
     {"p": 2, "key": "rank", "steps": (4,),
      "vi": "Xếp hạng", "en": "Rank", "icon": "\U0001F3C6",
      "route": "/inbox", "owner": RESEARCHER,
      "vi_do": "Để máy chấm điểm và nói rõ nên làm cái nào trước",
      "vi_out": "Hành động cuối cho từng từ khoá: Làm ngay / Kiểm tra / Theo dõi / Bỏ",
-     "en_do": "Let the engine score them and say what to work on first", "en_out": "Final action per keyword: Build now / Confirm / Watch / Skip"},
+     "en_do": "Let the engine score them and say what to work on first",
+     "en_out": "Final action per keyword: Build now / Confirm / Watch / Skip",
+     "tools": (("Opportunity Inbox", "/inbox"), ("Long-tail lane", "/longtail"),
+               ("Build Queue", "/build-queue"))},
+    # Phases 3 and 4 both used to route to /imports. /imports is the YTuong
+    # Import Center - a drop box. It is where the evidence ARRIVES, not where
+    # either job is DONE: phase 3's actual work is reading the winner's recipe
+    # (Pattern Miner) and phase 4's is deriving new keywords (Keyword Lab).
+    # Sending both phase cards to the same upload page is why the owner said
+    # "Learn from winners and New KW all lead to YTuong Import Center".
+    # /imports stays reachable as a tool of phase 3 (it IS step 6/7).
     {"p": 3, "key": "learn", "steps": (5, 6, 7, 8),
      "vi": "Học người thắng", "en": "Learn from winners", "icon": "\U0001F52C",
-     "route": "/imports", "owner": RESEARCHER,
+     "route": "/pattern-miner", "owner": RESEARCHER,
      "vi_do": "Nhập bằng chứng HeyEtsy, mở listing top, đọc ra công thức thắng",
      "vi_out": "Tiêu đề · tag · ảnh · giá · cá nhân hoá · góc nhìn người mua",
-     "en_do": "Import HeyEtsy evidence, open the top listings, read the winning recipe", "en_out": "Title · tags · photos · price · personalization · buyer angle"},
+     "en_do": "Import HeyEtsy evidence, open the top listings, read the winning recipe",
+     "en_out": "Title · tags · photos · price · personalization · buyer angle",
+     "tools": (("Pattern Miner", "/pattern-miner"), ("Import evidence", "/imports"),
+               ("Etsy Spy", "/etsy-spy"))},
     {"p": 4, "key": "newkw", "steps": (9, 10),
      "vi": "Từ khoá mới", "en": "New keywords", "icon": "\U0001F4A1",
-     "route": "/imports", "owner": RESEARCHER,
+     "route": "/keyword-lab", "owner": RESEARCHER,
      "vi_do": "Tool tự sinh từ khoá từ winner — bấm một nút đẩy lại vào Inbox",
      "vi_out": "Từ khoá mới có gắn nguồn winner, được xếp hạng lại",
-     "en_do": "The tool derives keywords from a winner — one button sends them back", "en_out": "New keywords tagged with their source winner, re-ranked"},
+     "en_do": "The tool derives keywords from a winner — one button sends them back",
+     "en_out": "New keywords tagged with their source winner, re-ranked",
+     "tools": (("Keyword Lab", "/keyword-lab"), ("Re-rank", "/rerank"),
+               ("Winner candidates", "/imports"))},
     {"p": 5, "key": "ship", "steps": (11, 12),
      "vi": "Làm & giao", "en": "Build & ship", "icon": "\U0001F680",
      "route": "/launch-kit", "owner": SELLER,
      "vi_do": "Lên listing + ảnh, giao việc cho team, đo kết quả Ngày 3 / Ngày 7",
      "vi_out": "Listing hoàn chỉnh (tiếng Anh) + việc đã có người nhận",
-     "en_do": "Build the listing + photos, assign the team, measure Day 3 / Day 7", "en_out": "A finished listing (English) with an owner on every task"},
+     "en_do": "Build the listing + photos, assign the team, measure Day 3 / Day 7",
+     "en_out": "A finished listing (English) with an owner on every task",
+     "tools": (("Launch Kit", "/launch-kit"), ("Photo brief", "/photo-brief"),
+               ("Team Ops", "/team/ops"))},
 ]
+
+
+def phase_of(key):
+    """The PHASE dict for a phase key, or None."""
+    return next((p for p in PHASES if p["key"] == key), None)
+
+
+def neighbours(key):
+    """(previous phase, next phase) around a phase key - either may be None.
+    Powers the Back / Next buttons so a tool page is never a dead end."""
+    ks = [p["key"] for p in PHASES]
+    if key not in ks:
+        return None, None
+    i = ks.index(key)
+    return (PHASES[i - 1] if i else None,
+            PHASES[i + 1] if i + 1 < len(PHASES) else None)
 
 
 def steps_of(phase):

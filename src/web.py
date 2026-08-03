@@ -414,12 +414,11 @@ def build_app(password, secret):
             '@media(max-width:980px){.phgrid{grid-template-columns:repeat(3,1fr)}}'
             '@media(max-width:620px){.phgrid{grid-template-columns:repeat(2,1fr)}'
             '.now-h{font-size:1.2rem}.phc-w{display:none}}'
-            'position:relative;display:flex;flex-direction:column;align-items:center;'
-            'text-align:center;background:var(--surface);text-decoration:none;transition:.15s}'
-            'color:var(--line-strong);font-size:13px;z-index:1}'
-            'font-size:11px;font-weight:800;color:#fff;margin-bottom:5px;background:var(--accent)}'
-            'font-weight:700;line-height:1.2;display:block}'
-            'text-transform:uppercase;color:var(--ink-soft);margin:12px 0 7px}'
+            # (Six orphaned declaration blocks used to sit here - the bodies of
+            # the deleted 9-step rail's rules, with their selectors removed.
+            # CSS error recovery swallows everything up to the next "{", so the
+            # ENTIRE .plnudge rule below was being discarded by the browser and
+            # the "Start here" banner rendered unstyled on every home load.)
             '.plnudge{display:flex;align-items:center;gap:12px;margin:14px 0 8px;'
             'background:var(--accent-bg);border:1px solid var(--line);border-radius:12px;padding:11px 14px}'
             '.plnudge .t{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;'
@@ -1516,7 +1515,11 @@ def build_app(password, secret):
                                'again.</p>')
         match_html += "<hr>"
 
-        bar = _bar()
+        # Step 3 of the workflow, and it had NO phase strip either. The page
+        # already owns a keyword box (the ?match= form above), so the shared
+        # header contributes the phase strip + Back/Next + product line only.
+        bar = _bar() + _stage_nav("supplier", mq, mmode) + _mode_switch(
+            "suppliers", mmode, mq)
         return page("Suppliers", bar + '<article class="md"><h1>🏭 Supplier panel</h1>'
                     + match_html
                     + '<h2>Supplier library</h2>'
@@ -1658,18 +1661,42 @@ def build_app(password, secret):
         return redirect(url_for("feedback"))
 
     # ---- other live self-serve tools (all MCP-backed, run on the VPS 24/7) ----
-    def _mode_switch(endpoint, current):
+    def _mode_switch(endpoint, current, q=""):
         """One-click POD / Embroidery / All toggle for mode-aware tool pages.
-        Reuses the pullbar styling; the active line is highlighted."""
+        Reuses the pullbar styling; the active line is highlighted.
+        Carries the typed keyword, so switching product line no longer throws
+        away what you were looking at."""
+        from urllib.parse import quote_plus as _qp
         row = []
         for val, label in (("pod", "Print on Demand"),
                            ("embroidery", "Embroidery"), ("", "All lines")):
-            href = f"/{endpoint}?mode={val}" if val else f"/{endpoint}"
+            qs = ([f"mode={val}"] if val else []) + ([f"q={_qp(q)}"] if q else [])
+            href = f"/{endpoint}" + ("?" + "&".join(qs) if qs else "")
             cls = "pullbtn primary" if (current or "") == val else "pullbtn"
             row.append(f'<a class="{cls}" href="{href}">{label}</a>')
         return ('<div class="pullbar"><div class="pulltxt"><b>Product line</b>'
                 '<span>Switch POD &#8646; Embroidery for this tool</span></div>'
                 '<div class="pullbtns">' + "".join(row) + '</div></div>')
+
+    def _tool_head(endpoint, q="", mode="", stage=None, action=None,
+                   button="Search →", next_href=None, next_label=None):
+        """The SAME header on every tool page: phase strip + Back/Next, a
+        keyword box, and the POD/Embroidery switch.
+
+        These three used to be mutually exclusive. `_mode_tool` pages
+        (/trending, /opportunities, /gems) got the product-line switch but no
+        keyword box; `_kw_mode_tool` pages (/pattern-miner, /keyword-lab,
+        /inbox) got the keyword box but no product-line switch; and three step
+        routes (/pinterest-trends, /suppliers, /team/ops) got neither, so they
+        were dead ends that forced a trip back to the home page."""
+        head = ""
+        if stage:
+            head += _stage_nav(stage, q, mode)
+        head += _stage_kwbar(action or f"/{endpoint.strip('/')}", q, button,
+                             next_href, next_label, mode=mode)
+        head += _mode_switch(endpoint.strip("/"), mode if mode in
+                             ("pod", "embroidery") else "", q)
+        return head
 
     def _render_tool(title, txt, switch=""):
         html = md.markdown(txt, extensions=["tables", "fenced_code",
@@ -1749,16 +1776,23 @@ def build_app(password, secret):
                 pass
         return bar
 
-    def _mode_tool(fn, title, filterable=False):
+    def _mode_tool(fn, title, filterable=False, stage=None):
         m = request.args.get("mode")
         mode = m if m in ("pod", "embroidery") else None
         endpoint = request.path.strip("/")
         show_all = request.args.get("show") == "all"
         source = request.args.get("source")
         source = source if source in ("mine", "live") else None
+        raw = (request.args.get("q") or "").strip()[:80]
+        q = "".join(c for c in raw if c.isalnum() or c in " '&-.").strip()
         from src import interactive
         try:
-            switch = _mode_switch(endpoint, mode)
+            # These are BROWSE feeds - they list a market, they do not take a
+            # keyword. So the box sends the typed keyword to the step that DOES
+            # rank it, and the button says so outright rather than looking like
+            # an on-page filter that silently navigates away.
+            switch = _tool_head(endpoint, q, m or "", stage=stage,
+                                action="/inbox", button="🏆 Rank this keyword →")
             if filterable:
                 switch += _risk_toggle(endpoint, mode, show_all)
                 switch += _source_toggle(endpoint, mode, source)
@@ -1791,13 +1825,14 @@ def build_app(password, secret):
     def _kw_mode_tool(fn, title, path=None, stage=None, button="Run →"):
         q, mode = _kw_mode()
         m = request.args.get("mode") or request.args.get("supplier_type") or ""
-        # the workflow strip + an on-page keyword box: every stage page is
-        # self-serve, and the next step is one click with the same keyword
-        head = ""
-        if stage:
-            head += _stage_nav(stage, q, m)
-        if path:
-            head += _stage_kwbar(path, q, button, mode=m)
+        # the workflow strip + an on-page keyword box + the product-line
+        # switch: every stage page is self-serve, and the next step is one
+        # click with the same keyword. The switch used to be missing here (it
+        # only appeared on _mode_tool pages), so staff could not change POD /
+        # Embroidery without going back to the home page.
+        head = _tool_head(path or request.path, q, m, stage=stage,
+                          action=path, button=button) if path else (
+            _stage_nav(stage, q, m) if stage else "")
         if not q:
             return page(title, _bar() + head + f'<article class="md"><h1>{title}'
                         '</h1><p class="empty">Type a keyword in the box above '
@@ -1829,7 +1864,7 @@ def build_app(password, secret):
     def edge():
         return _kw_mode_tool(lambda iv, q, m: iv.edge_finder(q, m),
                              "Beat the competition", path="/edge",
-                             button="\U0001F94A Find the edge")
+                             stage="build", button="\U0001F94A Find the edge")
 
     @app.route("/launch-kit")
     @login_required
@@ -1841,7 +1876,8 @@ def build_app(password, secret):
         m = request.args.get("mode") or request.args.get("supplier_type") or ""
         head = (_stage_nav("build", q, m)
                 + _stage_kwbar("/launch-kit", q,
-                               "\U0001F680 Build Launch Kit", mode=m))
+                               "\U0001F680 Build Launch Kit", mode=m)
+                + _mode_switch("launch-kit", m if m in ("pod", "embroidery") else "", q))
         if not q:
             return page("Launch Kit", _bar() + head
                         + '<article class="md"><h1>Launch Kit</h1>'
@@ -2042,22 +2078,26 @@ def build_app(password, secret):
     @app.route("/trending")
     @login_required
     def trending():
-        return _mode_tool(lambda iv, m, s, src: iv.trending(m, s, src), "Trending now", filterable=True)
+        return _mode_tool(lambda iv, m, s, src: iv.trending(m, s, src),
+                          "Trending now", filterable=True, stage="feed")
 
     @app.route("/opportunities")
     @login_required
     def opportunities():
-        return _mode_tool(lambda iv, m, s, src: iv.opportunities(m, s, src), "Opportunities", filterable=True)
+        return _mode_tool(lambda iv, m, s, src: iv.opportunities(m, s, src),
+                          "Opportunities", filterable=True, stage="feed")
 
     @app.route("/gems")
     @login_required
     def gems():
-        return _mode_tool(lambda iv, m, s, src: iv.gems(m, s, src), "Hidden gems", filterable=True)
+        return _mode_tool(lambda iv, m, s, src: iv.gems(m, s, src),
+                          "Hidden gems", filterable=True, stage="feed")
 
     @app.route("/newest")
     @login_required
     def newest():
-        return _mode_tool(lambda iv, m, s, src: iv.newest(m, s), "Newest fresh winners", filterable=True)
+        return _mode_tool(lambda iv, m, s, src: iv.newest(m, s),
+                          "Newest fresh winners", filterable=True, stage="feed")
 
     @app.route("/categories")
     @login_required
@@ -2112,7 +2152,8 @@ def build_app(password, secret):
         show_all = request.args.get("show") == "all"
         bar = (_stage_nav("rank", q, m or "")
                + _stage_kwbar("/inbox", q, "\U0001F3C6 Rank / focus keyword",
-                              mode=m or ""))
+                              mode=m or "")
+               + _mode_switch("inbox", mode or "", q))
         # Needs-Enrichment queue (V32): one-click MCP enrich for lane leads
         try:
             from src import opportunity_inbox as _oi2
@@ -2156,7 +2197,8 @@ def build_app(password, secret):
         q = "".join(c for c in raw if c.isalnum() or c in " '&-.").strip()
         bar = (_stage_nav("rerank", q, m or "")
                + _stage_kwbar("/rerank", q,
-                              "\U0001F3AF Re-rank generated candidates", mode=m or ""))
+                              "\U0001F3AF Re-rank generated candidates", mode=m or "")
+               + _mode_switch("rerank", mode or "", q))
         bar += _teamops_strip(
             [("LISTING_DRAFT", "Assign Listing Draft"), ("DESIGN", "Assign Design"),
              ("PHOTO_STUDIO", "Assign Photo Studio"),
@@ -2198,8 +2240,10 @@ def build_app(password, secret):
             mw = max(2, min(6, int(request.args.get("words") or lt.MIN_WORDS)))
         except ValueError:
             mw = lt.MIN_WORDS
-        bar = _stage_kwbar("/longtail", q, "\U0001F48E Filter this niche",
-                           mode=m or "")
+        bar = (_stage_nav("rank", q, m or "")
+               + _stage_kwbar("/longtail", q, "\U0001F48E Filter this niche",
+                              mode=m or "")
+               + _mode_switch("longtail", mode or "", q))
         # the _csrf hidden field is injected app-wide by _inject_csrf
         bar += ('<form method="post" action="/longtail/pull" class="toolbar">'
                 + f'<input type="hidden" name="mode" value="{_h_esc(m or "")}">'
@@ -2446,38 +2490,84 @@ def build_app(password, secret):
     # inconsistency in the app, and invisible from the home page alone. Both now
     # render from workflow_spine.PHASES, so there is exactly one model.
     # The old stage keys stay valid so all 8 call sites keep working.
+    #
+    # CAREFUL: "learn" here is the LEGACY 9-stage key meaning post-launch
+    # learning (/feedback), which is phase 5 — NOT phase 3 "Learn from
+    # winners". Step keys from workflow_spine.STEPS are mapped explicitly so
+    # pages can name their phase without colliding with that.
     _STAGE_TO_PHASE = {"feed": "find", "rank": "rank", "pattern": "learn",
                        "lab": "newkw", "rerank": "newkw", "build": "ship",
-                       "images": "ship", "ads": "ship", "learn": "ship"}
+                       "images": "ship", "ads": "ship", "learn": "ship",
+                       # step keys -> phase keys
+                       "pinterest": "find", "supplier": "find",
+                       "evidence": "learn", "openers": "learn",
+                       "extract": "learn", "candidates": "newkw",
+                       "team": "ship"}
 
-    def _stage_nav(current, q="", mode=""):
-        """The workflow strip ON every stage page: every stage one click away,
-        carrying the SAME keyword + mode — never round-trip to the home page."""
+    _STGNAV_CSS = (
+        '<style>.stgnav{display:flex;gap:4px;flex-wrap:wrap;margin:0 0 10px;'
+        'align-items:center}'
+        '.stgn{font-size:11px;font-weight:700;padding:4px 10px;'
+        'border:1px solid var(--line);border-radius:20px;text-decoration:none;'
+        'color:var(--ink-soft);background:var(--surface);white-space:nowrap}'
+        '.stgn:hover{border-color:var(--accent);color:var(--accent)}'
+        '.stgn.on{background:var(--accent);border-color:var(--accent);color:#fff}'
+        '.stgstep{font-size:11px;color:var(--ink-faint);margin-left:auto;'
+        'white-space:nowrap}'
+        '.stgpn{display:flex;gap:6px;margin:0 0 10px;flex-wrap:wrap}'
+        '.stgpn a{font-size:11.5px;font-weight:700;padding:5px 12px;'
+        'border:1px solid var(--line);border-radius:8px;text-decoration:none;'
+        'color:var(--ink-soft);background:var(--surface)}'
+        '.stgpn a:hover{border-color:var(--accent);color:var(--accent)}'
+        '.stgpn .nx{margin-left:auto;border-color:var(--accent);color:var(--accent)}'
+        '</style>')
+
+    def _phase_tail(q="", mode=""):
+        """?q=&mode= querystring so every jump carries the keyword + product line."""
         from urllib.parse import quote_plus as _qp
         qs = []
         if q:
             qs.append("q=" + _qp(q))
         if mode in ("pod", "embroidery", "both"):
             qs.append("mode=" + _qp(mode))
-        tail = ("?" + "&".join(qs)) if qs else ""
+        return ("?" + "&".join(qs)) if qs else ""
+
+    def _stage_nav(current, q="", mode=""):
+        """The workflow strip ON every stage page: every phase one click away,
+        carrying the SAME keyword + mode — never round-trip to the home page.
+        Followed by explicit Back / Next buttons, because a strip of five pills
+        does not tell staff which way the process flows."""
+        tail = _phase_tail(q, mode)
         try:
             from src import workflow_spine as _ws2
             phases = _ws2.PHASES
         except Exception:  # noqa: BLE001 - nav is never allowed to break a page
             return ""
         here = _STAGE_TO_PHASE.get(current, current)
+        cur = next((p for p in phases if p["key"] == here), None)
         items = "".join(
             f'<a class="stgn{" on" if ph["key"] == here else ""}"'
             f' href="{ph["route"]}{tail}">{ph["p"]} {ph["icon"]} '
             f'{_h_esc(ph["en"])}</a>'
             for ph in phases)
-        return ('<style>.stgnav{display:flex;gap:4px;flex-wrap:wrap;margin:0 0 10px}'
-                '.stgn{font-size:11px;font-weight:700;padding:4px 10px;'
-                'border:1px solid var(--line);border-radius:20px;text-decoration:none;'
-                'color:var(--ink-soft);background:var(--surface);white-space:nowrap}'
-                '.stgn:hover{border-color:var(--accent);color:var(--accent)}'
-                '.stgn.on{background:var(--accent);border-color:var(--accent);color:#fff}'
-                '</style><nav class="stgnav">' + items + "</nav>")
+        if cur:
+            items += (f'<span class="stgstep">Phase {cur["p"]} of {len(phases)}'
+                      f' · steps {"·".join(str(n) for n in cur["steps"])}</span>')
+        # Back / Next: the owner had to return to the home page between every
+        # step because no tool page said where the process went next.
+        pn = ""
+        if cur:
+            prev, nxt = _ws2.neighbours(cur["key"])
+            btns = ""
+            if prev:
+                btns += (f'<a href="{prev["route"]}{tail}">◀ Back · {prev["p"]} '
+                         f'{_h_esc(prev["en"])}</a>')
+            if nxt:
+                btns += (f'<a class="nx" href="{nxt["route"]}{tail}">Next · '
+                         f'{nxt["p"]} {_h_esc(nxt["en"])} ▶</a>')
+            if btns:
+                pn = f'<nav class="stgpn">{btns}</nav>'
+        return _STGNAV_CSS + '<nav class="stgnav">' + items + "</nav>" + pn
 
     def _stage_kwbar(action, q, button, next_href=None, next_label=None, mode=""):
         """A keyword box ON the stage page itself (no round-trip to the home) +
@@ -2509,7 +2599,8 @@ def build_app(password, secret):
         bar = (_stage_nav("pattern", q, m or "")
                + _stage_kwbar("/pattern-miner", q, "\U0001F52C Mine pattern",
                               f"/keyword-lab?q={_uq2(q)}" if q else "/keyword-lab",
-                              "Next: \U0001F4A1 Keyword Lab →", mode=m or ""))
+                              "Next: \U0001F4A1 Keyword Lab →", mode=m or "")
+               + _mode_switch("pattern-miner", mode or "", q))
         bar += _teamops_strip(
             [("DESIGN", "Assign Designer"), ("LISTING_DRAFT", "Assign Seller"),
              ("KEYWORD_RERANK", "Send candidates to Re-rank"),
@@ -2566,13 +2657,16 @@ def build_app(password, secret):
     @login_required
     def keyword_lab():
         from src import interactive
+        from urllib.parse import quote_plus as _uq3
         m = request.args.get("mode")
         mode = m if m in ("pod", "embroidery") else None
         raw = (request.args.get("q") or "").strip()[:80]
         q = "".join(c for c in raw if c.isalnum() or c in " '&-.").strip()
         bar = (_stage_nav("lab", q, m or "")
                + _stage_kwbar("/keyword-lab", q, "\U0001F4A1 Generate keywords",
-                              mode=m or ""))
+                              f"/rerank?q={_uq3(q)}" if q else "/rerank",
+                              "Next: \U0001F3AF Re-rank →", mode=m or "")
+               + _mode_switch("keyword-lab", mode or "", q))
         # "Add all to Inbox" form: the save that makes RE-RANK real - candidates
         # are appended to keyword_data.csv (best-effort MCP enrich) and the Inbox
         # re-ranks them through the full layered engine.
@@ -2731,9 +2825,15 @@ def build_app(password, secret):
         from src import interactive
         m = request.args.get("mode")
         mode = m if m in ("pod", "embroidery") else None
+        raw = (request.args.get("q") or "").strip()[:80]
+        q = "".join(c for c in raw if c.isalnum() or c in " '&-.").strip()
+        # Step 2 of the workflow, and it had NO phase strip - a dead end that
+        # forced a trip back to the home page.
+        head = _tool_head("pinterest-trends", q, m or "", stage="pinterest",
+                          action="/inbox", button="🏆 Rank this keyword →")
         try:
             return _render_tool("Pinterest Trend Finder",
-                                interactive.pinterest_trends(mode))
+                                interactive.pinterest_trends(mode), switch=head)
         except (SystemExit, Exception) as exc:  # noqa: BLE001
             return _tool_error("Pinterest Trend Finder", exc)
 
@@ -3910,8 +4010,12 @@ def build_app(password, secret):
                     'third-party (HeyEtsy), not Etsy internal sales.</p>')
         except Exception:  # noqa: BLE001 — the card is additive, never breaks the page
             evcard = ""
+        # /imports is where phase 3's EVIDENCE lands (steps 6/7) - it is not
+        # phase 1. Passing "feed" here highlighted "1 Find & filter", so a
+        # click on the phase-3 card landed on a page insisting you were in
+        # phase 1. That mismatch, not the route, is what read as "wrong page".
         return page("YTuong Import Center", _bar()
-                    + _stage_nav("feed", (request.args.get("q") or "").strip()[:80],
+                    + _stage_nav("evidence", (request.args.get("q") or "").strip()[:80],
                                  request.args.get("mode") or "")
                     + '<article class="md"><h1>📥 YTuong Import Center</h1>'
                     '<p class="tklead">YTuong &amp; HeyEtsy do the market research. '
@@ -4955,7 +5059,7 @@ def build_app(password, secret):
     # src/team_ui.py so this file stays navigable; it reuses the helpers above.
     from src import team_ui
     team_ui.register(app, page, login_required, current_user, _log, _h_esc,
-                     _safe_url, _csrf)
+                     _safe_url, _csrf, stage_nav=_stage_nav)
 
     return app
 

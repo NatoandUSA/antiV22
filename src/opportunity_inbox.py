@@ -206,11 +206,19 @@ def build_inbox(mode=None, limit=80, q=None, show_archived=False):
     Pass q to also get `focus`: the rows related to that keyword (full-list
     search, not just the visible slice). show_archived=True includes the
     stale-WATCH archive in the rows."""
-    stamp = (mode,) + _data_stamp()
+    ds = _data_stamp()
+    stamp = (mode,) + ds
     full = _CACHE.get(stamp)
     if full is None:
         full = _build_inbox(mode, limit=100000)
-        _CACHE.clear()                  # only ever keep the newest stamp
+        # Evict only entries built from OLDER data - never the sibling MODES
+        # built from the same data. A clear-everything cache meant one home
+        # page load (health card + opportunity queue ask for mode='pod', the
+        # workflow spine asks for mode=None) evicted itself twice and rebuilt
+        # all ~2,000 rows on every single request, forever: measured 0.365s
+        # per home load, of which 0.35s was this. Bounded by the mode count.
+        for k in [k for k in _CACHE if k[1:] != ds]:
+            del _CACHE[k]
         _CACHE[stamp] = full
     rows = full["rows"]
     if show_archived:

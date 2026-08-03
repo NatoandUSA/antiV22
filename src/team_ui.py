@@ -354,8 +354,13 @@ AUTOSAVE_JS = """
 """
 
 
-def register(app, page, login_required, current_user, log, esc_raw, safe_url, csrf):
-    """Attach every /team/ops route. Helpers come from web.build_app()."""
+def register(app, page, login_required, current_user, log, esc_raw, safe_url, csrf,
+             stage_nav=None):
+    """Attach every /team/ops route. Helpers come from web.build_app().
+
+    `stage_nav` renders the 5-phase workflow strip. Team Ops is phase 5 of the
+    workflow but had no strip at all, so the only way out was the home page.
+    Optional so this module still registers standalone."""
     from flask import request, redirect, Response
 
     def esc(v):
@@ -389,7 +394,15 @@ def register(app, page, login_required, current_user, log, esc_raw, safe_url, cs
         if msg:
             banner += msg
         # `title` also fills <title>, so a badge must never be baked into it.
-        main = ('<main class="tops-main"><div class="tops-head"><div><h1>' + title
+        # The workflow strip: Team Ops is phase 5 (step 12), and without this
+        # every task page was a dead end back to the dashboard.
+        strip = ""
+        try:
+            strip = stage_nav("team", "", "") if stage_nav else ""
+        except Exception:  # noqa: BLE001 - nav never breaks the board
+            strip = ""
+        main = ('<main class="tops-main">' + strip
+                + '<div class="tops-head"><div><h1>' + title
                 + (' ' + badge if badge else "")
                 + '</h1><p>' + subtitle + '</p></div>'
                 + '<div class="tops-actions">' + actions + '</div></div>'
