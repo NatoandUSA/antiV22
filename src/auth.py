@@ -82,7 +82,8 @@ def create_user(email, password, display_name, role="VIEWER", created_by="system
         "INSERT INTO users (email, display_name, password_hash, role, status, "
         "must_change_password, created_by, created_at, updated_at) "
         "VALUES (?,?,?,?,?,?,?,?,?)",
-        (email, display_name, generate_password_hash(password), role, "ACTIVE",
+        (email, display_name,
+         generate_password_hash(password, method="pbkdf2:sha256"), role, "ACTIVE",
          1 if must_change else 0, created_by, now, now))
     return get_user(uid)
 
@@ -110,7 +111,8 @@ def disable_user(email):
 def reset_password(email, new_password):
     appdb.execute("UPDATE users SET password_hash=?, failed_login_count=0, "
                   "locked_until=NULL, updated_at=? WHERE email=?",
-                  (generate_password_hash(new_password), _now(), email.strip().lower()))
+                  (generate_password_hash(new_password, method="pbkdf2:sha256"),
+                   _now(), email.strip().lower()))
 
 
 # --------------------------------------------------------- authenticate ----
