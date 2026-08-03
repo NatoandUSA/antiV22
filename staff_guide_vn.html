@@ -164,19 +164,20 @@ const STEPS=[
 },
 {
  n:'4',key:'TỪ KHOÁ MỚI',name:'GIAI ĐOẠN 4 — 💡 Từ khoá mới (bước 9·10)',
- where:'/imports',
+ where:'/keyword-lab · /imports',
  goal:'Biến winner vừa mổ thành từ khoá mới, rồi đẩy ngược vào Inbox để xếp hạng lại — <b>một nút bấm</b>, không gõ tay.',
  actions:[
-  '<b>Bước 9 —</b> ở <b>/imports</b>, tool đã tự sinh <b>candidate</b> từ tiêu đề, tag thật và ngôn ngữ review của winner. Chỉ cần xem lại.',
-  '<b>Bước 10 —</b> tick các candidate muốn giữ rồi bấm <b>“Send to Re-rank”</b> ngay tại <b>/imports</b>. Chúng được lưu vào kho với dấu nguồn <code>winner:&lt;mã listing&gt;</code> và xếp hạng lại tự động.',
+  '<b>Có HAI nguồn từ khoá mới. Ưu tiên nguồn A.</b>',
+  '<b>A · Từ winner (bước 9·10 — mạnh hơn).</b> Ở <b>/imports</b>, tool đã tự sinh <b>candidate</b> từ tiêu đề, tag thật và ngôn ngữ review của winner. Tick những cái muốn giữ rồi bấm <b>“Send to Re-rank”</b> ngay tại đó. Chúng vào kho với dấu nguồn <code>winner:&lt;mã listing&gt;</code> và được xếp hạng lại tự động.',
+  '<b>B · Từ seed (<a href="/keyword-lab">/keyword-lab</a>).</b> Nhập 1 seed, tool sinh biến thể theo chuyên khoa/dịp/sản phẩm. Tick rồi bấm <b>MỘT nút</b> “Add SELECTED to Inbox &amp; re-rank” cho cả lô (≤20) — không bấm từng cái.',
   '⚠️ Trang <b>/rerank</b> chỉ để XEM lại thứ đã gửi — nó KHÔNG gửi gì cả. Nút gửi nằm ở /imports (và /pattern-miner).',
-  'Xem dòng trạng thái ở /imports: nếu còn hàng trăm candidate “waiting to be sent” thì vòng lặp đang bị bỏ không — gửi chúng đi.'
+  'Xem dòng trạng thái ở /imports: nếu còn hàng trăm candidate “waiting to be sent” thì vòng lặp đang bị bỏ không — gửi chúng đi trước khi ngồi nghĩ seed mới.'
  ],
  screen:{bar:'/imports · vòng lặp winner → Inbox',body:'Candidate sinh từ winner  : 810 đang chờ gửi (từ 136 winner)\n\n[ ✓ ] nicu nurse graduation gift\n[ ✓ ] new grad nurse sweatshirt\n[   ] ...\n[ Send to Re-rank ]   ← MỘT nút cho cả lô, không gõ lại từ khoá\n\n→ vào kho với nguồn winner:1234567890 → xếp hạng lại → quay về /inbox'},
- read:'Đây là chỗ từ khoá TỐT thật sự sinh ra: chúng bắt nguồn từ một listing ĐÃ BÁN ĐƯỢC, không phải từ suy đoán. Candidate luôn bị giới hạn tối đa ở <span class="pill p-confirm">CONFIRM FIRST</span> — bằng chứng của một listing là bằng chứng về đối thủ, chưa phải bằng chứng về thị trường.',
- wrong:'Vào /rerank rồi tưởng là đã gửi; hoặc gõ lại từ khoá bằng tay; hoặc để candidate nằm chờ hàng tháng.',
- right:'Tick candidate ở /imports → Send to Re-rank → quay về /inbox xem hạng mới.',
- ck:['Đã xem candidate sinh từ winner','Đã bấm Send to Re-rank','Đã thấy từ khoá mới trong /inbox','Không còn lô candidate bỏ quên']
+ read:'<b>Vì sao ưu tiên A:</b> từ khoá sinh từ winner bắt nguồn từ một listing ĐÃ BÁN ĐƯỢC. Từ khoá Keyword Lab chưa có số thị trường nào (chưa doanh thu, chưa lượt xem), nên theo đúng luật trung thực chúng gần như luôn dừng ở <span class="pill p-watch">WATCH</span> cho tới khi được bổ sung dữ liệu. Cả hai nguồn đều bị giới hạn tối đa ở <span class="pill p-confirm">CONFIRM FIRST</span> — bằng chứng của một listing là bằng chứng về đối thủ, chưa phải bằng chứng về thị trường.',
+ wrong:'Vào /rerank rồi tưởng là đã gửi; gõ lại từ khoá bằng tay; ngồi nghĩ seed mới trong khi hàng trăm candidate từ winner vẫn nằm chờ.',
+ right:'Gửi hết candidate winner ở /imports trước → rồi mới dùng Keyword Lab để mở rộng → quay về /inbox xem hạng mới.',
+ ck:['Đã gửi candidate sinh từ winner','Đã dùng Keyword Lab nếu cần mở rộng','Đã thấy từ khoá mới trong /inbox','Không còn lô candidate bỏ quên']
 },
 {
  n:'5',key:'LÀM & GIAO',name:'GIAI ĐOẠN 5 — 🚀 Làm &amp; giao (bước 11·12)',
