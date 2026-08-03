@@ -32,6 +32,50 @@ SCHEMA = [
 # fields we treat as "usable supplier" evidence when scoring completeness
 CORE = ["product_url", "base_cost", "material", "sizes", "processing_time_min"]
 
+# ---------------------------------------------------------------------------
+# CANONICAL PRODUCT-FAMILY VOCABULARY — the ONE place a phrase becomes a product
+# type. `match()` below and `feasibility_gate` both read it, so "can we make
+# this?" gets the same answer wherever it is asked.
+#
+# It exists because match() scored raw token overlap between a keyword and a
+# supplier product NAME. Measured on the real 25-row library (TSHIRT /
+# SWEATSHIRT / HOODIE / WASH CAP) that gave EVERY keyword the same 50/100:
+# "custom crew t-shirt" does not token-match "TSHIRT", and "chenille name bag"
+# came back with TSHIRT as its best supplier. A 50-point floor made the
+# strong/usable/weak bands meaningless and pointed staff at a supplier who
+# cannot make the product. Both sides are now normalised to this vocabulary.
+PRODUCT_FAMILIES = {
+    "tshirt": ("tshirt", "t shirt", "tee", "tees", "shirt"),
+    "sweatshirt": ("sweatshirt", "crewneck", "crew neck", "jumper"),
+    "hoodie": ("hoodie", "hoody", "hooded"),
+    "cap": ("cap", "hat", "beanie", "trucker", "snapback"),
+    "tote": ("tote", "totebag", "handbag", "purse", "pouch", "bag"),
+    "blanket": ("blanket", "throw"),
+    "pillow": ("pillow", "cushion"),
+    "towel": ("towel", "robe"),
+    "mug": ("mug", "tumbler", "cup", "can cooler", "cozie", "cozies", "koozie"),
+    "sticker": ("sticker", "decal"),
+    "print": ("print", "poster", "wall art", "canvas"),
+    "jewelry": ("necklace", "bracelet", "earring", "keychain", "charm"),
+    "apron": ("apron",),
+    "bib": ("bib",),
+    "sock": ("sock", "socks"),
+}
+
+
+def product_family(text):
+    """The product family a phrase implies, or None when it names no product.
+
+    None is the COMMON case — "40th birthday gift" names an occasion, not a
+    product — and it must stay None. Unknown is not a mismatch: we only ever act
+    on a difference between two families we could both read.
+    """
+    t = " " + " ".join(str(text or "").lower().replace("-", " ").split()) + " "
+    for fam, words in PRODUCT_FAMILIES.items():
+        if any(f" {w} " in t for w in words):
+            return fam
+    return None
+
 
 def load_sources():
     if SOURCES_JSON.exists():
@@ -169,37 +213,78 @@ def import_csv(source, file, out=DEFAULT_OUT, country="US"):
     return new
 
 
-def _mode_ok(mode, pm, ptype):
-    """Does a supplier row's production_mode fit the requested product mode?
+def mode_allows(mode, production_mode):
+    """Can a supplier row with this production_mode serve an explicit request?
 
     Embroidery must NOT be satisfied by a POD/JEWELRY row and vice-versa — this
-    is the core of mode-correct matching."""
+    is the core of mode-correct matching. Auto (mode=None) allows everything:
+    nobody has said which production method to use, so nothing can be ruled out.
+    Shared with feasibility_gate so both ask the question the same way."""
+    pm = (production_mode or "").upper()
+    m = str(mode or "").upper()
+    if m == "EMBROIDERY":
+        return "EMBROIDERY" in pm or "CHENILLE" in pm
+    if m == "POD":
+        return "EMBROIDERY" not in pm  # any non-embroidery supplier can print
+    return True
+
+
+def _mode_ok(mode, pm, ptype):
+    """mode_allows for match(), which also has a guessed production type to fall
+    back on when no mode was requested."""
     pm = (pm or "").upper()
     if not mode:
         return ptype in pm
-    mode = mode.upper()
-    if mode == "EMBROIDERY":
-        return "EMBROIDERY" in pm or "CHENILLE" in pm
-    if mode == "POD":
-        return "EMBROIDERY" not in pm  # any non-embroidery supplier can print
-    return ptype in pm or mode in pm   # BOTH / other
+    if mode.upper() in ("EMBROIDERY", "POD"):
+        return mode_allows(mode, pm)
+    return ptype in pm or mode.upper() in pm   # BOTH / other
 
 
 def match(product, mode=None, country="US", path=DEFAULT_OUT, verbose=True):
     """Score supplier products against a product idea. Returns ranked matches.
 
     Mode-correct: in embroidery mode only embroidery/chenille suppliers score the
-    production-fit points; in POD mode embroidery-only suppliers do not."""
+    production-fit points; in POD mode embroidery-only suppliers do not.
+
+    Family-correct: a supplier who makes t-shirts is not a weak match for a bag,
+    it is not a match at all (see PRODUCT_FAMILIES)."""
     ptype = classify_production_type(product)
+    fam_q = product_family(product)
     words = {w for w in product.lower().split() if len(w) > 2}
     rows = load_products(path)
     scored = []
     for r in rows:
         name = (r.get("product_name") or "").lower()
         pm = (r.get("production_mode") or "").upper()
-        s = 0
-        s += 40 * (len(words & set(name.split())) / max(len(words), 1)) if words else 0
-        s += 25 if _mode_ok(mode, pm, ptype) else 0
+        fam_r = product_family(name)
+        if fam_q and fam_r and fam_q != fam_r:
+            # Two families we can BOTH read, and they differ. The old code gave
+            # this 50/100 ("weak") purely for having a base cost and a material
+            # on file, so every caller saw a usable-looking supplier for a
+            # product nobody on file can make.
+            scored.append((0, r))
+            continue
+        # Same family beats token overlap: "custom crew t-shirt" IS a "TSHIRT".
+        # Fall back to overlap only when a family could not be read on one side.
+        fit = 40 if (fam_q and fam_q == fam_r) else (
+            40 * (len(words & set(name.split())) / max(len(words), 1)) if words else 0)
+        if fit <= 0:
+            # No family match and no shared word. The remaining components below
+            # measure how COMPLETE a supplier record is, not how well it fits —
+            # awarding them here is what put a 50/100 floor under every keyword
+            # in the master, including ones that name no product at all.
+            scored.append((0, r))
+            continue
+        mode_fit = _mode_ok(mode, pm, ptype)
+        if mode and not mode_fit:
+            # An EXPLICIT pod/embroidery request is a production constraint, not
+            # a preference: an embroidery-only supplier scoring 65/100 "weak" for
+            # a POD job is the same lie as the family mismatch above. Auto mode
+            # (mode=None) stays soft — it has not been told which method to use.
+            scored.append((0, r))
+            continue
+        s = fit
+        s += 25 if mode_fit else 0
         s += 15 if (r.get("base_cost") or "").strip() else 0
         s += 10 if (r.get("product_url") or "").strip() else 0
         s += 5 if (r.get("personalization_supported") or "").strip() else 0

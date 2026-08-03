@@ -166,10 +166,15 @@ def _data_stamp():
     # V35.2: the durable proof LEDGER is .jsonl, which the *.json glob missed -
     # a ledger-only change (rotation/rebuild) never busted this cache, so the
     # inbox could serve proof rows that no longer exist. Stamp it explicitly.
+    # V37.12: the supplier LIBRARY (not the capture lane) feeds the feasibility
+    # badge. Without it in the stamp, importing a supplier CSV would leave every
+    # badge stale until some unrelated file changed — and the gate's whole
+    # promise is that a block/flag revives automatically.
     return (mt(MASTER), mt(MASTER_ALT), mt(_PROOF_LATEST),
             mt("data/learning/winner.json"),
             mt("data/history/keyword_snapshots.csv"),
             mt(_CAPTURE_DIR / "_proof_ledger.jsonl"),
+            mt("data/suppliers/supplier_products.csv"),
             newest(_CAPTURE_DIR), newest(_PIN_DIR), newest(_SUP_DIR))
 
 
@@ -224,7 +229,8 @@ def build_inbox(mode=None, limit=80, q=None, show_archived=False):
     if show_archived:
         rows = rows + full.get("archived", [])
     res = {"counts": full["counts"], "rows": rows[:limit],
-           "has_proof": full["has_proof"], "sources": full.get("sources", {})}
+           "has_proof": full["has_proof"], "sources": full.get("sources", {}),
+           "supplier": full.get("supplier") or {}}
     if q:
         # focus searches the FULL pool incl. archive - a typed keyword should
         # always find its niche even if the rows aged out of the main list
@@ -473,6 +479,23 @@ def _build_inbox(mode=None, limit=80):
             rows = keep
     except Exception:  # noqa: BLE001 - lifecycle must never break the inbox
         archived = []
+    # V37.12 — supplier feasibility BADGE (workflow step 3, owner's item E).
+    # It used to be asked only at the PUBLISH gate, after the title, 13 tags,
+    # description, design brief and photo plan were written for a product the
+    # shop cannot make. This is display only: the library is incomplete (7 of 8
+    # registered suppliers have no products on file), so feasibility_gate can
+    # never return NOT_MAKEABLE and therefore never changes an action or a score.
+    # Enforcement switches itself on when the library reaches 'complete'.
+    supplier_cov, supplier_counts = None, None
+    try:
+        from src import feasibility_gate as fg
+        supplier_cov = fg.coverage()
+        if supplier_cov["status"] != fg.COV_NONE:
+            for r in rows:
+                fg.apply_to_row(r, mode)
+            supplier_counts = fg.summary(rows)
+    except Exception:  # noqa: BLE001 - the badge must never break the inbox
+        supplier_cov, supplier_counts = None, None
     counts = {
         "total": len(rows),
         "proven": sum(1 for r in rows if r["proof_tier"] == 0),
@@ -499,4 +522,5 @@ def _build_inbox(mode=None, limit=80):
         "lane_new": lane_new,
     }
     return {"counts": counts, "rows": rows[:limit], "has_proof": bool(proof_map),
-            "sources": sources, "archived": archived}
+            "sources": sources, "archived": archived,
+            "supplier": {"coverage": supplier_cov, "fit": supplier_counts}}

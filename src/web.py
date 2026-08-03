@@ -1540,7 +1540,11 @@ def build_app(password, secret):
             f'<select name="mode"><option value="">Auto mode</option>{modeopts}</select>'
             '<button class="primary" type="submit">Find supplier →</button></form>')
         if mq:
-            scored = so.match(mq, mmode or None, verbose=False)
+            # Drop the zeros: since V37.12 a 0 means "this supplier does not make
+            # this product family / cannot work in this mode", so listing eight
+            # do-not-use rows just buries the real answer, which is "nobody".
+            scored = [x for x in so.match(mq, mmode or None, verbose=False)
+                      if x[0] > 0]
             if scored:
                 mr = ['<table><tr><th>Fit</th><th>Supplier</th><th>Product</th>'
                       '<th>Mode</th><th>Base cost</th><th>Status</th><th>URL</th></tr>']

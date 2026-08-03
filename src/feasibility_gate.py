@@ -28,17 +28,44 @@ REVIVABLE
 A block is never permanent. It is recomputed from the live supplier library on
 every read, so importing a supplier later revives the keyword automatically.
 Nothing is written to the master to record a block.
+
+COVERAGE BEFORE ENFORCEMENT (owner's order, items D + F)
+"No supplier matched" only means "we cannot make this" if the library is
+COMPLETE. Measured on the real library: 25 product rows from ONE supplier
+(TSHIRT / SWEATSHIRT / HOODIE / WASH CAP, all EMBROIDERY, all SUPPLIER_PARTIAL),
+while supplier_sources.json registers eight suppliers — six POD catalogs with
+zero products imported. So the library is INCOMPLETE, not embroidery-only, and a
+miss there is a gap in our data, not a fact about the shop. While coverage is
+partial or unknown a miss returns NEEDS_SUPPLIER_CHECK, which is a BADGE and
+never a block. NOT_MAKEABLE — the only verdict that can stop work — is reachable
+only once every registered supplier has confirmed products on file.
 """
+from pathlib import Path
+
+# ONE canonical matcher, shared with supplier_ops.match(). A private copy here is
+# what let the two surfaces disagree about whether the shop can make a product.
+from src.supplier_ops import product_family as _family
 
 MAKEABLE, UNKNOWN, NOT_MAKEABLE = "MAKEABLE", "UNKNOWN", "NOT_MAKEABLE"
+# The verdict the owner asked for: the library says no, but the library is not
+# finished, so this is a question for a human — not a block.
+NEEDS_SUPPLIER_CHECK = "NEEDS_SUPPLIER_CHECK"
 RISING, FLAT, NONE_, PIN_UNKNOWN = "RISING", "FLAT", "NONE", "UNKNOWN"
+
+# Library coverage (item D). Only COMPLETE unlocks enforcement (item F).
+COV_COMPLETE, COV_PARTIAL, COV_NONE = "complete", "partial", "unknown"
+
+# The four badges, exactly as the owner specified them.
+LABELS = {MAKEABLE: "Makeable", UNKNOWN: "Not checked",
+          NEEDS_SUPPLIER_CHECK: "Needs supplier check",
+          NOT_MAKEABLE: "Supplier blocked"}
 
 # Reason code carried on a blocked row (owner-specified contract).
 BLOCK_REASON = "no_supplier_can_make_this"
 # ranking_engine has no SUPPLIER_BLOCKED action and is frozen, so a blocked row
 # takes the existing SKIP action and is labelled distinctly for the view.
 BLOCK_ACTION = "SKIP"
-BLOCK_LABEL = "Supplier blocked"
+BLOCK_LABEL = LABELS[NOT_MAKEABLE]      # one literal, so the two cannot drift
 
 # Action priorities, DUPLICATED here on purpose. This module must add ZERO new
 # references to the frozen ranking files, so it does not import
@@ -49,95 +76,136 @@ BLOCK_LABEL = "Supplier blocked"
 _PRIORITY = {"BLOCKED": 0, "SKIP": 1, "WATCH": 2, "REVIEW": 3,
              "CONFIRM_FIRST": 4, "BUILD_NOW": 5}
 
-# Product-TYPE vocabulary. The gate deliberately does NOT use
-# supplier_ops.match(): that scores token overlap between a keyword and a
-# supplier product NAME, and the real library holds four blank types
-# ("TSHIRT", "SWEATSHIRT", "HOODIE", "WASH CAP"). Measured on the live master,
-# every threshold blocked ~100% of keywords -- "custom crew t-shirt" does not
-# even token-match "TSHIRT". The right question is not "does this keyword look
-# like a supplier row" but "is the product this keyword implies one my suppliers
-# can make", so both sides are normalised to the same small vocabulary.
-_TYPES = {
-    "tshirt": ("tshirt", "t shirt", "tee", "tees", "shirt"),
-    "sweatshirt": ("sweatshirt", "crewneck", "crew neck", "jumper"),
-    "hoodie": ("hoodie", "hoody", "hooded"),
-    "cap": ("cap", "hat", "beanie", "trucker", "snapback"),
-    "tote": ("tote", "totebag", "handbag", "purse", "pouch", "bag"),
-    "blanket": ("blanket", "throw"),
-    "pillow": ("pillow", "cushion"),
-    "towel": ("towel", "robe"),
-    "mug": ("mug", "tumbler", "cup", "can cooler", "cozie", "cozies", "koozie"),
-    "sticker": ("sticker", "decal"),
-    "print": ("print", "poster", "wall art", "canvas"),
-    "jewelry": ("necklace", "bracelet", "earring", "keychain", "charm"),
-    "apron": ("apron",),
-    "bib": ("bib",),
-    "sock": ("sock", "socks"),
-}
+_SNAP = {}
 
 
-def _type_of(text):
-    """The product type a phrase implies, or None when it names no product.
+def _snapshot(path=None):
+    """Read the supplier library ONCE per library state. Never raises.
 
-    None is the common case for a keyword like "40th birthday cozies" that names
-    an occasion rather than a product, and None must stay UNKNOWN -- we only
-    block when we can positively identify a product the library does not cover.
+    The inbox overlays this gate on ~1,500 rows; loading a CSV per row would turn
+    one 25-row file read into 1,500 of them.
     """
-    t = " " + " ".join(str(text or "").lower().replace("-", " ").split()) + " "
-    for key, words in _TYPES.items():
-        for w in words:
-            if f" {w} " in t or t.endswith(f" {w} "):
-                return key
-    return None
+    from src import supplier_ops as so
+    p = str(path or so.DEFAULT_OUT)
+    try:
+        st = Path(p).stat()
+        key = (p, st.st_mtime, st.st_size)
+    except OSError:
+        key = (p, 0, 0)
+    hit = _SNAP.get(key)
+    if hit is None:
+        _SNAP.clear()                    # only ever keep the newest state
+        hit = _SNAP[key] = _read_library(p)
+    return hit
+
+
+def _read_library(p):
+    from src import supplier_ops as so
+    try:
+        rows = so.load_products(p) or []
+    except Exception:  # noqa: BLE001 - unreadable library == unknown, never a block
+        rows = []
+    by_family, confirmed, stamps = {}, 0, []
+    for r in rows:
+        if (r.get("supplier_status") or "") == "SUPPLIER_CONFIRMED":
+            confirmed += 1
+        if (r.get("last_updated") or "").strip():
+            stamps.append(r["last_updated"].strip())
+        fam = _family(r.get("product_name"))
+        if fam:
+            by_family.setdefault(fam, []).append(r)
+    try:
+        registered = set(so.load_sources() or {})
+    except Exception:  # noqa: BLE001
+        registered = set()
+    with_products = {(r.get("supplier_id") or "").strip() for r in rows if r.get("supplier_id")}
+    missing = sorted(registered - with_products)
+    if not rows:
+        status = COV_NONE
+    elif not missing and confirmed == len(rows):
+        status = COV_COMPLETE
+    else:
+        status = COV_PARTIAL
+    return {
+        "by_family": by_family,
+        "coverage": {
+            "status": status, "products": len(rows), "confirmed": confirmed,
+            "registered": sorted(registered), "with_products": sorted(with_products),
+            "missing_sources": missing, "families": sorted(by_family),
+            "last_updated": max(stamps) if stamps else None,
+        },
+    }
+
+
+def coverage(path=None):
+    """How far the supplier library can be trusted — the switch item F turns on.
+
+    complete : every registered supplier has products AND every row reached
+               SUPPLIER_CONFIRMED. Only here may a miss mean NOT_MAKEABLE.
+    partial  : products exist, but a registered supplier has none or rows are
+               still SUPPLIER_PARTIAL / NEED_SUPPLIER_DETAILS.
+    unknown  : no products at all — the gate stays dormant.
+    """
+    return dict(_snapshot(path)["coverage"])
 
 
 def has_supplier_library(path=None):
     """True when ANY supplier product exists. Gate stays dormant when false."""
-    try:
-        from src import supplier_ops as so
-        rows = so.load_products(path or so.DEFAULT_OUT)
-        return bool(rows)
-    except Exception:  # noqa: BLE001 - unreadable library == unknown, never a block
-        return False
+    return _snapshot(path)["coverage"]["status"] != COV_NONE
 
 
 def supplier_fit(keyword, mode=None, path=None):
-    """MAKEABLE / UNKNOWN / NOT_MAKEABLE for one keyword. Never raises.
+    """MAKEABLE / NEEDS_SUPPLIER_CHECK / UNKNOWN / NOT_MAKEABLE. Never raises.
+
+    Returns (verdict, detail) where detail always carries the owner's fields:
+    product_family, supplier_source, coverage_status, last_updated, confidence.
 
     UNKNOWN whenever we genuinely cannot tell: no library, unreadable library,
-    or no keyword. Only a populated, readable library with no adequate
-    mode-correct match returns NOT_MAKEABLE.
+    no keyword, or a keyword naming no product. A miss on an INCOMPLETE library
+    is NEEDS_SUPPLIER_CHECK. NOT_MAKEABLE needs a complete library.
     """
+    snap = _snapshot(path)
+    cov = snap["coverage"]
+    base = {"product_family": None, "supplier_source": None,
+            "coverage_status": cov["status"], "last_updated": cov["last_updated"],
+            "confidence": None}
     kw = (keyword or "").strip()
-    if not kw or not has_supplier_library(path):
-        return UNKNOWN, None
-    want = _type_of(kw)
-    if want is None:
-        # The keyword names no product we recognise (an occasion, a theme, a
-        # phrase). We cannot claim it is unmakeable, so it stays dormant.
-        return UNKNOWN, {"why": "keyword names no recognisable product type"}
-    try:
-        from src import supplier_ops as so
-        rows = so.load_products(path or so.DEFAULT_OUT) or []
-    except Exception:  # noqa: BLE001
-        return UNKNOWN, None
-    covered, sample = set(), {}
-    for r in rows:
-        pm = (r.get("production_mode") or "").upper()
-        if mode and str(mode).upper() == "EMBROIDERY" and "EMBROIDERY" not in pm \
-                and "CHENILLE" not in pm:
-            continue                     # mode-correct: POD row can't embroider
-        t = _type_of(r.get("product_name"))
-        if t:
-            covered.add(t)
-            sample.setdefault(t, r.get("product_name"))
-    if not covered:
+    if not kw:
+        return UNKNOWN, dict(base, why="no keyword")
+    if cov["status"] == COV_NONE:
+        return UNKNOWN, dict(base, why="no supplier products imported yet")
+    if not snap["by_family"]:
         # A library we cannot interpret is UNKNOWN, never a block.
-        return UNKNOWN, {"why": "no supplier product type could be read"}
-    if want in covered:
-        return MAKEABLE, {"product_type": want, "supplier_product": sample[want]}
-    return NOT_MAKEABLE, {"product_type": want,
-                          "covered": sorted(covered)}
+        return UNKNOWN, dict(base, why="no supplier product type could be read")
+    fam = _family(kw)
+    if fam is None:
+        # The keyword names an occasion, a theme or a phrase — not a product. We
+        # cannot claim it is unmakeable, so the gate stays dormant.
+        return UNKNOWN, dict(base, why="keyword names no recognisable product type")
+    base["product_family"] = fam
+    from src import supplier_ops as so
+    hits = [r for r in snap["by_family"].get(fam, [])
+            if so.mode_allows(mode, r.get("production_mode"))]
+    if hits:
+        ok = [r for r in hits
+              if (r.get("supplier_status") or "") == "SUPPLIER_CONFIRMED"]
+        pick = (ok or hits)[0]
+        return MAKEABLE, dict(
+            base, supplier_source=(pick.get("supplier_id") or "").strip() or None,
+            supplier_product=pick.get("product_name"),
+            # A SUPPLIER_PARTIAL row proves the supplier makes the product but
+            # not that we know its cost or lead time — that is medium, not high.
+            confidence="high" if ok else "medium")
+    covered = sorted(snap["by_family"])
+    if cov["status"] == COV_COMPLETE:
+        return NOT_MAKEABLE, dict(base, covered=covered, confidence="high")
+    return NEEDS_SUPPLIER_CHECK, dict(
+        base, covered=covered, confidence="low",
+        why=("supplier library is incomplete ("
+             + (f"{len(cov['missing_sources'])} registered supplier(s) have no "
+                "products on file" if cov["missing_sources"]
+                else f"{cov['products'] - cov['confirmed']} row(s) not confirmed")
+             + "), so 'no match' is a gap in our data, not a fact about the shop"))
 
 
 def build_allowed(keyword, mode=None, path=None):
@@ -145,19 +213,24 @@ def build_allowed(keyword, mode=None, path=None):
     Pattern Miner, Build Queue, Launch Kit, Photo Plan, Team Ops build tasks.
 
     Returns (allowed: bool, info: dict). Advisory Pinterest is never consulted
-    here — it cannot block anything by design.
+    here — it cannot block anything by design. NEEDS_SUPPLIER_CHECK is a badge,
+    not a block: only a COMPLETE library can produce the one verdict that stops
+    work, so this returns True for every keyword until the library is finished.
     """
     fit, detail = supplier_fit(keyword, mode, path)
     if fit == NOT_MAKEABLE:
         return False, {"fit": fit, "reason": BLOCK_REASON, "revivable": True,
-                       "label": BLOCK_LABEL, "detail": detail,
+                       "label": LABELS[fit], "detail": detail,
                        "message": ("No supplier in your library can make this. "
                                    "Import or add a supplier, then it comes back "
                                    "automatically.")}
+    msg = None
+    if fit == NEEDS_SUPPLIER_CHECK:
+        msg = ("Nothing in your supplier library makes this yet, but the library "
+               "is incomplete — check with a supplier before building.")
     return True, {"fit": fit, "reason": None, "revivable": True,
-                  "label": ("Makeable" if fit == MAKEABLE
-                            else "Supplier not checked"),
-                  "detail": detail}
+                  "label": LABELS.get(fit, LABELS[UNKNOWN]),
+                  "detail": detail, "message": msg}
 
 
 def pinterest_label(keyword):
@@ -195,9 +268,11 @@ def pinterest_label(keyword):
 def apply_to_row(row, mode=None, path=None):
     """Overlay the gate on ONE ranked inbox row, in place. Returns the row.
 
-    The engine's score is left exactly as it was — only the action and the build
-    permission change, so this can never be mistaken for a ranking-math edit.
-    A row the engine already BLOCKED (trademark) or SKIPped stays as it is.
+    BADGE ONLY (owner's item E) while the library is incomplete: the row gains
+    supplier_fit / supplier_label / build_allowed and NOTHING else changes. The
+    engine's score is never touched, and the action only ever changes on the
+    NOT_MAKEABLE verdict, which a partial library cannot produce. A row the
+    engine already BLOCKED (trademark) stays as it is.
     """
     kw = (row or {}).get("keyword")
     if not kw:
@@ -212,15 +287,15 @@ def apply_to_row(row, mode=None, path=None):
         row["supplier_blocked"] = True
         row["revivable"] = True
         row["reason"] = BLOCK_REASON
-        row["reason_text"] = info["message"]
+        row["reason_text"] = info["message"] or BLOCK_LABEL
         row["priority"] = _PRIORITY.get(BLOCK_ACTION, 1)
     return row
 
 
 def summary(rows):
-    """Counts for the workflow spine (step 3)."""
-    out = {MAKEABLE: 0, UNKNOWN: 0, NOT_MAKEABLE: 0}
+    """Counts for the workflow spine (step 3) and the Inbox badge line."""
+    out = {MAKEABLE: 0, NEEDS_SUPPLIER_CHECK: 0, UNKNOWN: 0, NOT_MAKEABLE: 0}
     for r in rows or []:
-        out[r.get("supplier_fit") or UNKNOWN] = \
-            out.get(r.get("supplier_fit") or UNKNOWN, 0) + 1
+        k = r.get("supplier_fit") or UNKNOWN
+        out[k] = out.get(k, 0) + 1
     return out

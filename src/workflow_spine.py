@@ -341,15 +341,33 @@ def status():
             _todo("no keyword_data.csv — run harvest")
     except Exception:  # noqa: BLE001
         out["feed"] = dict(_UNKNOWN)
-    for key, folder, label in (
-            ("pinterest", "pinterest", "Pinterest capture"),
-            ("supplier", "supplier", "supplier record")):
-        try:
-            c = _count_json(folder)
-            out[key] = _ok(f"{c} {label}(s) imported") if c else \
-                _todo(f"no {label} yet")
-        except Exception:  # noqa: BLE001
-            out[key] = dict(_UNKNOWN)
+    try:
+        c = _count_json("pinterest")
+        out["pinterest"] = _ok(f"{c} Pinterest capture(s) imported") if c else \
+            _todo("no Pinterest capture yet")
+    except Exception:  # noqa: BLE001
+        out["pinterest"] = dict(_UNKNOWN)
+    # Step 3 reads the supplier LIBRARY, not the capture lane: the question is
+    # "can we make it?", and a captured supplier page does not answer that. The
+    # step is only ready when the library is complete enough to be trusted —
+    # which is the same switch that turns feasibility enforcement on.
+    try:
+        from src import feasibility_gate as fg
+        cov = fg.coverage()
+        if cov["status"] == fg.COV_NONE:
+            out["supplier"] = _todo("no supplier products imported yet")
+        elif cov["status"] == fg.COV_COMPLETE:
+            out["supplier"] = _ok(f"{cov['products']} product(s) confirmed across "
+                                  f"{len(cov['with_products'])} supplier(s)")
+        else:
+            miss = len(cov["missing_sources"])
+            out["supplier"] = _todo(
+                f"{cov['products']} product(s) on file, coverage PARTIAL — "
+                + (f"{miss} registered supplier(s) have none imported"
+                   if miss else
+                   f"{cov['products'] - cov['confirmed']} row(s) unconfirmed"))
+    except Exception:  # noqa: BLE001
+        out["supplier"] = dict(_UNKNOWN)
     try:
         from src import opportunity_inbox as oi
         d = oi.build_inbox(limit=100000, show_archived=True)

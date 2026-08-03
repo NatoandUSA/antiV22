@@ -1993,6 +1993,14 @@ def _inbox_do(r):
     return "~~skip~~"
 
 
+# V37.12 supplier feasibility badge (workflow step 3) — the same question as
+# product-fit ("can we make it?"), so it rides in that cell instead of an 11th
+# column. UNKNOWN is the default and says nothing, so it has no badge.
+_SUPPLIER_BADGE = {"MAKEABLE": "\U0001F3ED makeable",
+                   "NEEDS_SUPPLIER_CHECK": "\U0001F3ED check supplier",
+                   "NOT_MAKEABLE": "\U0001F3ED supplier blocked"}
+
+
 def _inbox_row(i, r):
     """One ranked table row (shared by the FOCUS table and the full list)."""
     kw = _clean(r["keyword"])
@@ -2002,6 +2010,9 @@ def _inbox_row(i, r):
            f"({r['score']})" if r["score"] is not None else
            f"{_MKT_ICON.get(r['verdict'], '')} {r['verdict']}")
     fit = r.get("fit_label") or "—"
+    badge = _SUPPLIER_BADGE.get(r.get("supplier_fit"))
+    if badge:
+        fit = f"{fit} · {badge}"
     pr = r.get("proof")
     tier = r.get("proof_tier", 9)
     if pr and tier == 0:
@@ -2232,6 +2243,24 @@ def inbox(mode=None, q="", show_archived=False):
         L += [f"_\U0001F50C **{c['needs_enrichment']}** capture-lane leads still "
               "have NO market data — use the **Enrich leads via MCP** button "
               "above to fill them (honest-nulls until then)._", ""]
+    # Supplier feasibility (step 3), moved from the publish gate to here. BADGE
+    # ONLY: while the library is incomplete a miss is a gap in our data, so it
+    # flags for a human and never changes a ranking.
+    sup = (data.get("supplier") or {})
+    scov, sfit = sup.get("coverage"), sup.get("fit")
+    if scov and sfit and scov.get("status") != "unknown":
+        miss = scov.get("missing_sources") or []
+        gap = (f"{len(miss)} registered supplier(s) have no products imported"
+               if miss else
+               f"{scov.get('products',0)-scov.get('confirmed',0)} row(s) not confirmed")
+        L += [f"_\U0001F3ED **Supplier feasibility** (step 3) — "
+              f"\U0001F7E2 **{sfit.get('MAKEABLE',0)}** makeable · "
+              f"\U0001F7E1 **{sfit.get('NEEDS_SUPPLIER_CHECK',0)}** need a supplier "
+              f"check · **{sfit.get('UNKNOWN',0)}** name no product to check · "
+              f"\U0001F534 **{sfit.get('NOT_MAKEABLE',0)}** blocked. "
+              f"Library coverage is **{scov.get('status')}** ({gap}), so this is a "
+              "**badge only** — nothing is blocked and no score moved. "
+              "[Fill the library](/suppliers) to switch enforcement on._", ""]
     # honest provenance: exactly which data sources fed THIS ranking
     src = data.get("sources") or {}
     if src:
