@@ -99,54 +99,82 @@ def _snapshot(path=None):
     return hit
 
 
+def _coverage_of(rows, sources, mode=None):
+    """Coverage over the slice of the library that serves `mode` (all of it when
+    mode is None).
+
+    PER MODE on purpose. Judged as a whole this library can never be complete:
+    the shop registered six POD catalogs it has not imported, so a lone
+    embroidery supplier would keep every mode stuck at 'partial' forever and
+    enforcement (item F) could never switch on for anything. Asked per mode, the
+    embroidery side can be finished and start enforcing while POD honestly
+    reports that nothing has been imported yet.
+    """
+    from src import supplier_ops as so
+    if mode:
+        rows = [r for r in rows if so.mode_allows(mode, r.get("production_mode"))]
+        # A source's declared modes read the same way a product row's do.
+        sources = {sid: i for sid, i in sources.items()
+                   if so.mode_allows(mode, ",".join(i.get("modes") or []))}
+    named = [r for r in rows if (r.get("product_name") or "").strip()]
+    confirmed = sum(1 for r in named
+                    if (r.get("supplier_status") or "") == "SUPPLIER_CONFIRMED")
+    # A sync() placeholder carries a supplier_id and no product, so it must not
+    # count as "this supplier is covered".
+    with_products = {(r.get("supplier_id") or "").strip() for r in named
+                     if (r.get("supplier_id") or "").strip()}
+    missing = sorted(set(sources) - with_products)
+    stamps = [r["last_updated"].strip() for r in named
+              if (r.get("last_updated") or "").strip()]
+    if not named:
+        status = COV_NONE
+    elif not missing and confirmed == len(named):
+        status = COV_COMPLETE
+    else:
+        status = COV_PARTIAL
+    return {"status": status, "products": len(named), "confirmed": confirmed,
+            "registered": sorted(sources), "with_products": sorted(with_products),
+            "missing_sources": missing, "last_updated": max(stamps) if stamps else None}
+
+
 def _read_library(p):
     from src import supplier_ops as so
     try:
         rows = so.load_products(p) or []
     except Exception:  # noqa: BLE001 - unreadable library == unknown, never a block
         rows = []
-    by_family, confirmed, stamps = {}, 0, []
+    try:
+        sources = dict(so.load_sources() or {})
+    except Exception:  # noqa: BLE001
+        sources = {}
+    by_family = {}
     for r in rows:
-        if (r.get("supplier_status") or "") == "SUPPLIER_CONFIRMED":
-            confirmed += 1
-        if (r.get("last_updated") or "").strip():
-            stamps.append(r["last_updated"].strip())
         fam = _family(r.get("product_name"))
         if fam:
             by_family.setdefault(fam, []).append(r)
-    try:
-        registered = set(so.load_sources() or {})
-    except Exception:  # noqa: BLE001
-        registered = set()
-    with_products = {(r.get("supplier_id") or "").strip() for r in rows if r.get("supplier_id")}
-    missing = sorted(registered - with_products)
-    if not rows:
-        status = COV_NONE
-    elif not missing and confirmed == len(rows):
-        status = COV_COMPLETE
-    else:
-        status = COV_PARTIAL
+    overall = _coverage_of(rows, sources)
+    overall["families"] = sorted(by_family)
     return {
         "by_family": by_family,
-        "coverage": {
-            "status": status, "products": len(rows), "confirmed": confirmed,
-            "registered": sorted(registered), "with_products": sorted(with_products),
-            "missing_sources": missing, "families": sorted(by_family),
-            "last_updated": max(stamps) if stamps else None,
-        },
+        "coverage": overall,
+        "by_mode": {m: _coverage_of(rows, sources, m)
+                    for m in ("EMBROIDERY", "POD")},
     }
 
 
-def coverage(path=None):
+def coverage(path=None, mode=None):
     """How far the supplier library can be trusted — the switch item F turns on.
 
-    complete : every registered supplier has products AND every row reached
-               SUPPLIER_CONFIRMED. Only here may a miss mean NOT_MAKEABLE.
+    complete : every registered supplier for this mode has products AND every
+               row reached SUPPLIER_CONFIRMED. Only here may a miss mean
+               NOT_MAKEABLE.
     partial  : products exist, but a registered supplier has none or rows are
                still SUPPLIER_PARTIAL / NEED_SUPPLIER_DETAILS.
-    unknown  : no products at all — the gate stays dormant.
+    unknown  : no products for this mode — the gate stays dormant.
     """
-    return dict(_snapshot(path)["coverage"])
+    snap = _snapshot(path)
+    m = str(mode or "").upper()
+    return dict(snap["by_mode"].get(m) or snap["coverage"])
 
 
 def has_supplier_library(path=None):
@@ -165,7 +193,9 @@ def supplier_fit(keyword, mode=None, path=None):
     is NEEDS_SUPPLIER_CHECK. NOT_MAKEABLE needs a complete library.
     """
     snap = _snapshot(path)
-    cov = snap["coverage"]
+    # Judge against the coverage for the mode actually asked for: "no POD
+    # supplier imported" must not be answered out of the embroidery library.
+    cov = snap["by_mode"].get(str(mode or "").upper()) or snap["coverage"]
     base = {"product_family": None, "supplier_source": None,
             "coverage_status": cov["status"], "last_updated": cov["last_updated"],
             "confidence": None}

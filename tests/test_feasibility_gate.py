@@ -82,6 +82,42 @@ def test_coverage_is_complete_only_when_every_row_is_confirmed(complete):
     assert fg.coverage(complete)["status"] == fg.COV_COMPLETE
 
 
+def test_a_sync_placeholder_row_does_not_count_as_covering_a_supplier(tmp_path, monkeypatch):
+    """`supplier sync` writes a CATALOG_URL_ONLY row with an id and no product.
+    Counting that as "this supplier has products" would hide the whole gap."""
+    _sources(tmp_path, monkeypatch, ["embroidery", "printify"])
+    p = _lib(tmp_path, [
+        {"supplier_id": "embroidery", "product_name": "TSHIRT",
+         "production_mode": "EMBROIDERY", "supplier_status": "SUPPLIER_CONFIRMED"},
+        {"supplier_id": "printify", "product_name": "",       # <- the placeholder
+         "production_mode": "POD", "supplier_status": "CATALOG_URL_ONLY"},
+    ], name="placeholder.csv")
+    cov = fg.coverage(p)
+    assert "printify" in cov["missing_sources"]
+    assert cov["status"] == fg.COV_PARTIAL and cov["products"] == 1
+
+
+def test_coverage_is_asked_per_mode_so_one_mode_can_be_finished(tmp_path, monkeypatch):
+    """Judged as a whole, this library can never be complete — six POD catalogs
+    are registered and unimported, which would keep enforcement (item F) dead
+    forever. Per mode, embroidery can be finished on its own."""
+    _sources(tmp_path, monkeypatch, ["embroidery", "printify"])
+    monkeypatch.setattr(so, "SOURCES_JSON", tmp_path / "sources.json")
+    (tmp_path / "sources.json").write_text(json.dumps({
+        "embroidery": {"modes": ["EMBROIDERY", "CHENILLE_PATCH"]},
+        "printify": {"modes": ["POD"]}}), encoding="utf-8")
+    p = _lib(tmp_path, [
+        {"supplier_id": "embroidery", "product_name": "TSHIRT",
+         "production_mode": "EMBROIDERY", "supplier_status": "SUPPLIER_CONFIRMED"},
+    ], name="permode.csv")
+    assert fg.coverage(p, "embroidery")["status"] == fg.COV_COMPLETE
+    assert fg.coverage(p, "pod")["status"] == fg.COV_NONE     # nothing imported
+    assert fg.coverage(p)["status"] == fg.COV_PARTIAL         # overall still honest
+    # enforcement is live for embroidery only
+    assert fg.supplier_fit("chenille name bag", "embroidery", p)[0] == fg.NOT_MAKEABLE
+    assert fg.supplier_fit("chenille name bag", "pod", p)[0] == fg.UNKNOWN
+
+
 # --- supplier_fit ------------------------------------------------------------
 def test_makeable_when_a_mode_correct_supplier_makes_that_family(partial):
     fit, d = fg.supplier_fit("custom crew t-shirt", "embroidery", partial)
@@ -114,8 +150,11 @@ def test_a_keyword_naming_no_product_stays_unknown(partial):
 
 
 def test_mode_correct_an_embroidery_row_cannot_serve_a_pod_request(partial):
-    assert fg.supplier_fit("custom crew t-shirt", "pod", partial)[0] \
-        == fg.NEEDS_SUPPLIER_CHECK
+    """An embroidery supplier can never answer a POD request. And because this
+    library has NO POD rows at all, the honest POD answer is "not checked" —
+    'needs a supplier check' would claim we looked, when there was nothing to
+    look in."""
+    assert fg.supplier_fit("custom crew t-shirt", "pod", partial)[0] == fg.UNKNOWN
     assert fg.supplier_fit("custom crew t-shirt", None, partial)[0] == fg.MAKEABLE
 
 

@@ -10,6 +10,7 @@ missing_fields. Uploaded CSVs are the truth for their supplier.
 """
 import csv
 import json
+import re
 from datetime import date
 from pathlib import Path
 
@@ -166,16 +167,41 @@ def _import_shineon(reader, country):
     return out
 
 
+def _day_range(text):
+    """(min, max) days from "7-12 business days", a bare "3-5", or "5". ("","")
+    when the text carries no day count — never a guess."""
+    t = str(text or "").strip()
+    m = (re.search(r"(\d+)\s*(?:-|–|—|to)\s*(\d+)\s*(?:business\s*)?days?", t, re.I)
+         or re.fullmatch(r"(\d+)\s*(?:-|–|—|to)\s*(\d+)", t))
+    if m:
+        return m.group(1), m.group(2)
+    m = re.search(r"(\d+)\s*(?:business\s*)?days?", t, re.I) or re.fullmatch(r"(\d+)", t)
+    return (m.group(1), m.group(1)) if m else ("", "")
+
+
 def _import_embroidery(reader, country):
     out = []
     for r in reader:
         rec = _blank()
+        # The sheet ships "US ePacket 7-12 business days - INCLUDED in price".
+        # That window is real supplier data the importer used to drop entirely.
+        ship_min, ship_max = _day_range(r.get("shipping", ""))
+        # OPTIONAL columns. Every row is stuck at SUPPLIER_PARTIAL because the
+        # sheet has no product_url and no production lead time, and there was no
+        # way to supply them — the upload form only accepts this one layout. Add
+        # either column to the sheet and the rows can reach SUPPLIER_CONFIRMED.
+        # Absent stays absent: nothing here is inferred.
+        proc_min, proc_max = _day_range(r.get("processing_days")
+                                        or r.get("processing_time_min", ""))
         rec.update({
             "supplier_id": "embroidery", "supplier_name": "Embroidery",
             "supplier_type": "csv_upload", "production_mode": "EMBROIDERY",
             "product_name": r.get("product", ""), "sizes": r.get("size", ""),
             "base_cost": r.get("price_us_epacket_usd", ""),
             "shipping_cost": "0.00",   # price INCLUDES shipping
+            "shipping_time_min": ship_min, "shipping_time_max": ship_max,
+            "product_url": (r.get("product_url") or "").strip(),
+            "processing_time_min": proc_min, "processing_time_max": proc_max,
             "material": r.get("material", ""),
             "embroidery_supported": "yes",
             "personalization_supported": "yes",

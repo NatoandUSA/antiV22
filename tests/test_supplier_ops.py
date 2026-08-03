@@ -102,6 +102,54 @@ def test_empty_library_returns_nothing_rather_than_a_guess(tmp_path):
                     path=str(tmp_path / "missing.csv"), verbose=False) == []
 
 
+# --- the CSV importer: keep real data, allow the record to be completed -------
+def test_day_range_reads_a_window_and_never_guesses():
+    assert so._day_range("US ePacket 7-12 business days - INCLUDED in price") == ("7", "12")
+    assert so._day_range("3-5") == ("3", "5")
+    assert so._day_range("5 business days") == ("5", "5")
+    assert so._day_range("7") == ("7", "7")
+    for empty in ("", None, "ships free", "INCLUDED in price"):
+        assert so._day_range(empty) == ("", "")
+
+
+def _sheet(tmp_path, header, *rows):
+    p = tmp_path / "Embroidery.csv"
+    p.write_text("\n".join([header, *rows]) + "\n", encoding="utf-8")
+    return str(p)
+
+
+_HEAD = "product,size,price_us_epacket_usd,material,shipping"
+_ROW = "TSHIRT,S,16.43,cotton,US ePacket 7-12 business days - INCLUDED in price"
+
+
+def test_import_keeps_the_shipping_window_the_sheet_already_carries(tmp_path):
+    """The sheet has always said "7-12 business days"; the importer dropped it."""
+    out = str(tmp_path / "out.csv")
+    rec = so.import_csv("embroidery", _sheet(tmp_path, _HEAD, _ROW), out)[0]
+    assert (rec["shipping_time_min"], rec["shipping_time_max"]) == ("7", "12")
+
+
+def test_the_two_missing_facts_can_be_supplied_as_optional_columns(tmp_path):
+    """Every row sits at SUPPLIER_PARTIAL for want of product_url and a lead
+    time, and the upload form accepts only this one layout — so there was no way
+    to supply them at all. Adding the columns must complete the record."""
+    out = str(tmp_path / "out.csv")
+    rec = so.import_csv("embroidery", _sheet(
+        tmp_path, _HEAD + ",product_url,processing_days",
+        _ROW + ",https://supplier.example/tshirt,3-5"), out)[0]
+    assert rec["product_url"] == "https://supplier.example/tshirt"
+    assert (rec["processing_time_min"], rec["processing_time_max"]) == ("3", "5")
+    assert rec["supplier_status"] == "SUPPLIER_CONFIRMED"
+    assert rec["missing_fields"] == ""
+
+
+def test_absent_optional_columns_stay_absent_and_are_never_inferred(tmp_path):
+    out = str(tmp_path / "out.csv")
+    rec = so.import_csv("embroidery", _sheet(tmp_path, _HEAD, _ROW), out)[0]
+    assert rec["product_url"] == "" and rec["processing_time_min"] == ""
+    assert rec["supplier_status"] == "SUPPLIER_PARTIAL"
+
+
 def test_scores_stay_ranked_and_bounded(lib):
     scored = so.match("wash cap", "embroidery", path=lib, verbose=False)
     assert [s for s, _ in scored] == sorted((s for s, _ in scored), reverse=True)

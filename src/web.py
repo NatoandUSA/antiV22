@@ -1503,11 +1503,32 @@ def build_app(password, secret):
         import collections
         from src import supplier_ops as so
         sources = so.load_sources()
-        counts = collections.Counter(r.get("supplier_id") for r in so.load_products())
+        products = so.load_products()
+        counts = collections.Counter(r.get("supplier_id") for r in products
+                                     if (r.get("product_name") or "").strip())
+        # WHAT IS MISSING, per supplier. Without this the panel shows a product
+        # count and nothing else, so "coverage is partial" was unactionable —
+        # you could not see that all 25 rows want the same two fields.
+        gaps = {}
+        for r in products:
+            if not (r.get("product_name") or "").strip():
+                continue
+            for f in (r.get("missing_fields") or "").split(";"):
+                if f.strip():
+                    gaps.setdefault(r.get("supplier_id"), collections.Counter())[f.strip()] += 1
         rows = ["<table><tr><th>Supplier</th><th>Type</th><th>Modes</th>"
-                "<th>Catalog / CSV</th><th>Products</th><th>Action</th></tr>"]
+                "<th>Catalog / CSV</th><th>Products</th><th>To finish</th>"
+                "<th>Action</th></tr>"]
         for sid, info in sources.items():
             typ, n = info.get("type", ""), counts.get(sid, 0)
+            g = gaps.get(sid)
+            if not n:
+                todo = ('<span style="color:#b45309">no products imported</span>')
+            elif g:
+                todo = ("add " + ", ".join(f"<b>{_h.escape(f)}</b> ({c})"
+                                           for f, c in g.most_common()))
+            else:
+                todo = '<span style="color:#15803d">✓ confirmed</span>'
             if typ == "catalog_url":
                 link = (f'<a href="{_h.escape(info.get("catalog_url",""))}" '
                         'target="_blank" rel="noopener">Open catalog ↗</a>')
@@ -1522,8 +1543,33 @@ def build_app(password, secret):
                     '<button class="cbtn" type="submit">Upload CSV</button></form>')
             rows.append(f"<tr><td><b>{_h.escape(info.get('name',sid))}</b></td>"
                         f"<td>{typ}</td><td>{', '.join(info.get('modes',[]))}</td>"
-                        f"<td>{link}</td><td>{n}</td><td>{action}</td></tr>")
+                        f"<td>{link}</td><td>{n}</td><td>{todo}</td>"
+                        f"<td>{action}</td></tr>")
         rows.append("</table>")
+        # Coverage per mode, and what it unlocks. Enforcement is asked per mode,
+        # so the embroidery side can be finished on its own — judged as a whole
+        # the six unimported POD catalogs would keep it dormant forever.
+        try:
+            from src import feasibility_gate as _fg
+            cov = []
+            for _m in ("embroidery", "pod"):
+                _c = _fg.coverage(mode=_m)
+                _state = {"complete": "✅ complete — feasibility is ENFORCED",
+                          "partial": "⚠️ partial — badge only, nothing is blocked",
+                          "unknown": "— nothing imported yet"}[_c["status"]]
+                _need = ""
+                if _c["missing_sources"]:
+                    _need = (" · no products from "
+                             + _h.escape(", ".join(_c["missing_sources"])))
+                elif _c["status"] == "partial":
+                    _need = (f" · {_c['products'] - _c['confirmed']} row(s) still "
+                             "missing a field in the <b>To finish</b> column")
+                cov.append(f"<li><b>{_m}</b>: {_state}{_need}</li>")
+            rows.append('<p class="note"><b>Coverage</b> (this is what switches '
+                        'the step-3 feasibility gate from a badge to a real '
+                        f'block):</p><ul>{"".join(cov)}</ul>')
+        except Exception:  # noqa: BLE001 — the panel must never break the page
+            pass
 
         # --- product -> supplier match panel (was terminal-only: `supplier match`)
         mq = (request.args.get("match") or "").strip()[:80]

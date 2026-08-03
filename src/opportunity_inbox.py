@@ -489,7 +489,7 @@ def _build_inbox(mode=None, limit=80):
     supplier_cov, supplier_counts = None, None
     try:
         from src import feasibility_gate as fg
-        supplier_cov = fg.coverage()
+        supplier_cov = fg.coverage(mode=mode)   # judged for the mode on screen
         if supplier_cov["status"] != fg.COV_NONE:
             for r in rows:
                 fg.apply_to_row(r, mode)
