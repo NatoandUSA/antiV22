@@ -62,6 +62,28 @@ def test_workflow_md_matches_the_module_and_drops_the_old_9_step_flow():
     assert "Send to Re-rank" in doc and "gõ lại từ khoá bằng tay" in doc
 
 
+def test_the_staff_training_guide_teaches_the_same_five_phases():
+    """V37.12: /training served a hand-written guide for the RETIRED 9-step flow
+    (Feed/Rank/Pattern/Lab/Re-rank/Build/Photo/Ads/Learn) while home and
+    WORKFLOW.md showed 5 phases — a third competing map, on the page used to
+    TRAIN new staff. Pinned the same way WORKFLOW.md is."""
+    import html as _html
+    # unescape first: the guide writes 'Tìm &amp; lọc' (trap: _h_esc/&amp;)
+    doc = _html.unescape(Path("staff_guide_vn.html").read_text(encoding="utf-8"))
+    for ph in ws.PHASES:                       # every phase, by name and route
+        assert ph["vi"].upper() in doc.upper(), f"guide is missing phase {ph['p']}"
+        assert ph["route"] in doc
+    assert "9 bước cũ" in doc and "đã BỎ" in doc          # retired, not silently dropped
+    # the old rail keys must be gone: they are what made the guide teach a
+    # different process from every other surface
+    for dead in ("key:'FEED'", "key:'LAB'", "key:'RERANK'", "key:'BUILD'",
+                 "key:'PHOTO'", "key:'ADS'", "key:'LEARN'"):
+        assert dead not in doc, f"the retired 9-step card {dead} is still in the guide"
+    # the two lies V37.11 found on the home page must not live on in the guide
+    assert "py main.py harvest" in doc                    # /trending cannot harvest
+    assert "/rerank" in doc and "Send to Re-rank" in doc  # the send lives on /imports
+
+
 def test_step_10_is_the_closed_loop():
     s10 = next(s for s in ws.STEPS if s["n"] == 10)
     assert "Re-rank" in s["name"] if (s := s10) else False

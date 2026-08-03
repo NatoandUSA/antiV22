@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>GEA — Hướng dẫn dùng Toolkit V37 (bản đầy đủ + có gì mới)</title>
+<title>GEA — Hướng dẫn dùng Toolkit V37 (5 giai đoạn / 12 bước)</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 :root{--orange:#F1641E;--orange-dark:#D24C0C;--gold:#F0A429;--ink:#2B2926;--muted:#7A736B;--bg:#FBF9F6;--surface:#fff;--border:#EBE4DA;--success:#1F8A4C;--blue:#3B82F6;--purple:#8B5CF6;--red:#B91C1C;--amber:#E5850B}
@@ -73,19 +73,23 @@ ol.actions li:before{counter-increment:a;content:counter(a);position:absolute;le
 <header class="head">
   <div class="logo">GEA</div>
   <div>
-    <h1>Hướng dẫn dùng Toolkit — bản V37 (đầy đủ + có gì mới)</h1>
-    <div class="sub">Hướng dẫn dùng từng công cụ · bấm từng chương ở thanh trên · dùng để dạy nhân viên. Quy trình chính thức là 5 giai đoạn — xem /workflow</div>
+    <h1>Hướng dẫn dùng Toolkit — 5 giai đoạn (12 bước)</h1>
+    <div class="sub">Mỗi sáng mở trang chủ, đọc thẻ <b>“Do this next”</b> · đi theo 5 giai đoạn ở thanh trên · dùng để dạy nhân viên</div>
   </div>
+  <a class="btn" href="/" style="margin-left:auto;text-decoration:none">← Về dashboard</a>
 </header>
 
-<div class="disc"><strong>Cách dùng tài liệu:</strong> mỗi bước có: <b>Làm ở đâu</b> · <b>Thao tác đúng</b> · <b>Tool hiện gì</b> · <b>Đọc &amp; quyết định</b> · <b>Làm SAI vs ĐÚNG</b> · <b>Xong khi</b>. Bắt đầu ở thẻ <b>🆕 Mới</b> để nắm những thay đổi, rồi đi lần lượt các bước. Dashboard: <b>etsy.theglobalserviceteam.site</b>.</div>
+<div class="disc"><strong>Cách dùng tài liệu:</strong> mỗi giai đoạn có: <b>Làm ở đâu</b> · <b>Thao tác đúng</b> · <b>Tool hiện gì</b> · <b>Đọc &amp; quyết định</b> · <b>Làm SAI vs ĐÚNG</b> · <b>Xong khi</b>. Đọc thẻ <b>⚖️ Luật</b> trước, rồi đi lần lượt 5 giai đoạn. Dashboard: <b>etsy.theglobalserviceteam.site</b>.</div>
+
+<div class="disc warn"><b>Tài liệu này đi theo ĐÚNG một bản đồ với trang chủ và <a href="/workflow">/workflow</a>:</b> 5 giai đoạn, 12 bước bên trong, sinh ra từ <code>src/workflow_spine.py</code>. <b>Quy trình 9 bước cũ (① Feed → ⑨ Learn) đã BỎ</b> — nếu bạn còn thấy ở đâu đó thì chỗ đó cũ, không phải chỗ này sai.</div>
 
 <div class="rail" id="rail"></div>
 <div class="progwrap"><div class="progfill" id="progfill"></div></div>
 <div id="panels"></div>
 
 <div class="foot">
-  Global Etsy Academy • Toolkit V37 • Số liệu thị trường phải verify LIVE trên tool — không bịa "GO".<br>
+  Global Etsy Academy • Toolkit V37 • 5 giai đoạn / 12 bước, cùng nguồn với trang chủ và <a href="/workflow">/workflow</a>.<br>
+  Số liệu thị trường phải verify LIVE trên tool — không bịa "GO".<br>
   🔒 Không tự đăng · Ảnh hero/macro/số đo phải THẬT · Thiết kế GỐC · Kiểm nhãn hiệu · Đo lợi nhuận thật.<br>
   Tài liệu nội bộ Team 4 — không chia sẻ ra ngoài.
 </div>
@@ -94,198 +98,121 @@ ol.actions li:before{counter-increment:a;content:counter(a);position:absolute;le
 <script>
 const STEPS=[
 {
- n:'🆕',key:'MỚI',isnew:true,name:'Có gì mới (→ V37) + Luật vàng',
- where:'Đọc trước khi bắt đầu',
- goal:'Nắm nhanh những thay đổi quan trọng của tool và các luật an toàn KHÔNG BAO GIỜ được phá.',
+ n:'⚖️',key:'LUẬT',name:'Luật vàng + cách đọc tool (đọc trước khi bắt đầu)',
+ where:'Đọc trước khi bắt đầu · mỗi sáng mở trang chủ, thẻ “Do this next”',
+ goal:'Nắm 5 luật an toàn KHÔNG BAO GIỜ được phá, và hiểu tool quyết định bằng cái gì.',
  actions:[
-  '<b>🎯 CÔNG CỤ MỚI — Build Queue (bắt đầu ở đây mỗi ngày).</b> Kho keyword có hơn 1.000 dòng nhưng chỉ ~5% là "vàng". Build Queue lọc sẵn: chỉ hiện keyword ĐÃ CHỨNG MINH (có listing + views + doanh thu + tỉ lệ chuyển đổi thật), xếp hạng bằng <b>Build Score</b>, gắn cờ nhãn hiệu ⚠, 1 chạm sang 🎨 Design / 🚀 Kit. Xem thẻ 🎯 ngay sau đây.',
-  '<b>Kho keyword nay tự gắn cờ nhãn hiệu.</b> Mỗi keyword khi nhập được chấm rủi ro trademark tự động (trước để trống): "disney shirt" → HIGH, long-tail mô tả → sạch.',
-  '<b>Bảng "Recent import events" đọc dễ hơn.</b> Cột kết quả ghi rõ: <span class="pill p-build">+N new kw</span> (keyword mới) · <span class="pill p-verify">N updated</span> (gửi lại để làm mới số thị trường) · <span class="pill p-skip">N leads</span> (dòng listing/spy). Gửi listing nay thấy "leads" — KHÔNG còn "+0" gây hiểu nhầm là hỏng.',
-  '<b>Extension 22Etsy Exporter v2.6:</b> nút <b>↓ Grab all</b> tự cuộn để lấy TỐI ĐA số dòng (Pinterest/Alibaba lấy hàng trăm thay vì ~30); và <b>Multi-page batch</b> gộp nhiều trang Etsy/Amazon thành 1 file. Xem thẻ ①.',
-  '<b>Từ nghề THÊU đã dùng được trở lại.</b> Trước đây "cross stitch / satin stitch / stitch count..." bị chặn nhầm (tool tưởng là nhân vật Lilo &amp; Stitch). Nay đã sửa — khoảng <b>27 từ khoá cross-stitch</b> của shop đã hiện lại trong Inbox.',
-  '<b>Keyword POD không bị nhét nhầm sang Thêu nữa.</b> "patchwork usa tee", "dispatch rider shirt", "knitting nana shirt"... trước biến mất ở mode POD, nay hiện đúng.',
-  '<b>Từ đa nghĩa trùng brand nay chỉ CẢNH BÁO, không chặn cứng.</b> "frozen / converse / mario / cars / jordan..." nay gắn cờ <span class="pill p-verify">CAUTION</span> = "phải tự tra nhãn hiệu trước khi làm". Hành động cuối bị hạ xuống <span class="pill p-confirm">CONFIRM FIRST</span>.',
-  '<b>Brand viết liền nay bị bắt đúng:</b> superbowl, starwars, babyyoda → vẫn <span class="pill p-blocked">BLOCKED</span>.',
-  '<b>Nhận thêm nhiều loại sản phẩm:</b> jacket, leggings, joggers, dress, water bottle, koozie, wallet... (trước bị bỏ sót).',
-  '<b>CÔNG CỤ MỚI 🎨 Design Skill Bridge:</b> 22etsy tạo <b>Skill Pack</b> → nhân viên mở <b>ChatGPT Skill (Etsy POD Redesign V8.1)</b>, upload ảnh + dán prompt → copy <b>RESULT_JSON</b> → import về 22etsy → <b>owner duyệt</b> → gửi <b>listing_seeds</b> sang Launch Kit. Skill KHÔNG tạo listing cuối — Launch Kit mới tạo title/tag/mô tả. Xem thẻ 🎨.'
+  '<b>Bản đồ duy nhất là 5 giai đoạn.</b> Trang chủ hiện thẻ <b>“Do this next”</b> = giai đoạn đang dở + việc kế tiếp. Không tự nghĩ ra thứ tự khác, không bắt đầu từ giữa.',
+  '<b>Mỗi bước chỉ có MỘT trang chính.</b> Dashboard có hơn 100 đường dẫn nhưng chỉ 12 là bước quy trình; còn lại là công cụ hỗ trợ (xem thẻ 🧰 cuối cùng).',
+  '<b>Điểm số KHÔNG phải quan toà.</b> Mỗi keyword đi qua 4 lớp và Inbox hiện <b>Hành động cuối (Final Action)</b>. Đọc Hành động cuối + rủi ro trước, đừng nhìn một con số.',
+  '<b>Thiếu dữ liệu thì tool để TRỐNG, không đoán.</b> Ô trống = "chưa biết", không phải "bằng 0". Nhân viên cũng vậy: thiếu số thì nói thiếu.',
+  '<b>Nội dung listing (tiêu đề · 13 tag · mô tả) viết TIẾNG ANH</b> vì người mua ở Mỹ. Hướng dẫn nội bộ (file này) viết tiếng Việt.'
  ],
  screen:{bar:'⚖️ 5 LUẬT VÀNG — không bao giờ phá',body:'1) KHÔNG tự đăng. Người thật + Manager ký mới đăng. (PUBLISH_AUTOMATION = false)\n2) Ảnh HERO / macro mũi chỉ / số đo / sew-out phải là ẢNH THẬT. AI chỉ để mockup/đồ hoạ.\n3) Thiết kế GỐC. Không copy art/mockup/chữ/bố cục/màu của đối thủ. Ảnh mẫu chỉ để hiểu cấu trúc + hook thương mại, KHÔNG để tạo sản phẩm bán.\n4) Trung thực dữ liệu: thiếu số thì nói thiếu, KHÔNG bịa "GO".\n5) Thấy cờ CAUTION (nghi nhãn hiệu) → tự tra USPTO (tmsearch.uspto.gov) TRƯỚC khi làm.'},
- read:'Điểm thị trường KHÔNG phải quan toà. Mỗi keyword đi qua 4 lớp và Inbox hiện <b>Hành động cuối (Final Action)</b>. Nhân viên đọc Hành động cuối + rủi ro trước, không nhìn 1 con số.',
- wrong:'Thấy điểm cao hoặc thấy tên gợi ý là làm ngay; dùng ảnh AI cho hero; sao chép y hệt thiết kế đối thủ.',
- right:'Đọc Hành động cuối + kiểm nhãn hiệu + chờ ảnh thật + Manager ký. Luôn tự làm bản GỐC.',
- ck:['Đã hiểu 5 luật vàng','Biết CAUTION = phải tự tra nhãn hiệu','Biết mở 🎯 Build Queue mỗi ngày','Biết có 🎨 Design Skill Bridge']
+ read:'5 giai đoạn = <b>①Tìm &amp; lọc → ②Xếp hạng → ③Học người thắng → ④Từ khoá mới → ⑤Làm &amp; giao</b>. Bên trong là 12 bước, nhưng bạn điều hướng bằng 5 giai đoạn. Làm hết một giai đoạn rồi mới sang giai đoạn sau.',
+ wrong:'Thấy điểm cao là làm ngay; dùng ảnh AI cho hero; sao chép y hệt thiết kế đối thủ; nhảy thẳng vào Launch Kit khi chưa qua giai đoạn 2.',
+ right:'Đọc Hành động cuối + kiểm nhãn hiệu + chờ ảnh thật + Manager ký. Luôn tự làm bản GỐC. Đi đúng 5 giai đoạn.',
+ ck:['Đã hiểu 5 luật vàng','Biết CAUTION = phải tự tra nhãn hiệu','Biết bắt đầu ở thẻ “Do this next” trên trang chủ','Thuộc tên 5 giai đoạn']
 },
 {
- n:'🎯',key:'BUILD QUEUE',isnew:true,name:'BUILD QUEUE — "làm cái này tiếp theo" (mở mỗi sáng)',
- where:'Trang chủ → 🎯 Build Queue (hoặc thanh trên → 🎯 Build)',
- goal:'Có ngay danh sách ngắn, đã xếp hạng, đã kiểm nhãn hiệu — lấy thẳng từ kho keyword. Không phải cuộn 1.000 dòng; chỉ chọn cái đáng làm.',
+ n:'1',key:'TÌM & LỌC',name:'GIAI ĐOẠN 1 — 🔎 Tìm &amp; lọc (bước 1·2·3)',
+ where:'/trending · /pinterest-trends · /suppliers',
+ goal:'Gom nguồn từ khoá thô, xem tín hiệu Pinterest, và biết nhà cung cấp có làm được hay không — TRƯỚC khi tốn công.',
  actions:[
-  'Mở <b>🎯 Build Queue</b>. Dòng đầu trang cho biết kho có bao nhiêu keyword <b>proven</b> (đã chứng minh) / partial / empty, và bao nhiêu cần làm / đã xong.',
-  'Đọc bảng từ <b>Build Score cao → thấp</b>. Đây là danh sách "làm trước". Mỗi dòng có: theme (Personalized/Family/Apparel...), số listing (cạnh tranh), views 24h (cầu), giá, conversion, momentum.',
-  'Thấy cờ <span class="pill p-verify">⚠ verify TM</span> → tra nhãn hiệu (USPTO) TRƯỚC khi làm. Keyword rủi ro cao (HIGH) đã bị loại khỏi danh sách sẵn.',
-  'Chọn 1 dòng → bấm <b>🎨 Design</b> (mổ xẻ + thiết kế gốc) hoặc <b>🚀 Kit</b> (gói listing đầy đủ). Keyword được điền sẵn, không phải gõ lại.',
-  'Làm xong (hoặc đã giao) → bấm <b>✓</b> để đánh dấu; dòng chuyển xuống mục "Done" nên không ai làm trùng.',
-  'Định kỳ: mở <b>🧹 Base maintenance</b> → "Archive empty keywords" để dọn các dòng rỗng (không listing/views) ra khỏi kho (có thể khôi phục).'
+  '<b>Bước 1 — nguồn từ khoá.</b> Mở <b>/trending</b> để DUYỆT từ khoá đang lên. ⚠️ Trang này chỉ XEM, không kéo dữ liệu về. Muốn nạp thêm keyword vào kho thì chạy <b>trên máy PC</b>: <code>py main.py harvest</code> — IP của VPS bị YTrends chặn nên nút trên web không làm được việc này.',
+  '<b>Bước 2 — Pinterest.</b> Mở <b>/pinterest-trends</b>. Đây là chợ KHÁC, nên chỉ dùng để <b>củng cố niềm tin</b>: RISING / FLAT / NONE / chưa kiểm. Pinterest <b>không bao giờ</b> được quyền loại một keyword mà dữ liệu Etsy nói là tốt.',
+  '<b>Bước 3 — nhà cung cấp.</b> Mở <b>/suppliers</b>, upload CSV hoặc mở catalog để nạp sản phẩm. Đây là câu hỏi "mình có LÀM được không" — hỏi ở đây, không để đến lúc sắp đăng bán mới hỏi.',
+  'Trong Inbox mỗi dòng có nhãn 🏭: <b>makeable</b> (có nhà cung cấp làm được) · <b>check supplier</b> (chưa ai làm được, phải đi hỏi) · không nhãn (từ khoá không nói rõ sản phẩm nào).'
  ],
- screen:{bar:'🎯 Build Queue · make these next',body:'Base: 1123 keywords · 345 proven · 541 empty · 232 to build · 0 done\n\n#  Keyword / theme        Build  List  Views  Price  Conv  Mom  Action\n1  custom shirt kids       52   30    88    $21.76 4.1%  90  🎨 🚀 ✓\n   Personalized\n2  chenille name bag       50   97    157   $14.51 3.5%  88  🎨 🚀 ✓\n   Bag / accessory\n3  patriotic soft tee ⚠    48   30    33    $19.25 5.1%  88  🎨 🚀 ✓'},
- read:'<b>PROVEN vs EMPTY:</b> chỉ keyword proven (có số thật) mới lên đây — làm trên dòng rỗng = ĐOÁN MÒ. <b>Build Score (0–100)</b> = trộn cầu (views) + conversion + giá + momentum + ít cạnh tranh; cao = thắng nhanh &amp; an toàn hơn. <b>⚠ verify TM</b> = tra nhãn hiệu trước. Build Queue là <b>lối tắt</b>: khi có dòng ngon thì làm luôn, khỏi cần chạy hết ①→⑨.',
- wrong:'Cuộn cả kho 1.000 dòng để tìm việc; hoặc làm trên keyword rỗng (empty) vì "tên nghe hay".',
- right:'Mỗi sáng mở Build Queue, chọn 3–5 dòng Build Score cao, kiểm ⚠, bấm Design/Kit, xong thì ✓.',
- ck:['Hiểu proven vs empty','Đọc được Build Score','Đã tra ⚠ verify TM nếu có','Đã đưa ≥1 dòng sang Design/Kit','Đã ✓ dòng đã làm']
+ screen:{bar:'🏭 Nhãn nhà cung cấp trong /inbox',body:'Thư viện nhà cung cấp: 25 sản phẩm · độ phủ PARTIAL (thiếu)\n  → 7/8 nhà cung cấp đã đăng ký nhưng CHƯA nhập sản phẩm nào\n\nHành động cuối │ Product-fit               │ ...\n🔍 Confirm     │ Embroidery · 🏭 makeable  │ có nhà cung cấp làm TSHIRT\n🟡 Watch       │ POD · 🏭 check supplier   │ chưa ai làm loại này -> đi hỏi\n🟡 Watch       │ POD                       │ từ khoá không nói rõ sản phẩm\n\nĐộ phủ còn PARTIAL => CHỈ LÀ NHÃN, không chặn ai cả.'},
+ read:'Nhãn 🏭 <b>check supplier</b> KHÔNG có nghĩa là "không làm được". Thư viện nhà cung cấp của shop mới có 1 trong 8 nguồn được nhập sản phẩm, nên "không tìm thấy" = <b>dữ liệu của mình còn thiếu</b>, không phải sự thật về shop. Vì vậy tool chỉ gắn nhãn để bạn đi hỏi, chưa chặn. Khi nào thư viện đủ (mọi nhà cung cấp đã có sản phẩm + đã xác nhận) thì tool mới chuyển sang chặn thật.',
+ wrong:'Bấm /trending rồi ngồi chờ dữ liệu mới tự về; hoặc bỏ qua bước nhà cung cấp và chỉ phát hiện "không làm được" sau khi đã viết xong listing.',
+ right:'Harvest chạy trên PC → duyệt /trending → xem Pinterest để tham khảo → nạp/hỏi nhà cung cấp NGAY ở giai đoạn này.',
+ ck:['Đã chạy harvest trên PC (nếu cần keyword mới)','Đã xem /trending','Đã xem tín hiệu Pinterest','Đã kiểm nhà cung cấp cho sản phẩm định làm']
 },
 {
- n:'①',key:'FEED',name:'FEED — Thả dữ liệu vào đúng lane',
- where:'Trang chủ · ô kéo–thả bước ① (hoặc extension "Send to agent")',
- goal:'Nạp dữ liệu nghiên cứu vào tool và để tool tự đưa về đúng "lane" xử lý.',
- actions:[
-  'Lấy dữ liệu bằng extension <b>22Etsy Exporter</b>: <b>trends.ytuong.ai</b> (keyword) · <b>ytuong.me "Hot"</b> hoặc <b>Etsy search + overlay HeyEtsy</b> (listings) · <b>Alura/EverBee</b> (products có đơn bán).',
-  'Extension v2.6 có: <b>↓ Grab all</b> (tự cuộn lấy TỐI ĐA dòng — dùng cho Pinterest/Alibaba) · <b>CSV now</b> (lấy nhanh cái đang thấy) · <b>JSON</b> · <b>Send to agent</b> (đẩy thẳng vào dashboard). Xem "N rows detected".',
-  'Trang phân trang (Etsy/Amazon): dùng hàng <b>Multi-page batch</b> → bấm <b>+ Add page</b> ở trang 1, sang trang 2 bấm tiếp... rồi <b>Batch CSV</b> hoặc <b>Send batch</b> để gộp tất cả thành 1 file (tự khử trùng lặp). Bạn tự bấm sang trang — extension không tự phân trang.',
-  'Nếu tải file: kéo–thả 1 hoặc NHIỀU file vào ô ①, để nguồn "Tự nhận diện". Tool tự route theo CỘT: keyword→Inbox · listings→Pattern Miner · products có sales/revenue→Etsy Proof. Nhìn "Last import: N rows".'
- ],
- screen:{bar:'① CAPTURE · Drop files',body:'⬇ Kéo thả CSV/JSON vào đây (Tự nhận diện)\n\n✓ ytuong_keywords.csv    → lane: YTuong keyword → INBOX\n✓ alura_products.csv     → lane: Alura/EverBee → ETSY PROOF\n\nLast import: 320 rows · 1 phút trước'},
- read:'Inbox trống sau khi thả → file thiếu cột keyword+competition (đó là file listings). File listings đưa vào Pattern Miner; muốn xếp hạng thì cần file YTuong <b>keyword</b>.',
- wrong:'Thả file listings (title/sold) rồi mong Inbox ra ranking.',
- right:'File keyword → ranking; file listings → Pattern Miner; file Alura → Etsy Proof. Đúng lane, đúng việc.',
- ck:['Đã xuất file từ nguồn','Đã thả vào ô ①','Dòng "Last import" hiện số dòng']
-},
-{
- n:'②',key:'RANK',name:'RANK — Opportunity Inbox (đọc cho đúng)',
+ n:'2',key:'XẾP HẠNG',name:'GIAI ĐOẠN 2 — 🏆 Xếp hạng (bước 4)',
  where:'/inbox',
  goal:'Đọc <b>Hành động cuối</b> của từng keyword — và hiểu vì sao phần lớn là WATCH (đó là bình thường).',
  actions:[
-  'Đọc theo thứ tự: <b>Etsy proof → Product-fit → Hành động cuối → Market signal → Do</b>.',
-  'Ưu tiên hàng có <b>Etsy proof</b> (🏆 PROVEN / 🟢 SELLING) và hàng <span class="pill p-confirm">CONFIRM FIRST</span> để đưa qua Pattern Miner.',
-  'Hàng <span class="pill p-verify">CAUTION / verify trademark</span> → tự tra USPTO cụm nghi ngờ trước khi đi tiếp.'
+  'Đọc theo thứ tự: <b>Etsy proof → Product-fit (kèm nhãn 🏭) → Hành động cuối → Market signal → Do</b>.',
+  'Ưu tiên hàng có <b>Etsy proof</b> (🏆 PROVEN / 🟢 SELLING) và hàng <span class="pill p-confirm">CONFIRM FIRST</span> để đưa sang giai đoạn 3.',
+  'Hàng <span class="pill p-verify">CAUTION / verify trademark</span> → tự tra USPTO cụm nghi ngờ trước khi đi tiếp.',
+  'Chỉ làm <b>3–5 dòng trên cùng</b>. Phần còn lại là hàng đợi, không phải việc của hôm nay.'
  ],
- screen:{bar:'/inbox · Opportunity Inbox',body:'Etsy proof │ Product-fit │ Hành động cuối    │ Market │ Điểm M/C/O/P/F\n───────────┼────────────┼─────────────────┼────────┼──────────────\n🟢 SELLING │ Embroidery │ 🔍 Confirm first │ COND 71│ 74/75/–/–/78\n—          │ POD        │ 🟡 Watch         │ WATCH  │ 60/45/–/–/79\n—          │ Trademark  │ 🚫 BLOCKED       │ —      │ —'},
- read:'<b>Rất quan trọng cho nhân viên:</b> gần như KHÔNG có 🚀 BUILD NOW từ dữ liệu keyword — vì cột <b>O (Cơ hội)</b> và <b>P (Bán riêng)</b> thường TRỐNG. <b>Phần lớn là 🟡 WATCH — đó là ĐÚNG và trung thực</b>, không phải lỗi. Winner đến từ: (a) hàng <b>CONFIRM FIRST</b> → mở rộng ở Pattern Miner, hoặc (b) hàng có <b>Etsy Proof (đơn bán thật)</b>. O trống vì file keyword chưa có cột điểm "opportunity"; P trống vì chưa ghi đơn (bước ⑨).',
+ screen:{bar:'/inbox · Opportunity Inbox',body:'Etsy proof │ Product-fit               │ Hành động cuối    │ Market\n───────────┼───────────────────────────┼──────────────────┼───────\n🟢 SELLING │ Embroidery · 🏭 makeable  │ 🔍 Confirm first │ COND 71\n—          │ POD · 🏭 check supplier   │ 🟡 Watch         │ WATCH 60\n—          │ Trademark                 │ 🚫 BLOCKED       │ —'},
+ read:'<b>Rất quan trọng:</b> gần như KHÔNG có 🚀 BUILD NOW từ dữ liệu keyword — vì cột <b>O (Cơ hội)</b> và <b>P (Bán riêng)</b> thường TRỐNG. <b>Phần lớn là 🟡 WATCH — đó là ĐÚNG và trung thực</b>, không phải lỗi. Winner đến từ: (a) hàng <b>CONFIRM FIRST</b> → mổ ở giai đoạn 3, hoặc (b) hàng có <b>Etsy Proof (đơn bán thật)</b>. P trống cho tới khi bạn ghi đơn ở giai đoạn 5.',
  wrong:'Hoảng vì thấy nhiều WATCH; hoặc thấy Market cao là build ngay; hoặc bỏ qua cờ CAUTION.',
  right:'Chọn hàng CONFIRM FIRST hoặc có Etsy Proof để đi tiếp. WATCH = theo dõi/bổ sung dữ liệu. CAUTION = tra nhãn hiệu trước.',
- ck:['Đọc đúng cột Hành động cuối','Hiểu vì sao nhiều WATCH là bình thường','Đã tra nhãn hiệu cho hàng CAUTION']
+ ck:['Đọc đúng cột Hành động cuối','Hiểu vì sao nhiều WATCH là bình thường','Đã tra nhãn hiệu cho hàng CAUTION','Đã chọn 3–5 dòng để làm']
 },
 {
- n:'③',key:'PATTERN',name:'PATTERN MINER — mổ winner để biết VÌ SAO thắng',
- where:'lane Etsy Spy / trang Pattern Miner',
- goal:'Mổ 5–10 listing đang thắng của 1 keyword → rút mẫu → ra seed keyword cho bước ④.',
+ n:'3',key:'HỌC WINNER',name:'GIAI ĐOẠN 3 — 🔬 Học người thắng (bước 5·6·7·8)',
+ where:'/imports → /pattern-miner',
+ goal:'Mổ những listing ĐANG THẮNG của keyword đã chọn → rút ra công thức lặp lại được.',
  actions:[
-  'Lấy top listing: ytuong.me "Hot" hoặc Etsy search + overlay HeyEtsy (để có đủ sold/revenue/tags) → CSV hoặc Send to agent.',
-  'Đọc output: từ khoá tiêu đề hay lặp · <b>từ trong 40 ký tự đầu</b> · cấu trúc title · khoảng giá · % cá nhân hoá/gift/video · khe hở.',
-  'Ghi lại <b>seed keyword</b> + ít nhất 1 khe hở khai thác được.'
+  '<b>Bước 5 —</b> mở <b>/pattern-miner</b> trên keyword vừa chọn: xem vì sao các listing hiện tại đang lên top.',
+  '<b>Bước 6 — nhập BẰNG CHỨNG.</b> Dùng extension Evidence Exporter xuất <b>HeyEtsy Detail</b> <u>VÀ</u> <b>Etsy Reviews</b>, rồi nhập ở <b>/imports</b>. ⚠️ Phải nhập <b>CẢ HAI</b>.',
+  '<b>Bước 7 —</b> mở thẳng các listing top từ thẻ bằng chứng. Nhìn hàng thật, đừng chỉ đọc số.',
+  '<b>Bước 8 —</b> quay lại <b>/pattern-miner</b> đọc công thức: tiêu đề · 40 ký tự đầu · tag · giá · ảnh · cá nhân hoá · <b>giọng người mua lấy từ review</b>.'
  ],
- screen:{bar:'Pattern Miner · top 10',body:'Top title keywords : nurse · graduation · personalized · RN · gift\nFirst-40 pattern   : [Personalized Nurse Gift] ...\nPrice band         : $34 – $49\n%Personalization 78% · %Video 22% · Star sellers 40%\nKhe hở             : ít listing có VIDEO · ít ai theo CHUYÊN KHOA'},
- read:'"Từ trong 40 ký tự đầu" = từ khoá BẮT BUỘC đưa lên đầu title. Chỉ số % thấp (video 22%) = khe hở dễ thắng.',
- wrong:'Copy y nguyên title/art/mockup của đối thủ.',
- right:'Học CẤU TRÚC + khe hở rồi tự viết mới. Không dùng art/mockup đối thủ để sản xuất.',
- ck:['Có seed keyword','Biết price band','Ghi ≥1 khe hở']
+ screen:{bar:'/imports · trạng thái bằng chứng',body:'71 winner đã nhập · 0 có review        ← ĐANG SAI Ở ĐÂY\n\nDetail  = số (views · sold · favorites · tuổi listing)\nReviews = CHỮ (ai mua, mua tặng dịp gì, họ khen cái gì)\n\nThiếu Reviews thì bước 8 và bước 9 mất phần ngôn ngữ người mua\n-> từ khoá mới sinh ra sẽ nghèo hẳn. Export Reviews rẻ hơn Detail.'},
+ read:'Đội đang làm <b>nửa đắt tiền và bỏ nửa rẻ tiền</b>: xuất Detail (số) nhưng bỏ Reviews (chữ). Review chính là nguồn của <b>người nhận / dịp tặng / cách gọi sản phẩm</b> — tức là phần lớn từ khoá mới ở giai đoạn 4. Không có review thì giai đoạn 4 chỉ còn đoán.',
+ wrong:'Chỉ xuất HeyEtsy Detail rồi bỏ qua Etsy Reviews; hoặc copy y nguyên title/art/mockup của đối thủ.',
+ right:'Xuất CẢ Detail và Reviews cho cùng một listing. Học CẤU TRÚC + khe hở rồi tự viết mới.',
+ ck:['Đã nhập HeyEtsy Detail','Đã nhập Etsy Reviews (cùng listing)','Đã mở listing thật để xem','Ghi được công thức + ≥1 khe hở']
 },
 {
- n:'④',key:'LAB',name:'KEYWORD LAB — sinh keyword mới từ mẫu thắng',
- where:'Keyword Lab',
- goal:'Từ seed, sinh keyword mới theo người mua lân cận + biến thể — không đoán bừa.',
+ n:'4',key:'TỪ KHOÁ MỚI',name:'GIAI ĐOẠN 4 — 💡 Từ khoá mới (bước 9·10)',
+ where:'/imports',
+ goal:'Biến winner vừa mổ thành từ khoá mới, rồi đẩy ngược vào Inbox để xếp hạng lại — <b>một nút bấm</b>, không gõ tay.',
  actions:[
-  'Nhập seed vào Keyword Lab. Tool sinh keyword theo chuyên khoa/dịp/biến thể sản phẩm.',
-  'Tick các keyword muốn giữ trong <b>checklist</b>, rồi bấm <b>MỘT nút</b> "➕ Add SELECTED to Inbox &amp; re-rank" — cả lô (tối đa 20) được lưu vào keyword_data.csv + re-rank một lần. KHÔNG bấm từng cái.'
+  '<b>Bước 9 —</b> ở <b>/imports</b>, tool đã tự sinh <b>candidate</b> từ tiêu đề, tag thật và ngôn ngữ review của winner. Chỉ cần xem lại.',
+  '<b>Bước 10 —</b> tick các candidate muốn giữ rồi bấm <b>“Send to Re-rank”</b> ngay tại <b>/imports</b>. Chúng được lưu vào kho với dấu nguồn <code>winner:&lt;mã listing&gt;</code> và xếp hạng lại tự động.',
+  '⚠️ Trang <b>/rerank</b> chỉ để XEM lại thứ đã gửi — nó KHÔNG gửi gì cả. Nút gửi nằm ở /imports (và /pattern-miner).',
+  'Xem dòng trạng thái ở /imports: nếu còn hàng trăm candidate “waiting to be sent” thì vòng lặp đang bị bỏ không — gửi chúng đi.'
  ],
- screen:{bar:'Keyword Lab · seed: "nurse graduation"',body:'☑ NICU nurse graduation gift\n☑ ER nurse graduation gift\n☑ new grad nurse sweatshirt\n☐ ...\n[ ➕ Add SELECTED to Inbox & re-rank ]  ← bấm 1 lần cho cả lô (≤20)'},
- read:'Ưu tiên keyword HẸP hơn (theo chuyên khoa): cạnh tranh thấp, buyer rõ, dễ cá nhân hoá sâu. 1 nút cho cả danh sách — không bấm 20 lần.',
- wrong:'Nghĩ keyword trong đầu rồi build luôn; hoặc bấm "Score" từng cái.',
- right:'Sinh keyword từ mẫu ĐANG THẮNG, tick, add 1 lần — để dữ liệu dẫn đường.',
- ck:['Có ≥5 keyword mới','Đã tick + Add SELECTED 1 lần']
+ screen:{bar:'/imports · vòng lặp winner → Inbox',body:'Candidate sinh từ winner  : 810 đang chờ gửi (từ 136 winner)\n\n[ ✓ ] nicu nurse graduation gift\n[ ✓ ] new grad nurse sweatshirt\n[   ] ...\n[ Send to Re-rank ]   ← MỘT nút cho cả lô, không gõ lại từ khoá\n\n→ vào kho với nguồn winner:1234567890 → xếp hạng lại → quay về /inbox'},
+ read:'Đây là chỗ từ khoá TỐT thật sự sinh ra: chúng bắt nguồn từ một listing ĐÃ BÁN ĐƯỢC, không phải từ suy đoán. Candidate luôn bị giới hạn tối đa ở <span class="pill p-confirm">CONFIRM FIRST</span> — bằng chứng của một listing là bằng chứng về đối thủ, chưa phải bằng chứng về thị trường.',
+ wrong:'Vào /rerank rồi tưởng là đã gửi; hoặc gõ lại từ khoá bằng tay; hoặc để candidate nằm chờ hàng tháng.',
+ right:'Tick candidate ở /imports → Send to Re-rank → quay về /inbox xem hạng mới.',
+ ck:['Đã xem candidate sinh từ winner','Đã bấm Send to Re-rank','Đã thấy từ khoá mới trong /inbox','Không còn lô candidate bỏ quên']
 },
 {
- n:'⑤',key:'RERANK',name:'RE-RANK — keyword mới quay lại Inbox',
- where:'/inbox (sau khi Add)',
- goal:'Đưa keyword mới đi lại engine đa lớp → chọn winner cuối cùng để build.',
+ n:'5',key:'LÀM & GIAO',name:'GIAI ĐOẠN 5 — 🚀 Làm &amp; giao (bước 11·12)',
+ where:'/launch-kit → /team/ops → /feedback',
+ goal:'Biến 1 winner thành gói listing đầy đủ, giao cho người thật, rồi đo Ngày 3 / Ngày 7. Vẫn là NHÁP cho tới khi đủ điều kiện.',
  actions:[
-  'Keyword mới xuất hiện trong Inbox với Hành động cuối riêng.',
-  'So sánh: ưu tiên keyword HẸP + (lý tưởng) có Etsy Proof.',
-  'Chốt 1 winner để đưa vào Launch Kit.'
+  '<b>Bước 11 — Launch Kit.</b> Mở <b>/launch-kit</b>: verdict, tiêu đề (keyword trong 40 ký tự đầu), <b>13 tag</b> (≤20 ký tự), mô tả, cá nhân hoá, P&amp;L. <b>Nội dung listing viết TIẾNG ANH.</b>',
+  'Kiểm <b>4 cổng</b>: Can-we-win · Launch-ready · First-image · Offer-strength. Hàng thêu xem thêm producibility (STITCH_SAFE / OK / RISK).',
+  '<b>Ảnh:</b> slot đồ hoạ (size chart, infographic) dùng prompt AI được; slot 📸 <b>hero · macro mũi chỉ · số đo · sew-out</b> BẮT BUỘC ảnh thật + 1 video 15–25s.',
+  '<b>(Tuỳ chọn) 🎨 Design Skill Bridge:</b> tạo Skill Pack → chạy ChatGPT Skill → dán RESULT_JSON về → validate → <b>owner duyệt</b> → gửi listing_seeds sang Launch Kit. Skill KHÔNG tạo listing cuối.',
+  '<b>Bước 12 — giao việc.</b> Ở <b>/team/ops</b> giao từng việc cho người cụ thể. Việc không có người nhận = việc không tồn tại.',
+  '<b>Bước 12 — học.</b> Bán được thì ghi ngay ở <b>/feedback</b>: keyword · tag · mode · giá · số đơn. Đọc gợi ý KEEP / FIX / KILL / SCALE theo Ngày 3 &amp; Ngày 7.'
  ],
- screen:{bar:'/inbox · sau re-rank',body:'nurse graduation gift (rộng)   │ 🔍 Confirm  │ COND 76\nNICU nurse graduation gift     │ 🔍 Confirm  │ COND 78  ← hẹp hơn, ưu tiên\nER nurse graduation gift       │ 🟡 Watch    │ WATCH 61'},
- read:'Keyword HẸP thường thắng keyword rộng khi cạnh tranh thấp + buyer rõ. Nếu chưa lên BUILD_NOW: đó là bình thường — đưa winner qua Launch Kit ở dạng nháp và bổ sung bằng chứng.',
- wrong:'Giữ keyword rộng chỉ vì "nhiều search".',
- right:'Chọn keyword hẹp WINNABLE.',
- ck:['Đã so sánh Hành động cuối','Đã chốt 1 winner']
-},
-{
- n:'⑥',key:'BUILD',name:'BUILD — Launch Kit (1 winner → 1 trang)',
- where:'/launch-kit',
- goal:'Biến winner thành gói listing đầy đủ + đọc 4 cổng quyết định. Vẫn là NHÁP cho tới khi đủ điều kiện.',
- actions:[
-  'Mở Launch Kit. Đọc verdict + winner score (kèm cảnh báo trademark/SKIP nếu có).',
-  'Lấy Listing draft: title (keyword trong 40 ký tự đầu) · 13 tag (≤20 ký tự) · mô tả · cá nhân hoá · P&L.',
-  'Kiểm 4 cổng: Can-we-win · Launch-ready · First-image · Offer-strength. Hàng thêu: xem điểm producibility (STITCH_SAFE/OK/RISK).',
-  'Nếu winner là CAUTION (nghi nhãn hiệu): Launch Kit vẫn cho nháp NHƯNG hành động là 🔍 CONFIRM FIRST + ghi "verify trademark first" → tra USPTO xong mới làm tiếp.'
- ],
- screen:{bar:'/launch-kit · NICU nurse graduation gift',body:'Verdict: 🔍 CONFIRM · Winner score 78 · Trademark: clean\nTITLE: Personalized NICU Nurse Graduation Gift, Custom RN Embroidered Sweatshirt for Her\n13 TAGS: nicu nurse gift · nurse grad gift · ... (≤20 ký tự/tag)\nProducibility: STITCH_SAFE (monogram/tên thêu sạch)\n4 cổng: Can-we-win 80 · Launch-ready 85 · First-image 80* · Offer 82\n(*First-image chờ ẢNH THẬT)'},
- read:'4 cổng đạt (≥70) <b>VÀ</b> Manager ký <b>VÀ</b> có ảnh thật thì mới PUBLISH_READY. Trước đó nút chỉ hiện "Save Draft". CAUTION → tra nhãn hiệu trước khi làm tiếp.',
- wrong:'Thấy title đẹp là đăng ngay; bỏ qua cờ verify trademark.',
- right:'Chưa đủ 4 cổng / chưa ảnh thật / chưa Manager ký / chưa tra nhãn hiệu → GIỮ DRAFT.',
- ck:['Có title/13 tag/mô tả/cá nhân hoá','P&L ≥ 35%','Đã đọc 4 cổng','Đã tra nhãn hiệu nếu CAUTION'],
+ screen:{bar:'/launch-kit → /team/ops → /feedback',body:'Verdict: 🔍 CONFIRM · Winner score 78 · Trademark: clean\nTITLE: Personalized NICU Nurse Graduation Gift, Custom RN Embroidered Sweatshirt\n13 TAGS: nicu nurse gift · nurse grad gift · ... (≤20 ký tự/tag)\n4 cổng: Can-we-win 80 · Launch-ready 85 · First-image 80* · Offer 82\n(*First-image chờ ẢNH THẬT)\n\n→ /team/ops : Design=Lan · Photo=Huy · Upload=Trang (có deadline)\n→ /feedback : ghi đơn -> điểm P tăng -> vòng research sau tự chuẩn hơn'},
+ read:'4 cổng đạt (≥70) <b>VÀ</b> Manager ký <b>VÀ</b> có ảnh thật thì mới PUBLISH_READY; trước đó chỉ có "Save Draft". Và nhớ: <b>không ghi feedback = tool “mù”</b> — cột P mãi trống, mọi thứ mãi ở WATCH. Ghi đơn là cách DUY NHẤT để winner nổi lên.',
+ wrong:'Thấy title đẹp là đăng ngay; dùng ảnh AI cho hero; giao việc miệng không ai nhận; bán xong không ghi gì.',
+ right:'Chưa đủ 4 cổng / chưa ảnh thật / chưa Manager ký → GIỮ DRAFT. Giao việc có tên + deadline. Ghi MỌI đơn.',
+ ck:['Có title/13 tag/mô tả/cá nhân hoá (tiếng Anh)','P&L ≥ 35%','Đã đọc 4 cổng','Ảnh hero/macro/số đo là ảnh THẬT','Mọi việc đã có người nhận ở /team/ops','Đã ghi đơn ở /feedback'],
  gate:true
 },
 {
- n:'🎨',key:'DESIGN',isnew:true,name:'DESIGN SKILL BRIDGE — ảnh mẫu → chạy ChatGPT Skill → import RESULT_JSON',
- where:'Trang chủ → 🎨 Design Skill Bridge (thanh trên → 🎨 Design)',
- goal:'Từ 1 ảnh + evidence, 22etsy tạo <b>Skill Pack</b> để chạy <b>Etsy POD Redesign V8.1</b> trong ChatGPT. Skill chọn 1 hướng thiết kế GỐC an toàn, trả <b>RESULT_JSON</b>; 22etsy validate + owner duyệt + đưa <b>listing_seeds</b> sang Launch Kit. KHÔNG gọi API — chạy thủ công.',
+ n:'🧰',key:'HỖ TRỢ',name:'Công cụ hỗ trợ — KHÔNG phải bước quy trình',
+ where:'Trang chủ → “Advanced &amp; support routes”',
+ goal:'Biết những công cụ này tồn tại, và biết chúng KHÔNG thay thế 5 giai đoạn.',
  actions:[
-  '<b>Tạo Skill Pack:</b> điền keyword, target product, mode, placement, personalization; dán Etsy URL + HeyEtsy evidence nếu có. Bấm <b>Create Skill Pack</b>.',
-  '<b>Mở ChatGPT Skill</b> (nút Open ChatGPT Skill ↗). Trong GPT chat: upload ảnh + evidence, dán prompt đã copy, chạy Skill.',
-  '<b>Copy RESULT_JSON</b> ở cuối câu trả lời của GPT → quay lại 22etsy, dán vào ô <b>Import &amp; validate</b>.',
-  'Nếu validate PASS → nhân viên báo <b>Owner/Manager duyệt</b>. RED IP = bỏ; YELLOW IP = confirm trước.',
-  'Sau khi duyệt → bấm <b>Send listing_seeds to Launch Kit</b>. Launch Kit mới tạo title/13 tag/mô tả cuối.'
+  '<b>🎯 Build Queue</b> — lối tắt: các keyword đã có số thật, xếp sẵn theo Build Score. Dùng khi cần việc ngay, nhưng nó KHÔNG thay bản đồ 5 giai đoạn.',
+  '<b>💡 Keyword Lab</b> — sinh biến thể từ 1 seed. Ghi chú: candidate ở đây chưa có doanh thu/lượt xem nên thường bị giới hạn ở WATCH; từ khoá mạnh hơn đến từ giai đoạn 4 (sinh từ winner thật).',
+  '<b>🏆 Winner Finder · 💎 Opportunities · 💠 Hidden gems · 🆕 Newest</b> — các cách xem khác nhau trên cùng bảng xếp hạng.',
+  '<b>🕵️ Etsy Spy · 🥊 Beat competitors · 📋 Listing Analyzer · 📣 Ads plan</b> — công cụ chuyên dụng, mở khi cần.',
+  '<b>📖 <a href="/workflow">/workflow</a></b> — bản đầy đủ 5 giai đoạn / 12 bước. Khi tài liệu nào đó khác với nó, tin /workflow.'
  ],
- screen:{bar:'🎨 Design Skill Bridge · flow',body:'22etsy tạo Skill Pack (prompt + brief)\n → mở ChatGPT Skill (V8.1): upload ảnh/evidence + dán prompt\n → GPT trả RESULT_JSON (selected_concept + listing_seeds + IP)\n → dán RESULT_JSON về 22etsy → VALIDATE\n     ✓ đúng bridge_run_id · IP không RED · không có claim máy (DST/PES) trước CÓ ĐƠN\n → trạng thái CANDIDATE (🔒 DRAFT ONLY — DO NOT PUBLISH)\n → OWNER DUYỆT → gửi listing_seeds sang Launch Kit'},
- read:'Skill chỉ trả <b>listing_seeds</b> (target product, buyer, main keyword, vocabulary, personalization, ràng buộc sản xuất) — <b>KHÔNG</b> phải listing cuối. <b>Launch Kit</b> mới tạo title/tag/mô tả và chạy các cổng. Kết quả import là <b>CANDIDATE</b> cho tới khi owner duyệt; mọi bản xem trước ghi <b>DRAFT ONLY — DO NOT PUBLISH</b>. Ảnh mẫu chỉ để hiểu cấu trúc + hook; giữ lại motivation trừu tượng, KHÔNG giữ chữ/typography/bố cục/màu của đối thủ.',
- wrong:'Coi RESULT_JSON là listing sẵn để đăng; bỏ qua bước owner duyệt; dùng ảnh mẫu để tạo lại y hệt rồi bán → VI PHẠM BẢN QUYỀN.',
- right:'Chạy Skill → import → validate → owner duyệt → listing_seeds sang Launch Kit. Bản GỐC, không sao chép. RED IP → bỏ.',
- ck:['Đã tạo Skill Pack + copy prompt','Đã chạy ChatGPT Skill + copy RESULT_JSON','Đã import + validate PASS','Owner đã duyệt (không tự đăng)','Đã gửi listing_seeds sang Launch Kit']
-},
-{
- n:'⑦',key:'PHOTO',name:'PHOTO STUDIO — ảnh thật cho slot bắt buộc',
- where:'Photo Studio (12 slot ảnh)',
- goal:'Bộ ảnh vừa bán được vừa đúng chính sách; ảnh 1 quyết định CTR.',
- actions:[
-  'Slot đồ hoạ (size chart, color chart, infographic): dùng prompt AI có sẵn.',
-  'Slot 📸 REAL PHOTO — hero, macro mũi chỉ, số đo, sew-out — PHẢI chụp thật.',
-  'Ảnh 1 (hero): 4:3 / 5:4, contrast cao, text đọc được ở thumbnail; thêm 1 video 15–25s.'
- ],
- screen:{bar:'Photo Studio · 12 slots',body:'1 Hero          📸 REAL\n2 Macro mũi chỉ 📸 REAL\n3 Số đo/size    📸 REAL\n4 Sew-out proof 📸 REAL\n5 Lifestyle/mockup 🤖 AI-ok\n6 Size chart     🤖 AI-ok\n...\n12 Video 15–25s 📸 REAL'},
- read:'Sản phẩm personalized/embroidery → ảnh 1 phải thể hiện thành phẩm THẬT khách sẽ nhận. KHÔNG dùng blank/placeholder/AI cho hero.',
- wrong:'Dùng ảnh AI đẹp cho hero + macro mũi chỉ.',
- right:'AI chỉ cho mockup/đồ hoạ. Hero, macro, số đo, sew-out = ảnh thật. Quy tắc vàng, không du di.',
- ck:['Hero thật (4:3/5:4)','Macro mũi chỉ thật','Size chart','≥1 video']
-},
-{
- n:'⑧',key:'ADS',name:'ADS TEST — kế hoạch tay, đọc theo Day 3/7/14',
- where:'Etsy Ads (thủ công) · plan từ Launch Kit',
- goal:'Gom click cho listing đã có nền, đo ROAS/ACOS, quyết mở rộng hay tắt.',
- actions:[
-  'Lấy breakeven ACOS mà Launch Kit tính sẵn từ phí thật.',
-  'Bật Etsy Ads $1–3/ngày (ưu tiên listing đã có tín hiệu organic).',
-  'Đọc &amp; quyết theo mốc Day 3 / 7 / 14.'
- ],
- screen:{bar:'Ads plan · read/kill rules',body:'Breakeven ACOS (từ P&L thật): ~34%   ← ACOS phải DƯỚI mức này\nNgân sách test: $2/ngày × 14 ngày\nDay 3 : ĐỌC (chưa quyết)\nDay 7 : ROAS ≥3 → tăng · 1.5–3 → tinh chỉnh · <1 → TẮT\nDay 14: có lợi nhuận + đủ năng lực → SCALE'},
- read:'Chỉ scale khi có LỢI NHUẬN thật + đủ năng lực vận hành. ACOS trên breakeven = đang lỗ → sửa hoặc tắt.',
- wrong:'Đổ tiền ads vào listing 0 nền, ngân sách lớn, tắt sau 1 ngày.',
- right:'Ads đẩy listing đã có tín hiệu; ngân sách nhỏ; đọc theo Day 3/7/14; so ACOS với breakeven.',
- ck:['Biết breakeven ACOS','Ngân sách test nhỏ','Có lịch đọc Day 3/7/14']
-},
-{
- n:'⑨',key:'LEARN',name:'LEARN — ghi đơn để tool tự lên hạng vòng sau',
- where:'/feedback (Launch Kit có link điền sẵn)',
- goal:'Biến đơn bán thật thành điểm P (Private) → niche &amp; tag tự lên hạng lần sau. Đây là cách DUY NHẤT để winner nổi lên khỏi đống WATCH.',
- actions:[
-  'Bán được → ghi ngay: keyword · tag · mode · giá · số đơn (dùng link điền sẵn trong Launch Kit).',
-  'Đọc gợi ý KEEP / FIX / KILL / SCALE theo Ngày 3 &amp; Ngày 7.',
-  'Winner thắng → nhân bản 10–20 biến thể (chuyên khoa/dịp/màu) từ concept đó.'
- ],
- screen:{bar:'/feedback · vòng học',body:'Ghi đơn: "NICU nurse graduation gift" · embroidery · $44.99 · 6 đơn\n→ Điểm P (Private) tăng · niche "nurse grad" +điểm · tag +điểm\n→ Lần sau keyword họ nurse tự lên hạng (hiện ✔6)\nGợi ý: Day 3 KEEP · Day 7 SCALE'},
- read:'Nhớ: cột <b>P</b> trong Inbox trống cho tới khi bắt đầu ghi đơn. <b>Không ghi feedback = tool "mù"</b>, mọi thứ mãi ở WATCH. Đo LỢI NHUẬN thật, không đo doanh thu. Kill sớm cái chết, dồn lực nhân bản cái thắng.',
- wrong:'Bán xong không ghi gì → vòng sau tool vẫn mù.',
- right:'Ghi MỌI đơn → điểm niche/tag tự cải thiện → research nhanh &amp; chuẩn hơn.',
- ck:['Đã log đơn (keyword/tag/giá/đơn)','Đọc gợi ý Keep/Fix/Kill/Scale','Winner → kế hoạch nhân bản']
+ screen:{bar:'Vì sao tách riêng',body:'Dashboard có hơn 100 đường dẫn.\nChỉ 12 trong số đó là BƯỚC quy trình.\n\nTrước đây trang chủ bày tất cả ngang nhau -> nhân viên đi theo trí nhớ,\nvà mỗi trang lại vẽ một quy trình khác nhau.\n\nNay: 5 giai đoạn là bản đồ. Mọi thứ khác nằm sau mục "support routes".'},
+ read:'Thêm một trang mới KHÔNG có nghĩa là thêm một bước. Nếu bạn thấy một công cụ hay, nó vẫn nằm trong giai đoạn nào đó của 5 giai đoạn — hoặc nó là công cụ hỗ trợ.',
+ wrong:'Bắt đầu ngày làm việc bằng một công cụ hỗ trợ rồi bỏ qua giai đoạn 1–4.',
+ right:'Đi theo 5 giai đoạn; mở công cụ hỗ trợ khi giai đoạn đó cần.',
+ ck:['Biết đâu là bước, đâu là công cụ hỗ trợ','Biết /workflow là bản gốc']
 }
 ];
 

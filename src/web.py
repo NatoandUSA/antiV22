@@ -847,9 +847,8 @@ def build_app(password, secret):
             '<span>SEO / Trust / Image scores + publish gate</span></a>'
             f'<a class="toolcard" href="/ads-plan?mode={active}"><b>📣 Etsy Ads plan</b>'
             '<span>Manual starter: budget, breakeven ACOS, tag coverage, kill rules</span></a>'
-            '<a class="toolcard" href="/training"><b>📚 Hướng dẫn từng công cụ</b>'
-            '<span>Cách dùng từng tool (Tiếng Việt). Quy trình chính thức: '
-            '<b>/workflow</b></span></a>'
+            '<a class="toolcard" href="/training"><b>📚 Hướng dẫn nhân viên</b>'
+            '<span>5 giai đoạn / 12 bước — dạy nhân viên (Tiếng Việt)</span></a>'
             '</div>'
             # --- ADVANCED: everything else — research library, team surfaces,
             # analytics — one click away so the home stays calm. ---

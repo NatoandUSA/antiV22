@@ -72,6 +72,33 @@ def test_pages_render(client, route):
     assert client.get(route).status_code == 200
 
 
+def test_every_step_route_shows_the_one_workflow_model(client):
+    """V37.11 rebuilt the strip from workflow_spine.PHASES but only on pages that
+    already had one: /trending, /pinterest-trends and /suppliers — the whole of
+    phase 1, i.e. the first thing a new staff member clicks — had no strip at
+    all, so the phase card landed them on a page with no map.
+
+    /team/ops is exempt: it is a full-page sub-app with its own sidebar and its
+    own way back to the Command Center.
+
+    NB unescape first — _h_esc turns the & in 'Find & filter' into '&amp;'.
+    """
+    import html as _html
+
+    from src import workflow_spine as ws
+    checked = set()
+    for step in ws.STEPS:
+        for route in (step["route"], step["action"][1]):
+            if route in checked or route.startswith("/team/ops"):
+                continue
+            checked.add(route)
+            body = _html.unescape(client.get(route).get_data(as_text=True))
+            for ph in ws.PHASES:
+                assert f"{ph['p']} {ph['icon']} {ph['en']}<" in body, \
+                    f"{route} (step {step['n']}) is missing phase {ph['p']} in its strip"
+    assert len(checked) >= 8
+
+
 def test_longtail_lane_renders_and_is_linked(client):
     """The lane is a view over the frozen engine — it must render offline and be
     reachable from the top bar (it's a daily-use page, not a hidden route)."""
