@@ -378,42 +378,55 @@ def build_app(password, secret):
             'color:var(--ink-faint);font-family:var(--mono)}'
             '.wsrail-h span{font-size:.78rem;color:var(--ink-faint)}'
             '.wsrail-h a{margin-left:auto;font-size:.78rem;color:var(--accent);font-weight:700}'
-            '.phgrid{display:grid;grid-template-columns:repeat(5,1fr);gap:9px;margin-bottom:20px}'
-            '.phc{display:flex;flex-direction:column;gap:5px;padding:13px 14px 12px;'
-            'border:1px solid var(--line);border-top:3px solid var(--line-strong);'
-            'border-radius:13px;background:var(--surface);text-decoration:none;'
-            'transition:border-color .12s,transform .12s,box-shadow .12s;min-width:0}'
-            '.phc:hover{border-color:var(--accent);transform:translateY(-2px);'
-            'box-shadow:0 8px 20px -14px rgba(0,0,0,.5)}'
-            '.phc.ready{border-top-color:var(--ok)}'
-            '.phc.todo{border-top-color:#B45309}'
-            '.phc.unknown{border-top-color:var(--line-strong)}'
+            # A slim keyword bar INSIDE the "do this next" card, so home has one
+            # instruction instead of three competing ones.
+            '.now-kw{display:flex;gap:8px;margin:14px 0 0;flex-wrap:wrap}'
+            '.now-kw input{flex:1;min-width:220px;font-size:13px;padding:9px 12px;'
+            'border:1px solid var(--line);border-radius:9px;background:var(--paper);'
+            'color:var(--ink)}'
+            '.now-kw button{font-size:12.5px;font-weight:700;padding:9px 15px;'
+            'border:1px solid var(--accent);border-radius:9px;background:transparent;'
+            'color:var(--accent);cursor:pointer;white-space:nowrap}'
+            '.now-kw button:hover{background:var(--accent);color:var(--paper)}'
+            # Five full-width ROWS, not a 5-column grid: the cards now carry
+            # named tool links and a status line, which a 1/5-width column
+            # cannot hold without truncating everything to uselessness.
+            '.phgrid{display:flex;flex-direction:column;gap:7px;margin-bottom:20px}'
+            '.phc{border:1px solid var(--line);border-left:3px solid var(--line-strong);'
+            'border-radius:11px;background:var(--surface);overflow:hidden;'
+            'transition:border-color .12s}'
+            '.phc:hover{border-color:var(--accent)}'
+            '.phc.ready{border-left-color:var(--ok)}'
+            '.phc.todo{border-left-color:#B45309}'
+            '.phc.unknown{border-left-color:var(--line-strong)}'
             '.phc.here{border-color:var(--accent);background:var(--accent-bg)}'
-            '.phc-top{display:flex;align-items:center;gap:6px}'
-            '.phc-i{font-size:15px;line-height:1}'
-            '.phc-n{font-family:var(--mono);font-size:9.5px;font-weight:700;'
-            'letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint)}'
-            '.phc.here .phc-n{color:var(--accent)}'
-            '.phc-c{margin-left:auto;font-family:var(--mono);font-size:10px;'
-            'font-weight:700;color:var(--ink-faint);font-variant-numeric:tabular-nums}'
+            '.phc-main{display:flex;align-items:center;gap:11px;padding:11px 14px 9px;'
+            'text-decoration:none;color:inherit}'
+            '.phc-i{font-size:19px;line-height:1;flex:none}'
+            '.phc-body{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}'
             '.phc-t{font-size:14px;font-weight:800;letter-spacing:-.01em;'
-            'color:var(--ink);line-height:1.2}'
-            '.phc-w{font-size:11px;color:var(--ink-soft);line-height:1.38}'
-            '.phc-chips{display:flex;flex-wrap:wrap;gap:3px;margin-top:3px}'
-            '.phchip{font-size:9.5px;line-height:1.5;padding:1px 6px;border-radius:20px;'
-            'background:var(--paper);color:var(--ink-faint);border:1px solid var(--line);'
-            'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}'
-            '.phchip.ready{border-color:var(--ok);color:var(--ok)}'
-            '.phchip.todo{border-color:#B45309;color:#B45309}'
+            'color:var(--ink);line-height:1.25}'
+            '.phc-w{font-size:11.5px;color:var(--ink-soft);line-height:1.35}'
+            '.phc-c{flex:none;font-family:var(--mono);font-size:11px;font-weight:700;'
+            'color:var(--ink-faint);font-variant-numeric:tabular-nums;text-align:right}'
+            '.phc-c em{display:block;font-style:normal;font-size:9px;letter-spacing:.09em;'
+            'text-transform:uppercase;color:var(--accent);margin-top:2px}'
+            '.phc-tools{display:flex;flex-wrap:wrap;align-items:center;gap:6px;'
+            'padding:0 14px 11px 44px}'
+            '.phc-sub{font-size:10.5px;color:var(--ink-faint);margin-right:4px;'
+            'white-space:nowrap}'
+            '.phtool{font-size:11.5px;font-weight:700;padding:3px 10px;border-radius:20px;'
+            'border:1px solid var(--line);background:var(--paper);color:var(--accent);'
+            'text-decoration:none;white-space:nowrap}'
+            '.phtool:hover{border-color:var(--accent);background:var(--accent-bg)}'
             '.supwrap{margin:0 0 20px}'
             '.supwrap summary{cursor:pointer;font-size:.8rem;font-weight:700;'
             'color:var(--ink-soft)}'
             '.supg{margin:8px 0;font-size:11.5px}'
             '.supg b{display:block;color:var(--ink-soft);margin-bottom:2px}'
             '.supg a{color:var(--accent);margin-right:9px;white-space:nowrap}'
-            '@media(max-width:980px){.phgrid{grid-template-columns:repeat(3,1fr)}}'
-            '@media(max-width:620px){.phgrid{grid-template-columns:repeat(2,1fr)}'
-            '.now-h{font-size:1.2rem}.phc-w{display:none}}'
+            '@media(max-width:620px){.now-h{font-size:1.2rem}'
+            '.phc-w{display:none}.phc-tools{padding-left:14px}}'
             # (Six orphaned declaration blocks used to sit here - the bodies of
             # the deleted 9-step rail's rules, with their selectors removed.
             # CSS error recovery swallows everything up to the next "{", so the
@@ -531,22 +544,27 @@ def build_app(password, secret):
                 f'{_wtxt} · <a href="/status">full status →</a></div>')
         except Exception:  # noqa: BLE001
             pass
+        # This used to render "▶ Start here" / "▶ Import ready" as a second
+        # instruction, sitting under the "Do this next" card that already told
+        # staff what to do — two answers to the same question, disagreeing.
+        # The import block is now a disclosure, so the line inside it states
+        # what the data says without claiming to be the starting point.
         if _has_imp:
-            _nt, _nx, _nh, _nl = ("Import ready",
-                "You have fresh imports — open the Opportunity Inbox: every file "
-                "deduped into ONE list ranked by real Etsy sales.",
+            _nx, _nh, _nl = (
+                "Fresh imports are loaded — the Opportunity Inbox has them "
+                "deduped into ONE ranked list.",
                 f"/inbox?mode={active}", "Open Opportunity Inbox →")
         else:
-            _nt, _nx, _nh, _nl = ("Start here",
-                "No import yet — capture keywords from YTrends/Etsy with the browser "
-                "extension, then analyze them here.", "/imports", "Import Center →")
-        _plnudge = (f'<div class="plnudge"><span class="t">▶ {_nt}</span>'
-                    f'<span class="x">{_nx}</span>'
+            _nx, _nh, _nl = (
+                "No import yet — capture keywords from YTrends/Etsy with the "
+                "browser extension, then drop the file below.",
+                "/imports", "Import Center →")
+        _plnudge = (f'<div class="plnudge"><span class="x">{_nx}</span>'
                     f'<a class="pullbtn primary" href="{_nh}">{_nl}</a></div>')
         _plrail = (
-            '<h2 class="grouph">📥 Feed the machine — drop captures from the '
-            'extension (YTrends / Etsy / Pinterest / supplier / Alura)</h2>'
-            + _plnudge +
+            # (The "Feed the machine" heading was removed: this block now lives
+            # inside a disclosure whose summary says the same thing.)
+            _plnudge +
             # ① Capture drop — a compact full-width bar (the quick entry point)
             '<form class="pldrop plcapbar" method="post" action="/import-file" '
             'enctype="multipart/form-data">'
@@ -657,6 +675,7 @@ def build_app(password, secret):
         # the page and the doc cannot drift. Support routes stay collapsed —
         # showing all 104 equally is what caused the confusion.
         spine = ""
+        support_html = ""      # the raw support-route list, shown under All tools
         try:
             from src import workflow_spine as _ws
             _st = _ws.status()
@@ -680,28 +699,46 @@ def build_app(password, secret):
             clabel, chref = cur["action"]
             done = sum(1 for s in _ws.STEPS
                        if (_st.get(s["key"]) or {}).get("state") == "ready")
+            # Five full-width rows, each NAMING its tools as direct links.
+            # The previous version was a 5-column grid of chips showing step
+            # NAMES, which meant Pattern Miner and Keyword Lab appeared nowhere
+            # a human could find: Keyword Lab existed only as the bare string
+            # "/keyword-lab" inside a collapsed list of raw URLs, and Pattern
+            # Miner had no card at all. Naming the tools inside the phase that
+            # uses them is the whole point of having phases.
             _cards = []
             for ph in _ws.PHASES:
                 x = _ps[ph["key"]]
                 here = ph["key"] == _curph["key"]
-                chips = "".join(
-                    '<span class="phchip {0}">{1}</span>'.format(
-                        (_st.get(s["key"]) or {}).get("state") or "unknown",
-                        _h_esc(s["name"]))
-                    for s in _ws.steps_of(ph))
+                tools_row = " ".join(
+                    f'<a class="phtool" href="{_r}{"?mode=" + active if active else ""}">'
+                    f'{_h_esc(_n)}</a>' for _n, _r in ph.get("tools", ()))
+                nxt = x.get("next_step")
+                # What is actually outstanding in this phase, in plain words -
+                # this is the "what is the team doing" signal, and it replaces
+                # a row of step-name chips that only restated the phase title.
+                sub = (f'⬜ next: {_h_esc(nxt["name"])}' if nxt
+                       else '✅ every step done')
                 _cards.append(
-                    f'<a class="phc {x["state"]}{" here" if here else ""}" '
-                    f'href="{ph["route"]}">'
-                    f'<div class="phc-top"><span class="phc-i">{ph["icon"]}</span>'
-                    f'<span class="phc-n">Phase {ph["p"]}</span>'
-                    f'<span class="phc-c">{x["done"]}/{x["total"]}</span></div>'
-                    f'<div class="phc-t">{_h_esc(ph["en"])}</div>'
-                    f'<div class="phc-w">{_h_esc(ph["en_do"])}</div>'
-                    f'<div class="phc-chips">{chips}</div></a>')
-            _sup = "".join(
+                    f'<div class="phc {x["state"]}{" here" if here else ""}">'
+                    f'<a class="phc-main" href="{ph["route"]}">'
+                    f'<span class="phc-i">{ph["icon"]}</span>'
+                    f'<span class="phc-body"><span class="phc-t">Phase {ph["p"]} · '
+                    f'{_h_esc(ph["en"])}</span>'
+                    f'<span class="phc-w">{_h_esc(ph["en_do"])}</span></span>'
+                    f'<span class="phc-c">{x["done"]}/{x["total"]}'
+                    + ('<em>here</em>' if here else '') + '</span></a>'
+                    f'<div class="phc-tools"><span class="phc-sub">{sub}</span>'
+                    f'{tools_row}</div></div>')
+            support_html = "".join(
                 f'<div class="supg"><b>{_h_esc(g)}</b><span>' + " ".join(
                     f'<a href="{r}">{_h_esc(r)}</a>' for r in rs)
                 + '</span></div>' for g, rs in _ws.SUPPORT_ROUTES)
+            # ONE instruction on the page. The old home also carried a "Start
+            # here / Import ready" banner above the import dropzone AND a
+            # "Work one keyword" section header - three competing answers to
+            # "where do I begin?". The keyword box survives as a slim bar
+            # attached to this card; the dropzone moved into a disclosure.
             spine = (
                 '<section class="nowcard">'
                 f'<div class="now-k">Do this next · phase {_curph["p"]} of 5'
@@ -711,20 +748,39 @@ def build_app(password, secret):
                 '<div class="now-a">'
                 f'<a class="now-go" href="{chref}">{_h_esc(clabel)} →</a>'
                 f'<span class="now-nx">Creates: {_h_esc(_curph["en_out"])}</span>'
-                '</div></section>'
+                '</div>'
+                # type once, and the keyword + product line travel with every
+                # step from here on (every tool page now carries both).
+                '<form class="now-kw" method="get" action="/run">'
+                f'<input type="hidden" name="mode" value="{active}">'
+                '<input name="q" aria-label="keyword" placeholder="…or jump '
+                'straight to a keyword, e.g. patchwork usa tee">'
+                '<button type="submit">Open workspace →</button></form>'
+                '</section>'
                 '<div class="wsrail-h"><b>Workflow · 5 phases</b>'
                 f'<span>{done} of 12 steps done</span>'
-                '<a href="/how-to-use">hướng dẫn tiếng Việt →</a></div>'
-                f'<div class="phgrid">{"".join(_cards)}</div>'
-                '<details class="supwrap"><summary>Advanced &amp; support routes</summary>' + _sup + '</details>')
+                '<a href="/workflow">quy trình đầy đủ →</a></div>'
+                f'<div class="phgrid">{"".join(_cards)}</div>')
         except Exception:  # noqa: BLE001 — the spine is additive, never breaks home
             spine = ""
 
+        # The home page's ONE job: what is my team doing, what do I do next,
+        # where is everything else. In that order, and nothing else open.
+        #   status (focus) -> Do this next -> 5 phases -> today's actions
+        #   -> [Import data] [All tools] [Reports], all collapsed.
+        # What used to sit here open: a second "Work one keyword" section with
+        # its own product-mode radios (the mode selector now lives on every
+        # tool page), a "More single-step tools" button row, and the import
+        # dropzone under a "▶ Start here" banner that contradicted the
+        # "Do this next" card directly above it.
         tools = (
             spine
-            + '<h2 class="grouph">⚡ Work one keyword</h2>'
-            '<p class="lead">Type a keyword once and the mode travels with every '
-            'step, so you never come back here between them.</p>'
+            + _oppq +
+            '<details class="archive advtools"><summary>📥 Import data — drop '
+            'captures from the extension (YTrends / Etsy / Pinterest / supplier '
+            '/ Alura)</summary>' + pipeline_html + '</details>'
+            + '<details class="archive advtools"><summary>⚡ Work one keyword — '
+            'single-step tools</summary>'
             '<form class="cmdbar" method="get" action="/run">'
             '<div class="modetoggle"><span>Product mode</span>'
             f'<label><input type="radio" name="mode" value="embroidery"{_mchk["embroidery"]}>'
@@ -738,21 +794,12 @@ def build_app(password, secret):
             'placeholder="Main keyword, e.g. patchwork usa tee">'
             '<button class="primary" type="submit">Build full workspace →</button>'
             '</div>'
-            # The old 9-step button pipeline lived here. It described a DIFFERENT
-            # workflow to the 12-step rail above (it had no Pinterest, no supplier,
-            # no evidence step) so home showed two competing processes at once —
-            # the exact confusion this was all meant to remove. The rail is now the
-            # single map; these stay as quick single-step jumps.
-            '<details class="cmdmore"><summary>＋ More single-step tools</summary>'
             '<div class="cmdbtns">'
             '<button formaction="/should-sell">Should I sell?</button>'
             '<button formaction="/analyze" name="do" value="analyze">Analyze only</button>'
             '<button formaction="/draft-listing">Draft listing</button>'
             '<button formaction="/edge">Beat competitors</button>'
-            '</div></details></form>'
-            # (Removed the "Daily — everyday loop" card block — the top workflow
-            # strip + the split Tools shelves below are the everyday surface now.)
-            + pipeline_html + _oppq +
+            '</div></form></details>' +
             # --- TOOLS: the default-visible shelf. Exactly what staff need to
             # read alongside the pipeline — trend feeds, ranked views, execution
             # helpers. Everything else lives under Advanced (owner directive:
@@ -800,8 +847,9 @@ def build_app(password, secret):
             '<span>SEO / Trust / Image scores + publish gate</span></a>'
             f'<a class="toolcard" href="/ads-plan?mode={active}"><b>📣 Etsy Ads plan</b>'
             '<span>Manual starter: budget, breakeven ACOS, tag coverage, kill rules</span></a>'
-            '<a class="toolcard" href="/training"><b>📚 Hướng dẫn nhân viên</b>'
-            '<span>Quy trình 9 bước + công cụ mới (Tiếng Việt)</span></a>'
+            '<a class="toolcard" href="/training"><b>📚 Hướng dẫn từng công cụ</b>'
+            '<span>Cách dùng từng tool (Tiếng Việt). Quy trình chính thức: '
+            '<b>/workflow</b></span></a>'
             '</div>'
             # --- ADVANCED: everything else — research library, team surfaces,
             # analytics — one click away so the home stays calm. ---
@@ -843,7 +891,13 @@ def build_app(password, secret):
             '<span>How the team works: find → collect → ship</span></a>'
             '<a class="toolcard" href="/cheatsheet"><b>📖 Cheat Sheet</b>'
             '<span>Every command + workflow, in plain English</span></a>'
-            '</div></details>')
+            '</div>'
+            # The raw support-route index used to sit directly under the phase
+            # cards, where its bare "/keyword-lab" text was the ONLY mention of
+            # Keyword Lab on the whole page. The phase cards name their tools
+            # now, so this belongs here: a complete index, not the front door.
+            '<h2 class="grouph">🗂 Every other route</h2>' + support_html
+            + '</details>')
 
         # Operator's daily reports kept reachable, but tucked away — the
         # Command Center above is the main workflow (no big Archive card).
@@ -2066,11 +2120,55 @@ def build_app(password, secret):
     @login_required
     def training():
         # V35.9: serve the Vietnamese staff walkthrough as a full page.
+        #
+        # This guide teaches the RETIRED 9-stage flow (Build Queue · Feed ·
+        # Rank · Pattern Miner · Keyword Lab · Re-rank · Build · Photo · Ads ·
+        # Learn). It is a good TOOL reference and a wrong PROCESS map: it has
+        # no Pinterest step, no supplier-feasibility step and no HeyEtsy
+        # evidence step, so it contradicts both the home page and WORKFLOW.md.
+        # Rather than silently leave that, or fabricate 34KB of replacement
+        # Vietnamese, we prepend a banner GENERATED FROM workflow_spine so the
+        # mapping can never drift, and say plainly what the guide omits.
         from pathlib import Path as _P
         from flask import Response as _Resp
+        _CH2PH = {"find": ["FEED"], "rank": ["BUILD QUEUE", "RANK"],
+                  "learn": ["PATTERN MINER"],
+                  "newkw": ["KEYWORD LAB", "RE-RANK"],
+                  "ship": ["BUILD", "PHOTO STUDIO", "ADS TEST", "LEARN"]}
         for _p in (_P("staff_guide_vn.html"), _P("docs/staff_guide_vn.html")):
             if _p.is_file():
-                return _Resp(_p.read_text(encoding="utf-8"), mimetype="text/html")
+                _doc = _p.read_text(encoding="utf-8")
+                try:
+                    from src import workflow_spine as _wsg
+                    _rows = "".join(
+                        f'<tr><td><b>{ph["p"]} {ph["icon"]} {_h_esc(ph["vi"])}</b>'
+                        f'</td><td>{_h_esc(" · ".join(_CH2PH.get(ph["key"], [])) or "—")}'
+                        f'</td><td><a href="{ph["route"]}">{ph["route"]}</a></td></tr>'
+                        for ph in _wsg.PHASES)
+                    _missing = ", ".join(
+                        s["name"] for s in _wsg.STEPS
+                        if s["key"] in ("pinterest", "supplier", "evidence"))
+                    _ban = (
+                        '<div style="max-width:1000px;margin:14px auto;padding:14px 18px;'
+                        'border:1px solid #d9822b;border-left:5px solid #d9822b;'
+                        'border-radius:11px;background:#fff8ef;color:#222;'
+                        'font:14px/1.5 system-ui,sans-serif">'
+                        '<b>⚠️ Đây là tài liệu HƯỚNG DẪN TỪNG CÔNG CỤ, không phải quy '
+                        'trình chính thức.</b><br>Nó viết theo <b>9 bước cũ</b>. Quy '
+                        'trình đang dùng là <b>5 giai đoạn</b> — xem '
+                        '<a href="/workflow"><b>/workflow</b></a> hoặc trang chủ.'
+                        '<table style="width:100%;margin-top:10px;border-collapse:collapse;'
+                        'font-size:13px"><tr style="text-align:left">'
+                        '<th>Giai đoạn (đúng)</th><th>Chương trong tài liệu này</th>'
+                        '<th>Route</th></tr>' + _rows + '</table>'
+                        f'<p style="margin:9px 0 0;font-size:12.5px"><b>Tài liệu này '
+                        f'THIẾU:</b> {_h_esc(_missing)} — ba bước đó chỉ có trong '
+                        '<a href="/workflow">/workflow</a>.</p></div>')
+                    _doc = (_doc.replace("<body>", "<body>" + _ban, 1)
+                            if "<body>" in _doc else _ban + _doc)
+                except Exception:  # noqa: BLE001 - never break the guide
+                    pass
+                return _Resp(_doc, mimetype="text/html")
         return page("Huong dan", _bar() + '<article class="md"><p>Chua cai tai '
                     'lieu (staff_guide_vn.html).</p></article>')
 
