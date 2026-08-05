@@ -555,17 +555,77 @@ def run_selftest():
           and "warm_keyword_cache" in _ops_src
           and callable(__import__("src.interactive", fromlist=["warm_cache"]).warm_cache))
 
-    # ---- V26.5: deploy script warms + ships the keyword cache to the VPS ----
-    _push = Path("deploy/push-to-vps.ps1")
-    _push_src = _push.read_text(encoding="utf-8") if _push.exists() else ""
-    # Only the executable lines (drop # comments, which mention app.db on purpose).
-    _push_cmds = "\n".join(l for l in _push_src.splitlines()
-                           if not l.lstrip().startswith("#"))
-    check("push-to-vps: warm cache + ship agent.db (atomic rename), app.db untouched",
-          "main.py warm" in _push_cmds
-          and "data/agent.db" in _push_cmds
-          and "agent.db.tmp" in _push_cmds and "mv -f" in _push_cmds
-          and "app.db" not in _push_cmds)   # never sync the team logins/tasks db
+    # ---- Deploy data safety — BOTH scripts, not just the PowerShell one -------
+    # This audit used to read deploy/push-to-vps.ps1 only. That single-sided
+    # check is exactly what let push-to-vps.sh keep the cross-machine deletion
+    # bug for weeks while the audit reported the deploy path green: measured
+    # 2026-08-05 the VPS held 178 keywords the PC did not, and the .sh would
+    # have destroyed every one. It also used to REQUIRE shipping data/agent.db;
+    # that is now forbidden - the VPS writes that file on two crons and it holds
+    # discovered_keywords (12,543 rows there vs 11,680 here), which the Inbox
+    # trend arrows read. tests/test_deploy_scripts.py pins the same rules with
+    # mutation tests; this keeps `main.py selftest` honest about them too.
+    def _deploy_cmds(rel):
+        p = Path(rel)
+        if not p.is_file():
+            return None                      # missing script -> the check fails
+        return "\n".join(l for l in p.read_text(encoding="utf-8").splitlines()
+                         if not l.lstrip().startswith("#"))
+
+    def _uploaded_files(cmds):
+        """Sources of scp commands that WRITE the VPS (local source, remote dest).
+
+        Substring matching is not enough: the backup step legitimately NAMES
+        data/agent.db and data/app.db on an executable line (`for f in
+        keyword_data.csv data/agent.db data/app.db`). Only an scp whose SOURCE is
+        local actually ships a file, so classify by operand like the pytest file.
+        """
+        import re as _re
+        sent = []
+        for line in cmds.splitlines():
+            toks = _re.split(r"\s+", line.strip())
+            if "scp" not in toks:
+                continue
+            ops, skip = [], False
+            for tok in toks[toks.index("scp") + 1:]:
+                if skip:
+                    skip = False
+                    continue
+                if tok in ("-P", "-o", "-i", "-F"):
+                    skip = True
+                    continue
+                if tok.startswith("-"):
+                    continue
+                cleaned = tok.strip("\"'").rstrip(";").strip("\"'")
+                if cleaned and cleaned not in ("then", "&&", "||"):
+                    ops.append(cleaned)
+            if ops and ":" not in ops[0]:      # local source => an upload
+                sent.append(ops[0])
+        return sent
+
+    def _deploy_safe(cmds):
+        if cmds is None:
+            return False
+        sent = _uploaded_files(cmds)
+        return (
+            "main.py warm" in cmds
+            # unions the server's master in, as CODE, before building + uploading
+            and "import merge_master" in cmds
+            and cmds.index("import merge_master") < cmds.index("main.py daily")
+            # tells "absent" apart from "unreachable", and aborts on the latter
+            and "test -f" in cmds and "exit 1" in cmds
+            # lands the master atomically
+            and "keyword_data.csv.tmp" in cmds and "mv -f" in cmds
+            # backs the server up before writing it
+            and "backups" in cmds
+            # never SHIPS the two databases the server owns
+            and not any("agent.db" in s for s in sent)
+            and not any("app.db" in s for s in sent))
+
+    for _rel in ("deploy/push-to-vps.ps1", "deploy/push-to-vps.sh"):
+        check(f"{_rel.split('/')[-1]}: merges VPS master first, aborts on a failed "
+              "download, backs up, ships neither agent.db nor app.db",
+              _deploy_safe(_deploy_cmds(_rel)))
 
     # ---- V26.6: --fresh refresh + interval cron (warm) + scheduled laptop sync ----
     import inspect as _inspect
