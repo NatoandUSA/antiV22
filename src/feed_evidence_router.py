@@ -1444,6 +1444,16 @@ def _all_structure_ids():
     return [p.stem for p in sorted(STRUCTURE_DIR.glob("*.json"))]
 
 
+def _niche_ok(title, keyword):
+    """Shared niche rule (src/niche_match). Never raises: an unavailable matcher
+    falls back to the bridge alone rather than dropping all evidence."""
+    try:
+        from src import niche_match as nm
+        return nm.match(title, keyword)
+    except Exception:  # noqa: BLE001
+        return True
+
+
 def structure_for_keyword(keyword, max_listings=10):
     """Roll up the listing-structure lane for a keyword: the winners' real tags,
     personalization rate, variation opportunities, price points and image counts.
@@ -1474,8 +1484,14 @@ def structure_for_keyword(keyword, max_listings=10):
         s = load_structure(lid)
         if not s:
             continue
-        ttoks = {_singular(t) for t in _tokens(s.get("title"))}
-        if _bridge(kw_toks & ttoks, ttoks):
+        title = s.get("title")
+        ttoks = {_singular(t) for t in _tokens(title)}
+        # SAME niche rule as Pattern Miner's title path. `_bridge` alone accepted
+        # a shared {personalized, shirt}, which is how "Custom Future Mrs Shirt /
+        # Bride / Honeymoon" tags reached the winners'-structure block of a
+        # HALLOWEEN keyword. The bridge still runs — it carries the product
+        # conflict check — but a theme keyword now has to be honoured too.
+        if _bridge(kw_toks & ttoks, ttoks) and _niche_ok(title, keyword):
             matched.append(s)
     if not matched:
         return empty

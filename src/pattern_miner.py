@@ -83,14 +83,21 @@ def _query_tokens(q):
             if len(w) > 1 and w not in _STOP]
 
 
-def _title_matches(title, qtoks):
-    """A listing belongs to the queried niche when it shares >=2 query tokens
-    (>=1 for a single-token query) - singularised, stopwords dropped."""
+def _title_matches(title, qtoks, query=None):
+    """A listing belongs to the queried niche when it shares enough query tokens
+    AND at least one THEME token (see src/niche_match).
+
+    The old rule was `hits >= min(2, len(qtoks))` — a fixed floor of 2 whatever
+    the query length — so for "personalized embroidery halloween shirt" the two
+    generic tokens {personalized, shirt} carried the match and "Personalized
+    Teacher Shirt" came back as a Halloween listing. Measured on the owner's own
+    run that produced 385 "matches" whose winning words were teacher 52%,
+    school 38%, back 33%.
+    """
     if not qtoks:
         return True
-    tt = set(_tokens(title))
-    hits = sum(1 for t in qtoks if t in tt)
-    return hits >= min(2, len(qtoks))
+    from src import niche_match as nm
+    return nm.match(title, query if query is not None else " ".join(qtoks))
 
 
 def _view_matches(view, qtoks):
@@ -102,9 +109,10 @@ def _view_matches(view, qtoks):
     'PJs'/'Sleep Set' instead of the literal query, so we match the view too."""
     if not qtoks:
         return True
-    vt = set(_tokens(view or ""))
-    hits = sum(1 for t in qtoks if t in vt)
-    return hits >= min(2, len(qtoks))
+    # Same niche rule as the title path. A SERP captured from "teacher shirt"
+    # must not be swept in by a Halloween query just because both say "shirt".
+    from src import niche_match as nm
+    return nm.match(view or "", " ".join(qtoks))
 
 
 def _from_import(keyword=None):
@@ -185,7 +193,7 @@ def _from_import(keyword=None):
         # whole SERP capture whose titles use 'PJs'/'robe' instead of the query.
         matched_rows = [r for r in all_rows
                         if _view_matches(r.get("view"), qtoks)
-                        or _title_matches(r["title"], qtoks)]
+                        or _title_matches(r["title"], qtoks, keyword)]
         if matched_rows:
             return keyword, matched_rows, len(matched_rows), scanned
         return keyword, [], 0, scanned      # honest: nothing matches this keyword
