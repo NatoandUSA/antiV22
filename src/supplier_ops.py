@@ -54,7 +54,12 @@ PRODUCT_FAMILIES = {
     "blanket": ("blanket", "throw"),
     "pillow": ("pillow", "cushion"),
     "towel": ("towel", "robe"),
-    "mug": ("mug", "tumbler", "cup", "can cooler", "cozie", "cozies", "koozie"),
+    "mug": ("mug", "tumbler", "cup"),
+    # Split out of "mug". A koozie is a stitched/neoprene drink sleeve, not
+    # drinkware: the supplier who prints ceramic mugs generally cannot make one,
+    # so lumping them pointed staff at the wrong supplier. Measured on the live
+    # 25-row library this moves nothing — it holds no drinkware of either kind.
+    "koozie": ("koozie", "koozies", "coozie", "cozie", "cozies", "can cooler"),
     "sticker": ("sticker", "decal"),
     "print": ("print", "poster", "wall art", "canvas"),
     "jewelry": ("necklace", "bracelet", "earring", "keychain", "charm"),

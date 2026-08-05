@@ -47,6 +47,10 @@ from pathlib import Path
 from src.supplier_ops import product_family as _family
 
 MAKEABLE, UNKNOWN, NOT_MAKEABLE = "MAKEABLE", "UNKNOWN", "NOT_MAKEABLE"
+# The owner's name for the blocked state. NOT_MAKEABLE is the original literal and
+# is already stored on rows and asserted in tests, so this is an ALIAS, not a
+# rename: one object, two names, and no way for the two to drift.
+SUPPLIER_BLOCKED = NOT_MAKEABLE
 # The verdict the owner asked for: the library says no, but the library is not
 # finished, so this is a question for a human — not a block.
 NEEDS_SUPPLIER_CHECK = "NEEDS_SUPPLIER_CHECK"
@@ -59,6 +63,11 @@ COV_COMPLETE, COV_PARTIAL, COV_NONE = "complete", "partial", "unknown"
 LABELS = {MAKEABLE: "Makeable", UNKNOWN: "Not checked",
           NEEDS_SUPPLIER_CHECK: "Needs supplier check",
           NOT_MAKEABLE: "Supplier blocked"}
+
+# Pinterest badge wording, in the same place as the supplier wording so the two
+# advisory badges cannot drift apart across the surfaces that render them.
+PIN_LABELS = {RISING: "Rising", FLAT: "Flat", NONE_: "None",
+              PIN_UNKNOWN: "Unknown"}
 
 # Reason code carried on a blocked row (owner-specified contract).
 BLOCK_REASON = "no_supplier_can_make_this"
@@ -263,26 +272,53 @@ def build_allowed(keyword, mode=None, path=None):
                   "detail": detail, "message": msg}
 
 
-def pinterest_label(keyword):
-    """RISING / FLAT / NONE / UNKNOWN — ADVISORY ONLY.
+def _cached_pinterest(keyword):
+    """Today's ALREADY-CACHED Pinterest answer, or None. Never issues a request.
 
-    Pinterest is a different marketplace: a keyword can sell well on Etsy with no
-    Pinterest presence at all, so this never gates anything. Any failure (no API
-    key, network down, no cache) is UNKNOWN, not NONE — 'we did not check' and
-    'we checked and found nothing' must stay distinguishable.
+    `crosscheck.pinterest_signal()` is a live HTTP call with a 25s timeout, cached
+    per keyword per day. The Inbox renders ~1,700 rows, so calling it per row
+    would fire up to 1,700 requests on the first render of each day and hang the
+    page. The row badge reads the cache only; the keyword-detail surfaces, which
+    ask about ONE keyword, still call live.
     """
-    kw = (keyword or "").strip()
-    if not kw:
-        return PIN_UNKNOWN, None
     try:
-        from src import crosscheck
-        sig = crosscheck.pinterest_signal(kw)
-    except Exception:  # noqa: BLE001
-        return PIN_UNKNOWN, None
+        import json
+        from datetime import date
+        from src.db import cache_get
+        hit = cache_get(f"pinterest:{keyword.lower()}", str(date.today()))
+        return json.loads(hit) if hit is not None else None
+    except Exception:  # noqa: BLE001 - no cache == not checked
+        return None
+
+
+def _read_pinterest(sig):
+    """Map a signal payload onto the badge vocabulary. Split out so the live and
+    cache-only paths cannot answer the same payload differently."""
     if not sig or not isinstance(sig, dict):
         return PIN_UNKNOWN, None
     if sig.get("unavailable") or sig.get("error"):
         return PIN_UNKNOWN, sig
+    # --- the REAL crosscheck.pinterest_signal() contract -----------------------
+    # It returns {"status": ok|no_data|auth_error|no_access|error} and, when ok,
+    # {"on_growing_list": bool} from Pinterest's top-50 GROWING keywords endpoint.
+    # This function used to read `growth`/`direction`/`found`/`volume`/`interest`
+    # — keys that call NEVER emits — so every real answer fell through to UNKNOWN
+    # and RISING was unreachable in production while the tests passed against
+    # invented payloads.
+    status = str(sig.get("status") or "").strip().lower()
+    if status:
+        if status == "ok" and sig.get("on_growing_list") is True:
+            return RISING, sig
+        if status == "ok" and sig.get("on_growing_list") is False:
+            # Measured, and not among the 50 fastest-growing US keywords. That is
+            # FLAT, never NONE: this endpoint cannot see whether a keyword has any
+            # Pinterest presence, only whether it is surging. Claiming NONE here
+            # would be the "a zero from an API means I don't know" mistake.
+            return FLAT, sig
+        # no_data / auth_error / no_access / error — we did not get an answer.
+        return PIN_UNKNOWN, sig
+    # --- generic shape, for any other/future signal source ---------------------
+    # NONE is only reachable from a source that can actually establish absence.
     growth = sig.get("growth") or sig.get("direction") or ""
     found = sig.get("found")
     if found is False:
@@ -293,6 +329,30 @@ def pinterest_label(keyword):
     if found or sig.get("volume") or sig.get("interest") is not None:
         return FLAT, sig
     return PIN_UNKNOWN, sig
+
+
+def pinterest_label(keyword, cached_only=False):
+    """RISING / FLAT / NONE / UNKNOWN — ADVISORY ONLY.
+
+    Pinterest is a different marketplace: a keyword can sell well on Etsy with no
+    Pinterest presence at all, so this never gates anything. Any failure (no API
+    key, network down, no cache) is UNKNOWN, not NONE — 'we did not check' and
+    'we checked and found nothing' must stay distinguishable.
+
+    cached_only=True answers from today's cache and never makes a request, which
+    is what per-row rendering must use.
+    """
+    kw = (keyword or "").strip()
+    if not kw:
+        return PIN_UNKNOWN, None
+    if cached_only:
+        return _read_pinterest(_cached_pinterest(kw))
+    try:
+        from src import crosscheck
+        sig = crosscheck.pinterest_signal(kw)
+    except Exception:  # noqa: BLE001
+        return PIN_UNKNOWN, None
+    return _read_pinterest(sig)
 
 
 def apply_to_row(row, mode=None, path=None):

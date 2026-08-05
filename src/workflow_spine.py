@@ -303,6 +303,15 @@ SUPPORT_ROUTES = [
 _UNKNOWN = {"state": "unknown", "detail": "could not read"}
 
 
+def _pin_status():
+    """Is the Pinterest live signal configured? Never raises, never calls out."""
+    try:
+        from src import crosscheck
+        return (crosscheck.status() or {}).get("Pinterest", "")
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 def _p(*parts):
     return Path(*parts)
 
@@ -405,8 +414,14 @@ def _status_uncached():
         out["feed"] = dict(_UNKNOWN)
     try:
         c = _count_json("pinterest")
-        out["pinterest"] = _ok(f"{c} Pinterest capture(s) imported") if c else \
-            _todo("no Pinterest capture yet")
+        # Say whether the LIVE signal is configured, not only how many pages were
+        # captured. Without PINTEREST_ACCESS_TOKEN every per-row Pinterest badge
+        # is "Unknown" forever, and the step reading "3 captures imported" hides
+        # exactly that. Advisory either way — this step never blocks anything.
+        live = "live" in str(_pin_status()).lower()
+        api = "live signal on" if live else "live signal off (no API token)"
+        out["pinterest"] = _ok(f"{c} Pinterest capture(s) imported · {api}") if c \
+            else _todo(f"no Pinterest capture yet · {api}")
     except Exception:  # noqa: BLE001
         out["pinterest"] = dict(_UNKNOWN)
     # Step 3 reads the supplier LIBRARY, not the capture lane: the question is

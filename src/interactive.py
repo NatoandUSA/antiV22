@@ -2000,6 +2000,31 @@ _SUPPLIER_BADGE = {"MAKEABLE": "\U0001F3ED makeable",
                    "NEEDS_SUPPLIER_CHECK": "\U0001F3ED check supplier",
                    "NOT_MAKEABLE": "\U0001F3ED supplier blocked"}
 
+# Pinterest badge (workflow step 2) — ADVISORY, and rendered here rather than in
+# opportunity_inbox because that file is frozen. UNKNOWN has no badge for the same
+# reason MAKEABLE-by-default has none: on a 1,700-row table a badge that says
+# "we did not check" on every row is noise, not information.
+_PIN_BADGE = {"RISING": "\U0001F4CC rising", "FLAT": "\U0001F4CC flat",
+              "NONE": "\U0001F4CC no pinterest"}
+
+
+def _pin_badge(keyword):
+    """Cache-only Pinterest badge. NEVER issues a request: this runs per row.
+
+    Short-circuits when no Pinterest token is configured. The day's cache is only
+    ever written by a live call, so with the signal off every row is UNKNOWN
+    anyway — without this, rendering the full list costs ~1,700 SQLite
+    open/query/close round trips to learn nothing.
+    """
+    try:
+        from src import crosscheck
+        if not crosscheck.PINTEREST_TOKEN:
+            return None
+        from src import feasibility_gate as fg
+        return _PIN_BADGE.get(fg.pinterest_label(keyword, cached_only=True)[0])
+    except Exception:  # noqa: BLE001 - an advisory badge must never break the row
+        return None
+
 
 def _inbox_row(i, r):
     """One ranked table row (shared by the FOCUS table and the full list)."""
@@ -2022,6 +2047,9 @@ def _inbox_row(i, r):
     badge = _SUPPLIER_BADGE.get(r.get("supplier_fit"))
     if badge:
         fit = f"{fit} · {badge}"
+    pin = _pin_badge(r["keyword"])
+    if pin:
+        fit = f"{fit} · {pin}"
     pr = r.get("proof")
     tier = r.get("proof_tier", 9)
     if pr and tier == 0:

@@ -63,6 +63,40 @@ def test_sweatshirt_does_not_collapse_into_tshirt():
     assert so.product_family("hooded sweatshirt") == "sweatshirt"
 
 
+def test_the_owners_named_matcher_cases():
+    """The exact phrases the owner listed for the canonical matcher. These are
+    real keyword shapes: a buyer-intent phrase wraps the product noun in
+    modifiers, which is why raw token overlap against a supplier's 'TSHIRT'
+    scored every one of them the same 50/100."""
+    assert so.product_family("custom crew t-shirt") == "tshirt"
+    assert so.product_family("embroidered hoodie") == "hoodie"
+    assert so.product_family("wash cap monogram") == "cap"
+    assert so.product_family("personalized name tote handbag") == "tote"
+    assert so.product_family("40th birthday cozies") == "koozie"
+    # names no product at all -> None, which the gate reads as UNKNOWN
+    assert so.product_family("40th birthday gift for her") is None
+
+
+def test_a_koozie_is_not_a_mug():
+    """A drink sleeve and a ceramic mug are different products from different
+    suppliers; they used to share one family."""
+    assert so.product_family("can cooler") == "koozie"
+    assert so.product_family("personalized coffee mug") == "mug"
+    assert so.product_family("koozie") != so.product_family("mug")
+
+
+def test_an_unknown_product_is_unknown_or_needs_check_never_a_block(lib):
+    """Owner's rule for the tail of the matcher: not recognising a product is a
+    gap in our vocabulary, never a statement that the shop cannot make it."""
+    from src import feasibility_gate as fg
+    # names no product -> UNKNOWN
+    assert fg.supplier_fit("nurse graduation gift", "embroidery", lib)[0] \
+        == fg.UNKNOWN
+    # names a product we have no supplier for, on an INCOMPLETE library
+    assert fg.supplier_fit("custom throw blanket", "embroidery", lib)[0] \
+        == fg.NEEDS_SUPPLIER_CHECK
+
+
 def test_the_gate_shares_this_matcher_and_does_not_fork_its_own():
     """One canonical matcher: the whole point of the fix. If feasibility_gate
     grows a private copy again, the two surfaces can disagree about whether the

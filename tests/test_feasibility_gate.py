@@ -284,6 +284,90 @@ def test_pinterest_never_blocks_and_separates_unchecked_from_empty(monkeypatch):
     assert fg.pinterest_label("dog mom shirt")[0] == fg.RISING
 
 
+def test_pinterest_reads_the_shape_crosscheck_actually_returns(monkeypatch):
+    """The regression that made this whole badge dead.
+
+    `pinterest_label` read growth/direction/found/volume/interest — keys
+    `crosscheck.pinterest_signal()` NEVER emits. It returns
+    {"status": ok|no_data|auth_error|no_access|error} plus, when ok,
+    {"on_growing_list": bool}. So every real answer fell through to UNKNOWN and
+    RISING was unreachable in production, while the test above passed against
+    invented payloads. These are the literal shapes of that function.
+    """
+    from src import crosscheck
+    real = [
+        ({"status": "ok", "on_growing_list": True}, fg.RISING),
+        ({"status": "ok", "on_growing_list": False}, fg.FLAT),
+        # not an answer — must stay distinguishable from "we found nothing"
+        ({"status": "no_data"}, fg.PIN_UNKNOWN),
+        ({"status": "auth_error", "note": "token rejected (401)"}, fg.PIN_UNKNOWN),
+        ({"status": "no_access", "note": "no Trends access (403)"}, fg.PIN_UNKNOWN),
+        ({"status": "error", "note": "Pinterest unreachable"}, fg.PIN_UNKNOWN),
+        (None, fg.PIN_UNKNOWN),          # PINTEREST_ACCESS_TOKEN not set
+    ]
+    for sig, want in real:
+        monkeypatch.setattr(crosscheck, "pinterest_signal", lambda kw, s=sig: s)
+        got = fg.pinterest_label("mini bride tote bags")[0]
+        assert got == want, f"{sig} should read {want}, got {got}"
+
+
+def test_a_keyword_absent_from_the_growing_list_is_flat_never_none():
+    """'Not in the top-50 fastest-growing' does not mean 'no Pinterest presence'.
+    Reporting NONE there would be the zero-means-I-don't-know mistake."""
+    assert fg._read_pinterest({"status": "ok", "on_growing_list": False})[0] \
+        == fg.FLAT
+
+
+def test_the_row_badge_never_makes_a_network_call(monkeypatch):
+    """pinterest_signal is a 25s-timeout HTTP call. The Inbox renders ~1,700
+    rows, so a per-row live call would fire 1,700 requests on the first render
+    of the day. cached_only must not reach it at all."""
+    from src import crosscheck
+
+    def _boom(kw):
+        raise AssertionError("cached_only called the live Pinterest API")
+
+    monkeypatch.setattr(crosscheck, "pinterest_signal", _boom)
+    monkeypatch.setattr(fg, "_cached_pinterest", lambda kw: None)
+    assert fg.pinterest_label("dog mom shirt", cached_only=True)[0] == fg.PIN_UNKNOWN
+    monkeypatch.setattr(fg, "_cached_pinterest",
+                        lambda kw: {"status": "ok", "on_growing_list": True})
+    assert fg.pinterest_label("dog mom shirt", cached_only=True)[0] == fg.RISING
+
+
+def test_supplier_blocked_is_the_same_state_as_not_makeable():
+    """The owner names the blocked state SUPPLIER_BLOCKED. It must be an alias,
+    not a second value, or rows and summaries can carry two different literals."""
+    assert fg.SUPPLIER_BLOCKED == fg.NOT_MAKEABLE
+    assert fg.LABELS[fg.SUPPLIER_BLOCKED] == "Supplier blocked"
+
+
+def test_the_four_pinterest_badges_are_the_ones_the_owner_asked_for():
+    assert set(fg.PIN_LABELS.values()) == {"Rising", "Flat", "None", "Unknown"}
+
+
+def test_the_inbox_row_shows_both_badges_and_stays_quiet_when_unchecked(monkeypatch):
+    """Item F: supplier AND Pinterest visible on the row. UNKNOWN prints nothing —
+    on a 1,700-row table 'we did not check' on every row is noise."""
+    from src import crosscheck, interactive as it
+    monkeypatch.setattr(crosscheck, "PINTEREST_TOKEN", "test-token")
+    # every key _inbox_row indexes directly, so a renamed column fails loudly
+    # here instead of silently skipping the badge assertion
+    row = {"keyword": "mini bride tote bags", "action": "BUILD_NOW",
+           "verdict": "GO", "score": 81.2, "fit_label": "POD product",
+           "supplier_fit": fg.MAKEABLE, "proof_tier": 9,
+           "comp": None, "conv": None, "momentum": None}
+    for sig, want in (({"status": "ok", "on_growing_list": True}, "rising"),
+                      ({"status": "ok", "on_growing_list": False}, "flat")):
+        monkeypatch.setattr(fg, "_cached_pinterest", lambda kw, s=sig: s)
+        cell = it._inbox_row(0, dict(row)).split("|")[4]
+        assert "makeable" in cell and want in cell, cell
+    # not checked -> supplier badge stays, Pinterest badge disappears
+    monkeypatch.setattr(fg, "_cached_pinterest", lambda kw: {"status": "no_data"})
+    cell = it._inbox_row(0, dict(row)).split("|")[4]
+    assert "makeable" in cell and "\U0001F4CC" not in cell, cell
+
+
 def test_pinterest_cannot_change_a_build_decision(partial, monkeypatch):
     """Owner's rule: a second marketplace corroborates, it never vetoes. The
     verdict must be identical whether Pinterest says RISING, NONE or nothing."""
@@ -297,14 +381,89 @@ def test_pinterest_cannot_change_a_build_decision(partial, monkeypatch):
 
 
 # --- the freeze --------------------------------------------------------------
+# BASELINE-AWARE, and that distinction matters. opportunity_inbox.py already
+# imported feasibility_gate in V37.12, BEFORE the freeze. That wiring is legal and
+# must stay. The rule is not "zero references anywhere" — that would demand ripping
+# out working pre-freeze code — it is:
+#   * no new edits to a frozen file
+#   * no new dependencies added to a frozen file
+#   * no behaviour change inside a frozen L0-L4 file
+#   * pre-freeze wiring may remain
+FROZEN = {"ranking_engine", "opportunity_score", "product_fit", "etsy_proof",
+          "opportunity_inbox"}
+
+# The approved baseline. Content-hashed rather than diffed against git so the
+# guard still works from a tarball, and newline-normalised so it does not go red
+# on the Linux VPS just because the PC checked out CRLF.
+FROZEN_BASELINE = {
+    "opportunity_score": "082c23e17d918620a5e852b3fc0a6cd9d64687bffc5dece3f922a4bda2f8c8e2",
+    "product_fit": "bfc1a8e8d38b0613208eeeaaab111ba3c8dde03d4639e36bbda80c4857e2115a",
+    "ranking_engine": "9d31f33eeb153adccd1b27e460f770cdfccebf2c47d2e5e616a3ac4e3b326ef8",
+    "etsy_proof": "88bdb31fb1664ba324274191b8f621d3e9e3bbf2993b657cd38934ac23fe976e",
+    "opportunity_inbox": "54e63405dd505a09f9ec26b89ddcd8b20e383e558b2ce324a2f75135284d419b",
+}
+
+
+def test_no_frozen_file_was_edited():
+    """The freeze itself: a frozen file's bytes must not move.
+
+    Unfreezing is a deliberate act — update the hash in the same commit that
+    edits the file, so the change is visible in review rather than implicit.
+    """
+    import hashlib
+    from pathlib import Path
+    moved = []
+    for name, want in FROZEN_BASELINE.items():
+        raw = Path(f"src/{name}.py").read_bytes().replace(b"\r\n", b"\n")
+        got = hashlib.sha256(raw).hexdigest()
+        if got != want:
+            moved.append(f"{name}.py ({want[:12]} -> {got[:12]})")
+    assert not moved, "frozen file(s) edited: " + ", ".join(moved)
+
+
+def _code_only(path):
+    """Source with comments AND docstrings removed.
+
+    The module is allowed to NAME the frozen files in prose — it explains why it
+    copies _PRI rather than importing it — so a raw grep would be permanently
+    red. Everything that is left is code, including string literals, so a dynamic
+    `import_module("src.ranking_engine")` is still caught.
+    """
+    import ast
+    import io
+    import tokenize
+    from pathlib import Path
+    src = Path(path).read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    docs = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef,
+                             ast.ClassDef)):
+            body = getattr(node, "body", None) or []
+            if (body and isinstance(body[0], ast.Expr)
+                    and isinstance(body[0].value, ast.Constant)
+                    and isinstance(body[0].value.value, str)):
+                docs.add((body[0].lineno, body[0].col_offset))
+    out = []
+    for tok in tokenize.generate_tokens(io.StringIO(src).readline):
+        if tok.type == tokenize.COMMENT:
+            continue
+        if tok.type == tokenize.STRING and tok.start in docs:
+            continue
+        out.append(tok.string)
+    return " ".join(out)
+
+
 def test_no_frozen_imports():
-    """ranking_engine.py and opportunity_score.py are frozen: nothing new may
-    point at them, not even a read-only import. Parsed, not grepped — the module
-    is allowed to NAME them in prose (it explains why it copies _PRI instead)."""
+    """NEW code must not add a dependency ON a frozen file.
+
+    Direction matters. The legal pre-freeze edge is opportunity_inbox -> gate;
+    what is forbidden is the reverse, gate -> frozen, because that is a NEW
+    dependency and it is what would drag frozen behaviour into this module.
+    """
     import ast
     from pathlib import Path
     tree = ast.parse(Path("src/feasibility_gate.py").read_text(encoding="utf-8"))
-    frozen = {"ranking_engine", "opportunity_score"}
     imported = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -312,5 +471,31 @@ def test_no_frozen_imports():
         elif isinstance(node, ast.ImportFrom):
             imported |= {a.name.split(".")[-1] for a in node.names}
             imported |= {(node.module or "").split(".")[-1]}
-    assert not (imported & frozen), \
-        f"feasibility_gate imports frozen module(s): {sorted(imported & frozen)}"
+    assert not (imported & FROZEN), \
+        f"feasibility_gate imports frozen module(s): {sorted(imported & FROZEN)}"
+
+
+def test_no_frozen_references_in_live_code():
+    """Stronger than the import check: an import is not the only way to add a
+    dependency on a frozen file. Scoped to feasibility_gate.py — the NEW module —
+    not to the repo, because the pre-freeze inbox wiring is allowed to stand.
+    Asserted on comment- and docstring-stripped code, so prose stays legal and
+    `importlib.import_module("src.etsy_proof")` does not."""
+    code = _code_only("src/feasibility_gate.py")
+    hit = sorted(name for name in FROZEN if name in code)
+    assert not hit, f"feasibility_gate references frozen module(s) in code: {hit}"
+
+
+def test_the_frozen_reference_check_actually_bites():
+    """Mutation test. A guard that cannot go red is indistinguishable from one
+    that passes — which is how three vacuous deploy assertions once shipped."""
+    from pathlib import Path
+    code = _code_only("src/feasibility_gate.py")
+    assert "supplier_ops" in code, "the stripper removed real code"
+    # prose-only mentions must NOT be reported, or the guard is red forever
+    raw = Path("src/feasibility_gate.py").read_text(encoding="utf-8")
+    assert "ranking_engine" in raw and "ranking_engine" not in code, \
+        "docstring/comment mentions of a frozen file must stay legal"
+    # and a real code reference must be caught
+    mutated = code + " import_module ( 'src.etsy_proof' ) "
+    assert any(n in mutated for n in FROZEN)
