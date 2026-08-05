@@ -2804,10 +2804,21 @@ def build_app(password, secret):
                         'CONFIRM_FIRST</span></form>')
             except Exception:  # noqa: BLE001 - additive, never blocks mining
                 candform = ""
+        # Evidence Health (phase 1) sits BEFORE the markdown summary: staff must
+        # see what the analysis rests on before they read its conclusions. It is
+        # display only — it reads the same audit the miner filters with and
+        # changes no score, no action and no ranking.
+        ehpanel = ""
+        if q:
+            try:
+                from src import evidence_health as _eh
+                ehpanel = _eh.render_html(_eh.report(q, mode))
+            except Exception:  # noqa: BLE001 - the panel never blocks mining
+                ehpanel = ""
         try:
             return _render_tool("Pattern Miner",
                                 interactive.pattern_miner(q, mode),
-                                switch=bar + candform)
+                                switch=bar + candform + ehpanel)
         except (SystemExit, Exception) as exc:  # noqa: BLE001
             return _tool_error("Pattern Miner", exc)
 

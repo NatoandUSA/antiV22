@@ -115,7 +115,14 @@ def _view_matches(view, qtoks):
     return nm.match(view or "", " ".join(qtoks))
 
 
-def _from_import(keyword=None):
+def _gather_import(keyword=None):
+    """(keyword_hint, [all rows], newest_mtime, oldest_mtime) — every capture row
+    BEFORE niche filtering. Split out of `_from_import` so the Evidence Health
+    panel can count what was REJECTED without re-reading the capture pool."""
+    return _from_import(keyword, _gather_only=True)
+
+
+def _from_import(keyword=None, _gather_only=False):
     """(keyword_hint, [listings], matched, scanned): listings gathered across the
     RECENT capture files (not just the newest), de-duped, and - when a keyword is
     given - FILTERED to the listings that actually belong to that niche. This is
@@ -129,7 +136,7 @@ def _from_import(keyword=None):
         if d.is_dir():
             files += list(d.glob("*.json"))
     if not files:
-        return None, [], 0, 0
+        return (None, [], None, None) if _gather_only else (None, [], 0, 0)
     # keyword given -> scan the whole history to FIND that niche; no keyword ->
     # newest window only (fast overview of the latest captures).
     _cap = _MAX_FILES_KW if keyword else _MAX_FILES
@@ -186,6 +193,18 @@ def _from_import(keyword=None):
                              "tags": str(c(tgi) or "").strip(),
                              "view": file_view})
     scanned = len(all_rows)
+    if _gather_only:
+        # capture recency, for the stale-data warning. mtime is the honest stamp
+        # available: capture rows carry no date column of their own.
+        stamps = []
+        for f in files:
+            try:
+                stamps.append(f.stat().st_mtime)
+            except OSError:
+                pass
+        return (hint, all_rows,
+                max(stamps) if stamps else None,
+                min(stamps) if stamps else None)
     if keyword:
         qtoks = _query_tokens(keyword)
         # A listing matches the niche if the SEARCH it came from matches (its
@@ -246,6 +265,58 @@ def _from_db(keyword):
              "ad": bool(r.get("is_ad")), "freeship": bool(r.get("free_ship")),
              "tags": r.get("tags") or "", "view": r.get("source_keyword") or ""}
             for r in rows if (r.get("title") or "").strip()]
+
+
+def audit(keyword):
+    """Per-row match verdicts for the Evidence Health panel.
+
+    Answers the question the summary line never could: "385 captured" became a
+    smaller strict set — WHICH rows were dropped and WHY. Reasons come from
+    niche_match.why(), the same call that decides the filtering, so the panel can
+    never disagree with the batch it describes.
+
+    `source` is honest about the layer used: the SQLite index is keyword-keyed
+    and hands back only matches, so rejections are not observable through it.
+    """
+    from src import niche_match as nm
+    out = {"keyword": keyword, "source": "none", "scanned": 0, "matched": 0,
+           "rejected": 0, "reasons": {}, "shops": 0, "with_price": 0,
+           "with_tags": 0, "newest": None, "oldest": None,
+           "rejects_observable": True, "matched_rows": []}
+    db_batch = _from_db(keyword) if keyword else []
+    if db_batch:
+        out.update(source="db", scanned=len(db_batch), matched=len(db_batch),
+                   rejects_observable=False, matched_rows=db_batch)
+    else:
+        _hint, rows, newest, oldest = _gather_import(keyword)
+        if rows:
+            out.update(source="captures", scanned=len(rows),
+                       newest=newest, oldest=oldest)
+            kept = []
+            for r in rows:
+                # a whole SERP captured FROM this search counts as a match: the
+                # query lives in the file's view name, not in a row column
+                if _view_matches(r.get("view"), _query_tokens(keyword)):
+                    ok, reason = True, "serp_view"
+                else:
+                    ok, reason, _shared = nm.why(r.get("title"), keyword)
+                out["reasons"][reason] = out["reasons"].get(reason, 0) + 1
+                if ok:
+                    kept.append(r)
+            out.update(matched=len(kept), rejected=len(rows) - len(kept),
+                       matched_rows=kept)
+        else:
+            _kw2, batch2 = _from_master(keyword)
+            if batch2:
+                out.update(source="master", scanned=len(batch2),
+                           matched=len(batch2), rejects_observable=False,
+                           matched_rows=batch2)
+    m = out["matched_rows"]
+    out["shops"] = len({(b.get("shop") or "").strip().lower()
+                        for b in m if (b.get("shop") or "").strip()})
+    out["with_price"] = sum(1 for b in m if b.get("price") is not None)
+    out["with_tags"] = sum(1 for b in m if (b.get("tags") or "").strip())
+    return out
 
 
 def load_batch(keyword=None):
