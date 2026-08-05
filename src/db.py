@@ -8,17 +8,13 @@ DB_PATH = Path("data/agent.db")
 def get_conn():
     DB_PATH.parent.mkdir(exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
-    conn.execute(
-        """CREATE TABLE IF NOT EXISTS keyword_snapshots (
-            id INTEGER PRIMARY KEY,
-            captured_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            keyword TEXT NOT NULL,
-            avg_interest REAL,
-            momentum_pct REAL,
-            competition INTEGER,
-            opportunity REAL
-        )"""
-    )
+    # NOTE: a `keyword_snapshots` table used to be created here for main.py's
+    # research(), which imported the src/scoring.py that c65c1b5 deleted. That
+    # command has raised on every run since, so the table never held a row (0 in
+    # the live agent.db). The keyword time-series the Inbox actually reads is
+    # data/history/keyword_snapshots.csv, written by ytx_import - a different
+    # store with a different shape. Both the dead command and its writer are now
+    # gone; the empty table is left on disk untouched rather than dropped.
     conn.execute(
         """CREATE TABLE IF NOT EXISTS discovered_keywords (
             id INTEGER PRIMARY KEY,
@@ -44,18 +40,6 @@ def get_conn():
         )"""
     )
     return conn
-
-
-def save_snapshot(rows):
-    conn = get_conn()
-    conn.executemany(
-        "INSERT INTO keyword_snapshots "
-        "(keyword, avg_interest, momentum_pct, competition, opportunity) "
-        "VALUES (?, ?, ?, ?, ?)",
-        rows,
-    )
-    conn.commit()
-    conn.close()
 
 
 def save_discovered(rows):
@@ -100,11 +84,24 @@ def prune_cache(keep_days=3):
     n = conn.execute("DELETE FROM api_cache WHERE day < ?", (cutoff,)).rowcount
     conn.commit()
     conn.close()
+    # DELETE only moves pages to the freelist; the file itself never shrinks.
+    # vacuum() existed for exactly this and had no caller, so agent.db sat at
+    # 10.9 MB with 1,761 of 2,666 pages free — 66% of the file was reclaimable
+    # dead space. Prune is the only thing that frees pages, so reclaim here.
+    if n:
+        vacuum()
     return n
 
 
 def vacuum():
-    """Reclaim freed pages on disk after deletes so the .db file actually shrinks."""
-    conn = get_conn()
-    conn.execute("VACUUM")
-    conn.close()
+    """Reclaim freed pages on disk after deletes so the .db file actually shrinks.
+    Never raises: a locked DB must not break the caller's page."""
+    try:
+        conn = get_conn()
+        try:
+            conn.isolation_level = None      # VACUUM cannot run in a transaction
+            conn.execute("VACUUM")
+        finally:
+            conn.close()
+    except Exception:  # noqa: BLE001 — housekeeping is best-effort
+        pass

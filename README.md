@@ -1,8 +1,15 @@
-# Etsy Product Manager V37.0
+# Etsy Product Manager V37.13
 
-**Current release V37.0 — refinements to the multi-layer Opportunity Inbox and the
-L0 risk / product-fit gate (CAUTION cap, product vocab, real-data validation), built
-on the V28.0 EXECUTION-engine repositioning + Confirm & Assign daily loop.**
+**Current release V37.13 — honest inputs to the ranking engine.** The MCP enricher
+never read the revenue/views fields the demand leg needs, so every Keyword Lab and
+winner-derived candidate was capped at WATCH by construction; it also wrote the
+server's "no data" zeros as if they were measurements, which the scorer read as the
+most wide-open market there is. Both fixed, plus `py main.py enrich` to backfill the
+keywords harvest left unscored, a sellability read on each Inbox action, and the
+keyword trend history wired to the data that was already on disk. The layered
+L0-L4 engine and `opportunity_score.py` are unchanged — only what feeds them.
+Built on the multi-layer Opportunity Inbox and L0 risk / product-fit gate, and the
+V28.0 EXECUTION-engine repositioning + Confirm & Assign daily loop.
 YTuong/HeyEtsy is the **research engine** (trending, hot listings, shops, tags);
 this dashboard is the **execution engine** that turns findings into team action. We
 link out to YTuong instead of cloning it.

@@ -155,7 +155,16 @@ def _merge_keywords(view, rows, idx, path="keyword_data.csv"):
     try:
         import os
         from datetime import date as _dt
-        hist = Path("data/history")
+        # BESIDE THE MASTER IT SNAPSHOTS, not at a fixed CWD-relative path.
+        # A hardcoded Path("data/history") ignored the `path=` this function was
+        # given, so test_merge_keywords_survives_bom - which carefully merges into
+        # a tempdir CSV - appended a row to the REAL data/history/
+        # keyword_snapshots.csv on every pytest run. Measured: all 73 rows in that
+        # file were the test's own "brand new kw", across 11 dates. It is the file
+        # _trend_map() builds the Inbox rising/fading arrows from, and its mtime is
+        # in opportunity_inbox._data_stamp(), so running the tests also invalidated
+        # the production inbox cache.
+        hist = Path(path).resolve().parent / "data" / "history"
         hist.mkdir(parents=True, exist_ok=True)
         hp = hist / "keyword_snapshots.csv"
         newfile = not hp.is_file()

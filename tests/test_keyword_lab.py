@@ -49,3 +49,28 @@ def test_mode_aware_material_and_keyword_product():
     assert pod and all("embroidered" not in k for k in pod)     # POD: no material word
     assert any("sweatshirt" in k for k in pod)                  # product from keyword
     assert any("embroidered" in k for k in emb)                 # embroidery keeps it
+
+
+# ---------------------------------------------------------------------------
+# save_candidates is the ONE path keywords enter the master (Keyword Lab AND the
+# winner->Inbox push both call it). Two things it must never do.
+# ---------------------------------------------------------------------------
+def test_save_candidates_writes_blanks_not_fabricated_zeros(tmp_path,
+                                                            monkeypatch):
+    """A 0 in a count column reads downstream as 'this niche has zero
+    competitors' — opportunity_score scores that as the most wide-open market
+    there is. Unknown must stay blank."""
+    import csv as _csv
+    monkeypatch.chdir(tmp_path)
+
+    def _zero_enrich(d, _mode=None):
+        d["listing_count"] = 0.0          # what the MCP returns for "no data"
+        d["seller_count"] = 0.0
+        return True
+    monkeypatch.setattr("src.shortlister_integration._enrich_row", _zero_enrich)
+    added, _ = kl.save_candidates(["zzz probe long tail keyword"], "embroidery")
+    assert added == 1
+    row = next(iter(_csv.DictReader(
+        Path("keyword_data.csv").open(encoding="utf-8-sig"))))
+    assert row["etsy_listings"] == ""     # blank, NOT "0.0"
+    assert row["seller_count"] == ""

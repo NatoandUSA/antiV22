@@ -145,7 +145,22 @@ def _enrich_row(d, mode=None):
     added = [False]
 
     def put(key, val):
-        if val is not None and d.get(key) in (None, "", 0, 0.0):
+        # HONEST-NULLS. Measured: the MCP answers a keyword it has no data on with
+        # zeros (listing_count 0, seller_count 0) rather than an error, and the old
+        # guard both accepted that 0 as a measurement AND returned True for it. A
+        # winner-derived candidate was then written to keyword_data.csv claiming
+        # "0 listings on Etsy" forever, and _competition() reads a 0-listing niche
+        # as the most wide-open market in the system (90.0 - better than a really
+        # open 38-listing niche at 75.2). One keyword measured: the fabricated zero
+        # moved it from "WATCH, competition unknown" to "CONDITIONAL 68.0".
+        # A zero here means "the server knows nothing", not "the market is empty".
+        # Same family as the constant-85 opportunity signal (V30.1), the flat-50
+        # private boost (V33) and the hardcoded seasonality leg - all already
+        # removed for exactly this reason.
+        if val in (None, 0, 0.0):
+            return
+        # ...and a real captured 0 is a real value: only ever fill a BLANK.
+        if d.get(key) in (None, ""):
             d[key] = val
             added[0] = True
 
@@ -163,8 +178,29 @@ def _enrich_row(d, mode=None):
                                         or stats.get("total_sellers")))
         put("avg_price", _coerce_num(stats.get("median_price")
                                      or stats.get("avg_price")))
+        # THE DEMAND LEG. research_keyword has always returned total_revenue,
+        # avg_revenue and avg_views_24h (verified live: "custom crew t-shirt" ->
+        # total_revenue 65694.58, avg_revenue 2119.18, avg_views_24h 18.58) and
+        # this function read none of them. opportunity_score._demand_from needs
+        # revenue or views, and with neither the row is core_missing -> score
+        # None -> WATCH. That is why every Keyword Lab and winner-derived
+        # candidate was capped at WATCH by construction: not a scoring bias, a
+        # field this enricher forgot to copy. Same class as the importer that
+        # dropped the shipping window sitting in the supplier sheet.
+        # niche_revenue is the TOTAL (what the demand curve is calibrated for);
+        # `revenue` stays the per-listing average. Order matters - _demand_from
+        # reads niche_revenue first.
+        put("niche_revenue", _coerce_num(stats.get("total_revenue")))
+        put("revenue", _coerce_num(stats.get("avg_revenue")))
+        put("views_24h", _coerce_num(stats.get("avg_views_24h")
+                                     or stats.get("views_24h")))
         cl = stats.get("competition_level") or rk.get("competition_level")
-        if cl and not d.get("competition_level"):
+        # Only trust the LABEL when the same response carried a real listing
+        # count. Verified live: "personalized tote for granddaughter" comes back
+        # with every stat null, total_listings 0 — and competition_level "low",
+        # the most favourable read in COMP_INTENSITY (25 -> health 75). A label
+        # with no counts behind it is the server shrugging, not a market read.
+        if cl and not d.get("competition_level") and d.get("listing_count"):
             d["competition_level"] = cl
             added[0] = True
 

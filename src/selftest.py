@@ -530,12 +530,24 @@ def run_selftest():
     # ---- V26.3: paginate the capped surfaces so pages aren't starved of keywords
     _mcp_src = Path("src/ytrends_mcp.py").read_text(encoding="utf-8")
     _iv_src_v263 = Path("src/interactive.py").read_text(encoding="utf-8")
+    # The last clause used to be the literal `mcp.trending_keywords(limit=PULL)`.
+    # 833e280 ("Winner Finder + Build Queue read keyword store") routed all three
+    # capped surfaces through the _pull() helper so they can serve either the live
+    # MCP or the local keyword store — the deep pull was kept, the call site moved.
+    # The assertion was not updated, so this check has been RED ever since and two
+    # handoffs carried it forward as "needs live MCP, do not fix offline". It reads
+    # source text; it never needed the network. Assert the mechanism, not one
+    # call-site spelling: every capped surface is fetched through the deep-pull
+    # helper at PULL depth, which is what actually stops the pages being starved.
     check("Trending/Opportunities/Gems paginate past the ~10-row server cap",
           "def _gather(" in _mcp_src
           and 'return _gather("ytrends_find_trending_keywords"' in _mcp_src
           and 'return _gather("ytrends_scout_opportunities"' in _mcp_src
           and "validation" in _mcp_src          # poison-row recovery kept
-          and "mcp.trending_keywords(limit=PULL)" in _iv_src_v263)
+          and "def _pull(" in _iv_src_v263
+          and all(f"_pull('{surface}', source, PULL)" in _iv_src_v263
+                  for surface in ("trending_keywords", "scout_opportunities",
+                                  "hidden_gems")))
     _ops_src = Path("src/ops.py").read_text(encoding="utf-8")
     check("Deep pull (100) + display cap (50) + daily-run cache pre-warm",
           "PULL = 100" in _iv_src_v263 and "SHOW = 50" in _iv_src_v263

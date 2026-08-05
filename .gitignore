@@ -15,6 +15,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 keyword_data.csv
+keyword_data.bak.csv
 supplier_products.csv
 social_signals.csv
 *.har

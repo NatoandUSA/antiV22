@@ -2006,6 +2006,15 @@ def _inbox_row(i, r):
     kw = _clean(r["keyword"])
     a_icon = _ACTION_ICON.get(r["action"], "")
     action = f"{a_icon} {r['action'].replace('_', ' ').title()}"
+    # Sellability rides in the action cell (same rule as the supplier badge: same
+    # question, no 11th column). It is the tie-breaker WITHIN an action bucket —
+    # "which of these confirm-first do I confirm first?" — measured from revenue
+    # per listing, conversion and room. Display only: the row's action, verdict,
+    # score and position are the frozen engine's and are not touched.
+    if r.get("sell") is not None:
+        action += f" · \U0001F4B0 {r['sell']}"
+        if r.get("sell_verdict") == "PUSH":
+            action += " PUSH"
     mkt = (f"{_MKT_ICON.get(r['verdict'], '')} {r['verdict']} "
            f"({r['score']})" if r["score"] is not None else
            f"{_MKT_ICON.get(r['verdict'], '')} {r['verdict']}")
@@ -2240,9 +2249,17 @@ def inbox(mode=None, q="", show_archived=False):
               "proof + no data refresh in the expiry window) — they stay "
               "searchable in Focus and via `?show=all`._", ""]
     if c.get("needs_enrichment"):
-        L += [f"_\U0001F50C **{c['needs_enrichment']}** capture-lane leads still "
-              "have NO market data — use the **Enrich leads via MCP** button "
-              "above to fill them (honest-nulls until then)._", ""]
+        L += [f"_\U0001F50C **{c['needs_enrichment']}** keyword(s) have too little "
+              "market data for the engine to score — the **Enrich via MCP** "
+              "button above fills a few; run `py main.py enrich` on the PC for "
+              "the whole backlog (honest-nulls until then)._", ""]
+    # Which of the actions have real money behind them, not just a market score.
+    if c.get("sellable"):
+        L += [f"_\U0001F4B0 **{c['sellable']}** row(s) carry real per-listing "
+              f"sales evidence (**{c.get('sellable_push', 0)}** rated PUSH) — the "
+              "number beside the action is revenue/listing + conversion + room. "
+              "Use it to pick **which Confirm-first to confirm first**; it ranks "
+              "nothing on its own. [Full lane](/longtail)._", ""]
     # Supplier feasibility (step 3), moved from the publish gate to here. BADGE
     # ONLY: while the library is incomplete a miss is a gap in our data, so it
     # flags for a human and never changes a ranking.

@@ -2312,11 +2312,12 @@ def build_app(password, secret):
                         f'<input type="hidden" name="_csrf" value="{_csrf()}">'
                         f'<input type="hidden" name="mode" value="{m or ""}">'
                         '<button class="pullbtn primary" type="submit">'
-                        f'\U0001F50C Enrich {min(_ne, 12)} capture-lane leads via '
-                        'MCP → re-rank</button> <span style="font-size:.78rem;'
-                        'color:var(--ink-soft)">fills market data for '
-                        'Pinterest/supplier leads · honest-nulls until data '
-                        'arrives</span></form>')
+                        f'\U0001F50C Enrich {min(_ne, 12)} of {_ne:,} unscored '
+                        'keywords via MCP → re-rank</button> '
+                        '<span style="font-size:.78rem;'
+                        'color:var(--ink-soft)">fills the missing market data '
+                        'that leaves a keyword unscored · capture-lane leads '
+                        'first · honest-nulls until data arrives</span></form>')
         except Exception:  # noqa: BLE001
             pass
         bar += _teamops_strip(

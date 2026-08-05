@@ -210,3 +210,37 @@ def test_run_harvest_summary_matches_return_dict(monkeypatch, tmp_path):
     for k in ("scanned", "new_total", "new_emb", "new_pod", "top_emb",
               "top_pod", "emb_sample", "pod_sample"):
         assert k in s
+
+
+def _fake_mcp_reply(payload):
+    """A well-formed MCP tools/call reply carrying `payload` as its JSON text."""
+    import json as _j
+    return {"result": {"content": [{"text": _j.dumps(payload)}]}}
+
+
+def test_mcp_never_caches_an_empty_answer(monkeypatch, tmp_path):
+    """The cache key is (request, DAY), so caching an empty result pins that
+    emptiness until midnight: one MCP hiccup at 09:00 blanks Trending / Gems /
+    Opportunities for the rest of the working day, and it reads as "no data"
+    rather than "the call failed". Measured in the live data/agent.db: 65 of 535
+    cached rows were empty payloads, including offset-0 pages that should
+    plainly have returned rows."""
+    monkeypatch.chdir(tmp_path)
+    from src import db
+    from src import ytrends_mcp as mcp
+    monkeypatch.setattr(mcp, "_ensure_session", lambda: None)
+    monkeypatch.setattr(mcp, "_post", lambda *a, **k: {})
+
+    seen = []
+    monkeypatch.setattr(mcp, "cache_put",
+                        lambda k, d, p: seen.append((k, p)))
+
+    monkeypatch.setattr(mcp, "_parse", lambda _r: _fake_mcp_reply([]))
+    assert mcp.call("ytrends_find_trending_keywords", limit=10) == []
+    assert seen == [], "an empty answer must not be cached for the whole day"
+
+    monkeypatch.setattr(mcp, "_parse",
+                        lambda _r: _fake_mcp_reply([{"tag": "real row"}]))
+    assert mcp.call("ytrends_find_trending_keywords", limit=10)
+    assert len(seen) == 1, "a real answer still caches"
+    assert db is not None

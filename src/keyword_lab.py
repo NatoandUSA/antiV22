@@ -254,6 +254,15 @@ def save_candidates(kws, mode=None, enrich=True, limit=14, source="keyword-lab")
         d = {"tag": kw}
         if enrich and _try_enrich(d):
             enriched += 1
+        # Drop anything the enrich could not actually measure. _enrich_row only
+        # ever writes real values now, but a caller may hand us a half-filled row,
+        # and a 0 in a COUNT column is read downstream as "this niche has zero
+        # competitors" - the most attractive market in the scorer. Blank = unknown.
+        for _k in ("listing_count", "seller_count", "views_24h", "revenue",
+                   "avg_price", "avg_conversion_rate", "momentum_score",
+                   "niche_revenue"):
+            if d.get(_k) in (0, 0.0):
+                d.pop(_k, None)
         vals = {
             "keyword": kw,
             "etsy_listings": d.get("listing_count", ""),
@@ -261,6 +270,11 @@ def save_candidates(kws, mode=None, enrich=True, limit=14, source="keyword-lab")
             "views_24h": d.get("views_24h", ""),
             "avg_price": d.get("avg_price", ""),
             "avg_revenue": d.get("revenue", ""),
+            # The niche TOTAL, which the master carries as total_revenue and
+            # opportunity_inbox._to_scorer feeds back in as niche_revenue. Without
+            # this column the enriched total was thrown away on write and the row
+            # still landed demand-less in WATCH.
+            "total_revenue": d.get("niche_revenue", ""),
             "conversion_rate": d.get("avg_conversion_rate", ""),
             "momentum": d.get("momentum_score", ""),
             "tm_risk": "",

@@ -16,6 +16,7 @@ guesses and never blocks; a broken probe degrades that one step to "unknown".
 
 Nothing here ranks, scores or publishes. It is a map, not an engine.
 """
+import time
 from pathlib import Path
 
 OWNER, SELLER, DESIGNER, MANAGER, RESEARCHER = (
@@ -43,6 +44,11 @@ STEPS = [
         "action": ("Open Pinterest trends", "/pinterest-trends"),
         "output": "Demand corroboration badge on matching keywords",
         "why": "Second, independent read on demand before spending time on a niche.",
+        # ADVISORY: feasibility_gate states it outright — Pinterest "is a separate
+        # marketplace, so it corroborates confidence and must never veto a keyword
+        # that Etsy's own data says is good. It is advisory, displayed only."
+        # See `advisory` below for why that has to be declared here too.
+        "advisory": True,
     },
     {
         "n": 3, "key": "supplier", "name": "Supplier feasibility",
@@ -51,6 +57,11 @@ STEPS = [
         "action": ("Check supplier fit", "/suppliers"),
         "output": "Can we actually make and ship it, at what cost",
         "why": "A keyword you cannot produce profitably is not an opportunity.",
+        # ADVISORY for the same reason: the gate reports MAKEABLE /
+        # NEEDS_SUPPLIER_CHECK as a BADGE and cannot block anything until library
+        # coverage is 'complete'. Until then this step ranks nothing and stops
+        # nothing, so it must not be able to capture "you are here".
+        "advisory": True,
     },
     {
         "n": 4, "key": "rank", "name": "Find good keyword / Rank",
@@ -168,13 +179,16 @@ PHASES = [
      "en_out": "Final action per keyword: Build now / Confirm / Watch / Skip",
      "tools": (("Opportunity Inbox", "/inbox"), ("Long-tail lane", "/longtail"),
                ("Build Queue", "/build-queue"))},
-    # Phases 3 and 4 both used to route to /imports. /imports is the YTuong
-    # Import Center - a drop box. It is where the evidence ARRIVES, not where
-    # either job is DONE: phase 3's actual work is reading the winner's recipe
-    # (Pattern Miner) and phase 4's is deriving new keywords (Keyword Lab).
-    # Sending both phase cards to the same upload page is why the owner said
-    # "Learn from winners and New KW all lead to YTuong Import Center".
-    # /imports stays reachable as a tool of phase 3 (it IS step 6/7).
+    # Phase 3 -> /pattern-miner (read the winner's recipe) and phase 4 ->
+    # /imports (the winner-derived candidates AND the one-click "Send to
+    # Re-rank" both live there: steps 9 and 10). These are two DIFFERENT routes,
+    # so this is NOT the old "Learn from winners and New KW both land on the
+    # Import Center" complaint - that was both cards on the SAME page. Phase 4
+    # pointed at /keyword-lab before, but Lab is a seed generator whose
+    # candidates are WATCH-capped by construction, while hundreds of
+    # winner-derived candidates sat unsent on /imports - so the card's primary
+    # click now lands where the real work and the actual send button are.
+    # Keyword Lab stays reachable as a tool chip of this phase.
     {"p": 3, "key": "learn", "steps": (5, 6, 7, 8),
      "vi": "Học người thắng", "en": "Learn from winners", "icon": "\U0001F52C",
      "route": "/pattern-miner", "owner": RESEARCHER,
@@ -186,13 +200,13 @@ PHASES = [
                ("Etsy Spy", "/etsy-spy"))},
     {"p": 4, "key": "newkw", "steps": (9, 10),
      "vi": "Từ khoá mới", "en": "New keywords", "icon": "\U0001F4A1",
-     "route": "/keyword-lab", "owner": RESEARCHER,
+     "route": "/imports", "owner": RESEARCHER,
      "vi_do": "Tool tự sinh từ khoá từ winner — bấm một nút đẩy lại vào Inbox",
      "vi_out": "Từ khoá mới có gắn nguồn winner, được xếp hạng lại",
      "en_do": "The tool derives keywords from a winner — one button sends them back",
      "en_out": "New keywords tagged with their source winner, re-ranked",
-     "tools": (("Keyword Lab", "/keyword-lab"), ("Re-rank", "/rerank"),
-               ("Winner candidates", "/imports"))},
+     "tools": (("Winner candidates", "/imports"), ("Keyword Lab", "/keyword-lab"),
+               ("Re-rank", "/rerank"))},
     {"p": 5, "key": "ship", "steps": (11, 12),
      "vi": "Làm & giao", "en": "Build & ship", "icon": "\U0001F680",
      "route": "/launch-kit", "owner": SELLER,
@@ -331,7 +345,55 @@ def _todo(detail):
     return {"state": "todo", "detail": detail}
 
 
+# Home is the most-opened page and calls status() on every load; the uncached
+# body scores the whole master, reads the supplier library and re-derives every
+# winner's rerank candidates. Cache it, keyed on the mtimes of exactly the files
+# it reads, so the result is transparent - any import / harvest / listing pack
+# busts it the instant it lands and nothing is ever served stale. A coarse 30 s
+# bucket covers the one DB-backed step (team board), which has no file to stamp.
+_STATUS_CACHE = {}
+
+
+def _status_stamp():
+    def newest(d):
+        p = _p("data", "imports", d)
+        try:
+            return (max((f.stat().st_mtime for f in p.glob("*.json")),
+                        default=0.0) if p.is_dir() else 0.0)
+        except OSError:
+            return 0.0
+
+    def mt(*parts):
+        try:
+            return _p(*parts).stat().st_mtime
+        except OSError:
+            return 0.0
+    return (
+        mt("keyword_data.csv"),
+        mt("data", "suppliers", "supplier_products.csv"),
+        mt("data", "suppliers", "supplier_sources.json"),
+        mt("reports", "latest", "listing_pack.md"),
+        newest("pinterest"), newest("etsy_listing_detail"),
+        newest("etsy_listing_reviews"), newest("listing_keyword_map"),
+        newest("rerank_pushes"),
+        int(time.time() // 30),
+    )
+
+
 def status():
+    """Cached wrapper over _status_uncached(): recompute only when the files it
+    reads change (or every ~30 s for the DB-backed team step). Returns a fresh
+    copy so callers can never mutate the cached dict."""
+    stamp = _status_stamp()
+    hit = _STATUS_CACHE.get(stamp)
+    if hit is None:
+        hit = _status_uncached()
+        _STATUS_CACHE.clear()          # only one live stamp at a time
+        _STATUS_CACHE[stamp] = hit
+    return {k: dict(v) for k, v in hit.items()}
+
+
+def _status_uncached():
     """Per-step state from real data: ready / todo / unknown, plus one line of
     evidence. Read-only and best-effort — a failing probe never breaks the page."""
     out = {}
@@ -434,9 +496,29 @@ def status():
 
 
 def current_step(st=None):
-    """The first step that is not ready — i.e. "you are here"."""
+    """The first step that is not ready — i.e. "you are here".
+
+    ADVISORY steps (2 Pinterest, 3 Supplier) are passed over while any REQUIRED
+    step is still open. Measured on the real data: steps 4-9 and 11 were all
+    ready, 9 winner-derived candidates sat unsent at step 10 — and the home page
+    still told the team "Open Pinterest trends" every single morning, because
+    step 2 is the first not-ready step and always will be. Pinterest capture is
+    optional by design and supplier coverage cannot reach 'complete' until the
+    owner uploads two columns, so a plain first-open scan pins the pointer at 2
+    forever and the one instruction on the busiest page never advances.
+
+    Nothing is hidden: both steps still render as ⬜ in their phase rail with
+    their own detail line, and if every required step IS ready the pointer falls
+    through to the advisory ones so they are still asked for.
+    """
     st = st or status()
+
+    def open_(s):
+        return (st.get(s["key"]) or {}).get("state") != "ready"
     for s in STEPS:
-        if (st.get(s["key"]) or {}).get("state") != "ready":
+        if not s.get("advisory") and open_(s):
+            return s["n"]
+    for s in STEPS:                      # required work done -> now ask for these
+        if open_(s):
             return s["n"]
     return STEPS[-1]["n"]

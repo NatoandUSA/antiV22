@@ -170,9 +170,14 @@ def _data_stamp():
     # badge. Without it in the stamp, importing a supplier CSV would leave every
     # badge stale until some unrelated file changed — and the gate's whole
     # promise is that a block/flag revives automatically.
+    # data/agent.db now feeds _trend_map (the keyword history that was sitting
+    # unread in discovered_keywords). Without it here a fresh harvest would write
+    # new momentum readings and no trend arrow would ever change - the same miss
+    # already fixed twice for winner.json and the proof ledger.
     return (mt(MASTER), mt(MASTER_ALT), mt(_PROOF_LATEST),
             mt("data/learning/winner.json"),
             mt("data/history/keyword_snapshots.csv"),
+            mt("data/agent.db"),
             mt(_CAPTURE_DIR / "_proof_ledger.jsonl"),
             mt("data/suppliers/supplier_products.csv"),
             newest(_CAPTURE_DIR), newest(_PIN_DIR), newest(_SUP_DIR))
@@ -239,27 +244,58 @@ def build_inbox(mode=None, limit=80, q=None, show_archived=False):
     return res
 
 
+def _needs_enrichment(r):
+    """True when the engine could not score this row for want of market data.
+
+    This used to be `source endswith '-lead' and no comp and no rev`, which meant
+    the Needs-Enrichment queue could only ever contain PINTEREST/SUPPLIER lane
+    leads. Measured on the live master: 0 lane leads exist, so the queue was
+    permanently empty and the one-click enrich button never even rendered - while
+    843 rows scored None and 563 carried no market field at all. The 838 of those
+    that came from `mcp:search` (name only) and `mcp:ranking` (listing count
+    only) had NO route to enrichment anywhere in the app.
+
+    The honest condition is the one the scorer actually applies: a null overall
+    score means Market or Competition is missing, which is exactly what
+    _enrich_row tops up. Rows the engine DID score are left alone.
+    """
+    return r.get("score") is None
+
+
 def lead_keywords(mode=None, limit=12):
-    """Lane-derived candidates still missing ALL market data - the
-    Needs-Enrichment queue (one-click MCP enrich fills them)."""
+    """Keywords the engine could not score, for the one-click MCP enrich.
+
+    Capture-lane leads first: they are the freshest, human-sourced candidates and
+    the enrich is what turns them into rankable rows. Master rows that at least
+    carry a listing count come next (closest to scoreable), then the rest."""
     full = build_inbox(mode, limit=100000)
-    return [r["keyword"] for r in full["rows"]
-            if str(r.get("source", "")).endswith("-lead")
-            and r["comp"] is None and r["rev"] is None][:limit]
+    lane, partial, bare = [], [], []
+    for r in full["rows"]:
+        if not _needs_enrichment(r):
+            continue
+        if str(r.get("source", "")).endswith("-lead"):
+            lane.append(r["keyword"])
+        elif r.get("comp") is not None:
+            partial.append(r["keyword"])
+        else:
+            bare.append(r["keyword"])
+    return (lane + partial + bare)[:limit]
 
 
-def _trend_map():
-    """kw -> (arrow, detail) from the last two snapshot dates per keyword.
-    V33 (CEO reviews' top ROI): rising / stable / fading, from real history."""
+TREND_DELTA = 5.0          # momentum points that count as a real move
+
+
+def _history_from_csv():
+    """{kw: {date: momentum}} from the extension-import snapshot file."""
     p = Path("data/history/keyword_snapshots.csv")
-    if not p.is_file():
-        return {}
     hist = {}
+    if not p.is_file():
+        return hist
     try:
         with p.open(encoding="utf-8-sig") as fh:
             for r in csv.DictReader(fh):
                 kw = (r.get("keyword") or "").strip().lower()
-                d = r.get("date") or ""
+                d = (r.get("date") or "")[:10]
                 try:
                     m = float(r.get("momentum") or "")
                 except ValueError:
@@ -268,18 +304,73 @@ def _trend_map():
                     hist.setdefault(kw, {})[d] = m
     except OSError:
         return {}
+    return hist
+
+
+def _history_from_db():
+    """{kw: {date: momentum}} from data/agent.db.
+
+    `discovered_keywords` had been append-only since 2026-07-05 with no reader
+    anywhere in the codebase \u2014 11,680 rows, 1,029 tags, momentum on 9,795 of
+    them. Meanwhile the CSV above is written only by an extension import, so on
+    a shop that harvests from the MCP the trend column was permanently blank.
+    The history was already on disk; nothing looked at it.
+
+    (This reads only the momentum COLUMN as a time series. The warning carried
+    by four handoffs \u2014 never plumb `discovered_keywords.opportunity` into the O
+    leg, because discover.score() re-derives inputs the scorer already has \u2014
+    still stands and is not what this does.)
+    """
+    try:
+        from src.db import get_conn
+        conn = get_conn()
+    except Exception:  # noqa: BLE001 - history is a bonus, never a dependency
+        return {}
+    hist = {}
+    try:
+        rows = conn.execute(
+            "SELECT tag, date(captured_at), momentum FROM discovered_keywords "
+            "WHERE momentum IS NOT NULL AND tag IS NOT NULL AND tag != ''")
+        for tag, day, mom in rows:
+            kw = str(tag).strip().lower()
+            if kw and day:
+                hist.setdefault(kw, {})[day] = float(mom)
+    except Exception:  # noqa: BLE001
+        return {}
+    finally:
+        try:
+            conn.close()
+        except Exception:  # noqa: BLE001
+            pass
+    return hist
+
+
+def _trend_map():
+    """kw -> (arrow, detail): rising / fading / stable from real history.
+
+    OLDEST vs NEWEST observation, not the last two. Measured over the live
+    history: consecutive days give 30 rising, **0 fading**, 513 stable with a
+    median delta of 0.00 \u2014 YTrends momentum barely moves day to day and the same
+    value is re-recorded many times daily, so a last-two-snapshots read reports
+    "stable" for ~95% of keywords and the column says nothing. Across the month
+    the same data gives 31 rising and 38 fading: real, actionable movement.
+    """
+    hist = _history_from_db()
+    for kw, by_date in _history_from_csv().items():     # CSV wins on overlap
+        hist.setdefault(kw, {}).update(by_date)
     out = {}
     for kw, by_date in hist.items():
         if len(by_date) < 2:
             continue
-        d2, d1 = sorted(by_date)[-2:]
-        prev, cur = by_date[d2], by_date[d1]
-        if cur - prev > 5:
-            out[kw] = ("\u2197", f"mom {prev:.0f}\u2192{cur:.0f}")   # rising
-        elif prev - cur > 5:
-            out[kw] = ("\u2198", f"mom {prev:.0f}\u2192{cur:.0f}")   # fading
+        days = sorted(by_date)
+        first, last = by_date[days[0]], by_date[days[-1]]
+        span = f"mom {first:.0f}\u2192{last:.0f} over {len(days)}d"
+        if last - first > TREND_DELTA:
+            out[kw] = ("\u2197", span)                    # rising
+        elif first - last > TREND_DELTA:
+            out[kw] = ("\u2198", span)                    # fading
         else:
-            out[kw] = ("\u2192", f"mom stable {cur:.0f}")
+            out[kw] = ("\u2192", f"mom stable {last:.0f}")
     return out
 
 
@@ -358,6 +449,14 @@ def _build_inbox(mode=None, limit=80):
             "proof_tier": act.get("proof_tier", 9),   # L1: 0 proven, 1 selling
             "proof": act.get("proof"),
             "comp": comp, "views": views, "rev": rev, "conv": cr, "momentum": mom,
+            # seller_count was read for the evidence line and then thrown away,
+            # so longtail._room()'s seller-concentration penalty — "3+ listings
+            # per seller = a few shops already own this market" — could never
+            # fire: it reads row["sellers"], which no row carried. Same class of
+            # bug as the enricher that never copied revenue: a designed signal
+            # with no path to its consumer. Display/lane input only; the frozen
+            # scorer never reads this key.
+            "sellers": sellers,
             # niche TOTAL revenue, kept beside the per-listing avg so a reader can
             # tell the two apart (harvest used to write the total into avg_revenue
             # for opportunity-sourced rows). Carried for display/selection only —
@@ -486,6 +585,28 @@ def _build_inbox(mode=None, limit=80):
     # registered suppliers have no products on file), so feasibility_gate can
     # never return NOT_MAKEABLE and therefore never changes an action or a score.
     # Enforcement switches itself on when the library reaches 'complete'.
+    # --- SELLABILITY overlay (display only, same contract as the supplier badge).
+    # The Inbox labels 112 rows CONFIRM_FIRST identically and sorts them by market
+    # score, which answers "how big is this market?". The long-tail lane already
+    # computes the other half - "is this specific phrase actually selling?", from
+    # revenue per listing, conversion and room - and 13 rows carry real money
+    # behind them ($3,505/listing, 5.8% conv, 32 listings). That answer lived on a
+    # separate page reachable only as a tool chip, so the one question staff
+    # actually have at this screen - WHICH confirm-first do I confirm first? - had
+    # no answer here. Riding it into the action cell keeps the promise made when
+    # the supplier badge landed: same question, no 11th column.
+    # Nothing is re-sorted, re-scored or re-actioned; the frozen engine's output
+    # is untouched (test_sellability_overlay_changes_no_verdict_action_or_score).
+    try:
+        from src import longtail as _lt
+        for r in rows:
+            s = _lt.sellability(r)
+            if s:
+                r["sell"] = s["score"]
+                r["sell_verdict"] = s["verdict"]
+                r["sell_why"] = s["why"]
+    except Exception:  # noqa: BLE001 - an overlay must never break the inbox
+        pass
     supplier_cov, supplier_counts = None, None
     try:
         from src import feasibility_gate as fg
@@ -507,9 +628,12 @@ def _build_inbox(mode=None, limit=80):
         "skip": sum(1 for r in rows if r["action"] == "SKIP"),
         "blocked": sum(1 for r in rows if r["action"] == "BLOCKED"),
         "archived": len(archived),
-        "needs_enrichment": sum(
-            1 for r in rows if str(r.get("source", "")).endswith("-lead")
-            and r["comp"] is None and r["rev"] is None),
+        "needs_enrichment": sum(1 for r in rows if _needs_enrichment(r)),
+        # rows carrying real per-listing sales evidence (the long-tail lane's
+        # read), so the view can say how many of the actions have money behind
+        # them rather than only a market score
+        "sellable": sum(1 for r in rows if r.get("sell") is not None),
+        "sellable_push": sum(1 for r in rows if r.get("sell_verdict") == "PUSH"),
     }
     # honest provenance: exactly which sources fed THIS ranking
     sources = {

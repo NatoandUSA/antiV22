@@ -1,7 +1,7 @@
 """Etsy niche research agent.
 
 Commands:
-  py main.py                     -> validate keywords.csv via Google Trends
+  py main.py                     -> show this command list
   py main.py discover            -> pull live YTrends data and rank new ideas
   py main.py discover pod        -> print-on-demand keywords only
   py main.py discover embroidery -> embroidery keywords only (also: ideas pod / ideas embroidery)
@@ -11,6 +11,7 @@ Commands:
   py main.py grow "niche keyword"       -> deep research one niche
   py main.py grow pod | grow embroidery -> auto-grow one product line
   py main.py daily [pod|embroidery]  -> THE team command: 5 clean reports + Market Pulse
+  py main.py enrich             -> fill market data for unscored keywords (PC only)
   py main.py harvest                 -> pull fresh keywords from the YTrends index into keyword_data.csv
   py main.py harvest --dry           -> preview the harvest without writing anything
   py main.py longtail [seed ...]     -> pull long-tails (with real revenue+conversion) and show the lane
@@ -38,55 +39,6 @@ Commands:
 """
 import csv
 import sys
-
-
-def load_keywords(path="keywords.csv"):
-    rows = []
-    with open(path, newline="", encoding="utf-8") as f:
-        for row in csv.DictReader(f):
-            kw = (row.get("keyword") or "").strip()
-            comp_raw = (row.get("competition") or "").strip()
-            comp = int(comp_raw) if comp_raw.isdigit() else None
-            if kw:
-                rows.append((kw, comp))
-    return rows
-
-
-def research():
-    from src.gtrends import fetch_momentum
-    from src.scoring import opportunity_score
-    from src.db import save_snapshot
-    from src.report import write_report
-
-    kws = load_keywords()
-    print(f"Researching {len(kws)} keywords via Google Trends (takes a few minutes)...")
-    stats = fetch_momentum([k for k, _ in kws])
-
-    results = []
-    for kw, comp in kws:
-        s = stats.get(kw)
-        if not s:
-            print(f"  No trend data for: {kw}")
-            continue
-        results.append({
-            "keyword": kw,
-            "competition": comp,
-            "opportunity": opportunity_score(s["avg_interest"], s["momentum_pct"], comp),
-            **s,
-        })
-
-    results.sort(key=lambda r: r["opportunity"], reverse=True)
-    save_snapshot([
-        (r["keyword"], r["avg_interest"], r["momentum_pct"], r["competition"], r["opportunity"])
-        for r in results
-    ])
-    path = write_report(results)
-
-    print(f"\nDone. Full report: {path}\n")
-    print("Top opportunities:")
-    for i, r in enumerate(results[:10], 1):
-        print(f"{i:2}. {r['keyword']:<32} "
-              f"opportunity={r['opportunity']:<8} momentum={r['momentum_pct']}%")
 
 
 def expand(tag):
@@ -377,6 +329,29 @@ def cmd_expand(cmd, args):
 def cmd_harvest(cmd, args):
     from src.harvest import run_harvest
     run_harvest(args)
+
+
+def cmd_enrich(cmd, args):
+    """Backfill the market data that leaves a keyword unscored.
+
+    Harvest's two biggest sources add a name (mcp:search) or a listing count
+    (mcp:ranking) and no demand fields, so those rows can never be scored. This
+    tops them up from the live MCP. Runs on the PC — the VPS IP is blocked from
+    YTrends, same as harvest; `merge_master` carries the result to the server.
+
+      py main.py enrich              -> the whole backlog (~11.6s per keyword)
+      py main.py enrich 50           -> the first 50 only
+      py main.py enrich 50 embroidery
+    """
+    from src import enrich
+    limit = None
+    mode = None
+    for a in args:
+        if str(a).isdigit():
+            limit = int(a)
+        elif str(a).lower() in ("pod", "embroidery"):
+            mode = str(a).lower()
+    enrich.run(limit=limit, mode=mode)
 
 
 def cmd_longtail(cmd, args):
@@ -690,6 +665,7 @@ COMMANDS = {
     "discover": cmd_discover,
     "expand": cmd_expand,
     "harvest": cmd_harvest,
+    "enrich": cmd_enrich,
     "longtail": cmd_longtail,
     "workspace": cmd_workspace,
     "autopull": cmd_autopull,
@@ -713,12 +689,29 @@ COMMANDS = {
 # we fail fast with a helpful message when the API is unreachable, so the tool
 # never hangs on a dead network/expired cookie.
 LIVE_API_CMDS = {"grow", "listing", "discover", "ideas", "expand",
-                 "categories", "supplier", "printify"}
+                 "categories", "supplier", "printify", "enrich"}
+
+
+# YTrends is reachable over TWO transports and they fail independently: the
+# legacy REST API (YTRENDS_COOKIE, which expires) and the MCP (YTRENDS_API_TOKEN).
+# Measured here: probe() False while the MCP answered "OK (14 tools)". Guarding an
+# MCP-backed command on the REST probe therefore refuses to run a command that
+# works. Every other LIVE_API_CMD really does import src.ytrends_client, so they
+# keep the REST probe.
+_MCP_CMDS = {"enrich"}
 
 
 def _live_api_guard(cmd):
     """Fail fast for YTrends-backed commands when the API is unreachable."""
     try:
+        if cmd in _MCP_CMDS:
+            from src.ytrends_mcp import available
+            ok, msg = available()
+            if not ok:
+                print(f"Cannot run '{cmd}': YTrends MCP unreachable — {msg}")
+                print("Fix: check YTRENDS_API_TOKEN / YTRENDS_MCP_URL in .env.")
+                sys.exit(1)
+            return
         from src.ytrends_client import probe
         if cmd in ("supplier", "printify"):
             return  # Printify has its own auth errors; no YTrends needed
@@ -745,14 +738,15 @@ def main(argv):
         pass
 
     if len(argv) <= 1:
-        # Bare command: Google Trends validation of keywords.csv.
-        try:
-            research()
-        except ImportError as exc:
-            print(f"Google Trends check unavailable: {exc}")
-            print("Fix: py -m pip install pytrends")
-            print("Or use: python main.py listreports / allreports / manager")
-            sys.exit(1)
+        # Bare command used to run research(), a Google-Trends check over
+        # keywords.csv. It imported src.scoring, which c65c1b5 deleted as a dead
+        # duplicate scoring path without removing this last caller — so `python
+        # main.py` has raised ModuleNotFoundError ever since, caught by an
+        # ImportError handler that then blamed a missing pytrends. Nothing else
+        # called it and the surviving scorer (src/opportunity_score.py) has a
+        # different contract, so the dead function is gone and the bare command
+        # now does the only honest thing: show what this CLI can actually do.
+        print(__doc__)
         return
 
     cmd = argv[1]

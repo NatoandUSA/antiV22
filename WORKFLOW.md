@@ -31,7 +31,7 @@ Vì vậy: **màn hình hiện 5 giai đoạn, 12 bước nằm bên trong.** Kh
 | 1 | 🔎 **Tìm & lọc** (Find & filter) | Gom từ khoá, xem tín hiệu Pinterest, kiểm nhà cung cấp làm được hay không | 1·2·3 | `/trending` | Researcher |
 | 2 | 🏆 **Xếp hạng** (Rank) | Để máy chấm điểm và nói rõ nên làm cái nào trước | 4 | `/inbox` | Researcher |
 | 3 | 🔬 **Học người thắng** (Learn from winners) | Nhập bằng chứng HeyEtsy, mở listing top, đọc ra công thức thắng | 5·6·7·8 | `/pattern-miner` | Researcher |
-| 4 | 💡 **Từ khoá mới** (New keywords) | Tool tự sinh từ khoá từ winner — bấm một nút đẩy lại vào Inbox | 9·10 | `/keyword-lab` | Researcher |
+| 4 | 💡 **Từ khoá mới** (New keywords) | Tool tự sinh từ khoá từ winner — bấm một nút đẩy lại vào Inbox | 9·10 | `/imports` | Researcher |
 | 5 | 🚀 **Làm & giao** (Build & ship) | Lên listing + ảnh, giao việc cho team, đo kết quả Ngày 3 / Ngày 7 | 11·12 | `/launch-kit` | Seller |
 
 ### 🔎 Giai đoạn 1 — Tìm & lọc
@@ -73,7 +73,7 @@ Vì vậy: **màn hình hiện 5 giai đoạn, 12 bước nằm bên trong.** Kh
 
 - **Làm gì:** Tool tự sinh từ khoá từ winner — bấm một nút đẩy lại vào Inbox
 - **Tạo ra:** Từ khoá mới có gắn nguồn winner, được xếp hạng lại
-- **Route chính:** `/keyword-lab` · **Phụ trách:** Researcher
+- **Route chính:** `/imports` (candidate winner + nút “Send to Re-rank” nằm ở đây; Keyword Lab là tool phụ) · **Phụ trách:** Researcher
 
 | Bước | Tên | Route | Cần có | Tạo ra |
 |---|---|---|---|---|

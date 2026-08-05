@@ -129,3 +129,32 @@ def test_current_phase_contains_the_current_step():
     st["evidence"] = {"state": "todo", "detail": "x"}     # step 6
     assert ws.current_step(st) == 6
     assert 6 in ws.current_phase(st)["steps"]
+
+
+def test_advisory_steps_never_capture_you_are_here():
+    """MEASURED on the real repo: steps 4-9 and 11 were ready and 9 winner-derived
+    candidates sat unsent at step 10, yet home said "Open Pinterest trends" —
+    because step 2 is the first not-ready step and, being optional by design,
+    always will be. The pointer must name work that actually moves the shop."""
+    st = {s["key"]: {"state": "ready", "detail": "x"} for s in ws.STEPS}
+    st["pinterest"] = {"state": "todo", "detail": "no Pinterest capture yet"}
+    st["supplier"] = {"state": "todo", "detail": "coverage PARTIAL"}
+    st["rerank"] = {"state": "todo", "detail": "9 candidate(s) waiting to be sent"}
+    assert ws.current_step(st) == 10                  # the real blocker, not 2
+    assert 10 in ws.current_phase(st)["steps"]
+    # ...but nothing is hidden: phase 1 still reports the advisory gap
+    assert ws.phase_status(st)["find"]["state"] == "todo"
+    assert ws.phase_status(st)["find"]["next_step"]["n"] == 2
+
+
+def test_advisory_steps_are_still_asked_for_once_the_required_work_is_done():
+    st = {s["key"]: {"state": "ready", "detail": "x"} for s in ws.STEPS}
+    st["pinterest"] = {"state": "todo", "detail": "x"}
+    assert ws.current_step(st) == 2      # nothing else open -> now it is the ask
+
+
+def test_only_pinterest_and_supplier_are_advisory():
+    """A step is advisory only when the code itself refuses to let it block:
+    feasibility_gate calls Pinterest 'advisory, displayed only' and cannot return
+    NOT_MAKEABLE until supplier coverage is complete. Anything else is required."""
+    assert {s["n"] for s in ws.STEPS if s.get("advisory")} == {2, 3}

@@ -266,7 +266,16 @@ def call(tool, cache=True, response_format="concise", skip_bad=False,
     except ValueError:
         data = {"_raw": text}
 
-    if cache:
+    # Cache REAL answers only. The cache key is (request, DAY), so caching an
+    # empty result pins that emptiness until midnight: one MCP hiccup at 09:00
+    # blanks Trending/Gems/Opportunities for the rest of the working day, and it
+    # looks like "no data" rather than "the call failed". Measured in the live
+    # data/agent.db: 65 of 535 cached rows were empty payloads, including
+    # offset-0 pages that plainly should have returned rows.
+    # The deliberate exception stays untouched: _bad() still caches {} for a
+    # VALIDATION error, because that request is known-bad and retrying it all day
+    # is the waste this cache exists to prevent.
+    if cache and data not in ({}, [], None):
         cache_put(key, today, json.dumps(data))
     return data
 
