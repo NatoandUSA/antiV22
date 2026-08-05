@@ -249,7 +249,18 @@ def _kfmt(n):
     return str(int(n))
 
 
-def _row_html(i, p, csrf):
+def _ages(picks):
+    """Batched freshness for the queue -> a per-row formatter. One DB read for
+    the whole table, not one per row."""
+    from src import freshness as fr
+    try:
+        labels = fr.labels_for([p.get("keyword") for p in picks or []])
+    except Exception:  # noqa: BLE001 - the column never breaks the queue
+        labels = {}
+    return lambda p: labels.get(p.get("keyword"), fr.NEW)
+
+
+def _row_html(i, p, csrf, age=None):
     tmbadge = ""
     if p["tm"] == "CAUTION":
         tmbadge = ('<span class="pill" style="background:#fef3c7;color:#92400e">'
@@ -268,10 +279,12 @@ def _row_html(i, p, csrf):
             f'<input type="hidden" name="csrf" value="{csrf}">'
             f'<input type="hidden" name="keyword" value="{kw}">'
             '<button class="tkbtn primary" title="Mark done">✓</button></form>')
+    fresh = age(p) if age else ""
     return (
         f'<tr{donecls}><td>{i}</td>'
         f'<td><b>{kw}</b> {tmbadge}<br>'
         f'<span class="note">{_esc(p["theme"])}</span></td>'
+        f'<td><span class="note">{_esc(fresh)}</span></td>'
         f'<td><b>{p["build_score"]}</b></td>'
         f'<td>{p["listings"]}</td>'
         f'<td>{_kfmt(p["views"])}</td>'
@@ -304,10 +317,13 @@ def render_html(data, csrf, limit=40):
                 'the MCP harvest (or import a YTrends <b>keyword</b> table) to add '
                 'real market numbers, then refresh.</p></article>')
 
-    thead = ('<table><tr><th>#</th><th>Keyword / theme</th><th>Build&nbsp;Score</th>'
+    thead = ('<table><tr><th>#</th><th>Keyword / theme</th><th>Added</th>'
+             '<th>Build&nbsp;Score</th>'
              '<th>Listings</th><th>Views&nbsp;24h</th><th>Price</th>'
              '<th>Conv</th><th>Momentum</th><th>Action</th></tr>')
-    open_rows = "".join(_row_html(i + 1, p, csrf)
+    # one lookup covering both tables below
+    age = _ages(list(data["open"][:limit]) + list(data["done"]))
+    open_rows = "".join(_row_html(i + 1, p, csrf, age)
                         for i, p in enumerate(data["open"][:limit]))
     body = ('<h2>🔨 To build (top ' + str(min(limit, len(data["open"]))) +
             ')</h2>' + thead + open_rows + '</table>')
@@ -316,7 +332,7 @@ def render_html(data, csrf, limit=40):
                  'below the top ' + str(limit) + '. Mark some done to surface them.</p>')
 
     if data["done"]:
-        done_rows = "".join(_row_html(i + 1, p, csrf)
+        done_rows = "".join(_row_html(i + 1, p, csrf, age)
                             for i, p in enumerate(data["done"]))
         body += ('<details class="archive"><summary>✅ Done (' +
                  str(len(data["done"])) + ')</summary>' + thead + done_rows +

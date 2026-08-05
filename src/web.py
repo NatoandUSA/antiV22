@@ -809,9 +809,15 @@ def build_app(password, secret):
             # 19 cards) sat above a 13-card Advanced block. All of it is reachable
             # from the rail's canonical routes, so it now opens on demand instead
             # of pushing the day's actual work off-screen.
-            '<details class="archive advtools"><summary>🧭 All tools — trend feeds, '
-            'execution helpers &amp; guides</summary>'
+            # TREND FEEDS IS OPEN ON HOME (owner directive). It was folded into
+            # the "All tools" drawer when three always-open grids (19 cards) were
+            # pushing the day's work off-screen — but this grid is where a shift
+            # STARTS: find what is rising, then work it. Only this one grid is
+            # promoted; Execution Helpers, Guides and Advanced stay in the drawer
+            # below, so the home page gains 9 cards, not 32.
             '<h2 class="grouph">📈 Trend Feeds — tìm cái đang lên</h2>'
+            '<p class="note">Start here: find what is rising, then send it to '
+            'Rank → Build. Every table shows how fresh each keyword is.</p>'
             '<div class="toolgrid">'
             '<a class="toolcard" href="/build-queue"><b>🎯 Build Queue</b>'
             '<span>Make these next: proven keywords from your base, ranked + TM-checked → 1-click Design/Kit</span></a>'
@@ -832,7 +838,11 @@ def build_app(password, secret):
             f'<a class="toolcard" href="/calendar?mode={active}"><b>📅 Seasonal calendar</b>'
             '<span>Upcoming holidays + launch-by dates + keywords</span></a>'
             '</div>'
-            # SECTION 2 — EXECUTION HELPERS: turn one pick into a listing.
+            # SECTION 2 — EXECUTION HELPERS: turn one pick into a listing. From
+            # here down stays in the drawer: you reach these AFTER picking, so
+            # they do not need to compete with the feeds for the fold.
+            '<details class="archive advtools"><summary>🧭 All tools — execution '
+            'helpers, guides &amp; advanced</summary>'
             '<h2 class="grouph">🛠 Execution Helpers — biến 1 pick thành listing</h2>'
             '<div class="toolgrid">'
             '<a class="toolcard" href="/design-skill-bridge"><b>🎨 Design Skill Bridge</b>'

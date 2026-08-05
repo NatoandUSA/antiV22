@@ -361,6 +361,40 @@ def _hidden_block(hidden, key, show_all):
     return L
 
 
+def _ages(picks, key="tag"):
+    """One batched freshness lookup for a whole table -> a per-row formatter.
+
+    Returns a callable so the row loop stays a one-liner. Batched because the
+    obvious shape, a lookup per row, is one DB round trip per row.
+    """
+    from src import freshness as fr
+    try:
+        labels = fr.labels_for([r.get(key) for r in picks or []])
+    except Exception:  # noqa: BLE001 - a freshness column never breaks a feed
+        labels = {}
+    return lambda r: labels.get(r.get(key), fr.NEW)
+
+
+def _fresh_note():
+    """The live-ranking fact, stated ONCE per table rather than repeated down a
+    column. Only 'added' is stored; 'analyzed' and 'ranked' happen on read."""
+    from src import freshness as fr
+    try:
+        return fr.ranked_note() + "\n"
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _pulled_note():
+    """For listing tables, which have no keyword of ours to date."""
+    from datetime import datetime
+    try:
+        return ("_Pulled live " + datetime.now().strftime("%Y-%m-%d %H:%M")
+                + ". **Age** is how old the listing is on Etsy._\n")
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 def trending(mode=None, show_all=False, source=None):
     # Pull the full pool; product-fit (mode-aware) decides what shows. No mode
     # pre-filter — that used to starve Embroidery by dropping design themes.
@@ -373,12 +407,14 @@ def trending(mode=None, show_all=False, source=None):
     L += cb
     if cb:
         L += ["## Individual keyword ideas", ""]
-    L += ["| Keyword | Fit | Momentum | Competition | Conv | Avg price | TM |",
-          "|---|---|---|---|---|---|---|"]
+    age = _ages(picks)
+    L += [_fresh_note(),
+          "| Keyword | Added | Fit | Momentum | Competition | Conv | Avg price | TM |",
+          "|---|---|---|---|---|---|---|---|"]
     for t in picks:
         tag = _clean(t.get("tag"))
         risk, _ = tm_check(tag.lower())
-        L.append(f"| {tag} | {t['_fit']['product_type'] or 'ok'} "
+        L.append(f"| {tag} | {age(t)} | {t['_fit']['product_type'] or 'ok'} "
                  f"| {t.get('momentum_score', '-')} "
                  f"| {_clean(t.get('competition_level'))} "
                  f"| {_pct(t.get('avg_conversion_rate'))} "
@@ -415,13 +451,14 @@ def opportunities(mode=None, show_all=False, source=None):
          "digital + broad seeds filtered out). Opp score = composite 0-100 "
          "(WATCH when core data is incomplete). Verify trademark._", ""]
     L += _cluster_block(picks)
-    L += ["## Individual keyword ideas", "",
-          "| Keyword | Fit | Opportunity | Momentum | Sellers | Conv | Avg price | TM | Opp score |",
-          "|---|---|---|---|---|---|---|---|---|"]
+    age = _ages(picks)
+    L += ["## Individual keyword ideas", "", _fresh_note(),
+          "| Keyword | Added | Fit | Opportunity | Momentum | Sellers | Conv | Avg price | TM | Opp score |",
+          "|---|---|---|---|---|---|---|---|---|---|"]
     for r in picks:
         tag = _clean(r.get("tag"))
         risk, _ = tm_check(tag.lower())
-        L.append(f"| {tag}{_src_badge(r)} | {r['_fit']['product_type'] or 'ok'} "
+        L.append(f"| {tag}{_src_badge(r)} | {age(r)} | {r['_fit']['product_type'] or 'ok'} "
                  f"| {r.get('opportunity_score', '-')} "
                  f"| {r.get('momentum_score', '-')} | {_int(r.get('sellers'))} "
                  f"| {_pct(r.get('avg_conversion_rate'))} "
@@ -444,10 +481,11 @@ def gems(mode=None, show_all=False, source=None):
          "YTuong's opportunity rank; Opp score is the composite 0-100 verdict "
          "(WATCH when core data is incomplete). Verify trademark before building._", ""]
     L += _cluster_block(picks)
-    L += ["## Individual gems", "",
-          "| Keyword | Fit | Gem score | Listings | Sellers | L/S | Conv | "
+    age = _ages(picks)
+    L += ["## Individual gems", "", _fresh_note(),
+          "| Keyword | Added | Fit | Gem score | Listings | Sellers | L/S | Conv | "
           "Sold 24h | Trend | Avg price | TM | Opp score |",
-          "|---|---|---|---|---|---|---|---|---|---|---|---|"]
+          "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for t in picks:
         tag = _clean(t.get("tag"))
         risk, _ = tm_check(tag.lower())
@@ -460,7 +498,7 @@ def gems(mode=None, show_all=False, source=None):
             momentum_score=_g(t, "momentum_score", "gem_score"))
         gem = t.get("gem_score", "-")
         action = oscore.cell(t, keyword=tag, mode=mode)
-        L.append(f"| {tag} | {t['_fit']['product_type'] or 'ok'} | {gem} "
+        L.append(f"| {tag} | {age(t)} | {t['_fit']['product_type'] or 'ok'} | {gem} "
                  f"| {_int(listings)} | {_int(sellers)} | {ls} "
                  f"| {_pct(_g(t, 'avg_conversion_rate', 'conversion_rate'))} "
                  f"| {_int(_g(t, 'sold_24h'))} | {phase} "
@@ -506,9 +544,14 @@ def newest(mode=None, show_all=False):
         elif c["status"] not in pf.LAUNCHABLE:
             junk += 1
     picks = picks[:SHOW]
+    # No "Added" column here on purpose: these rows are Etsy LISTINGS, not our
+    # keywords, so there is nothing in our base to have been added. The existing
+    # Age column already carries the honest per-row date (how old the listing is
+    # on Etsy); the only thing missing was WHEN WE PULLED IT.
     L = [f"# Newest fresh winners - {MODE_LABEL.get(mode)}", "",
          "_Brand-new listings (young + already outperforming peers). Study the angle "
          "and the gap to beat them - never copy the design, title, or tags._", "",
+         _pulled_note(),
          "| Listing | Price | Perf | Sold 24h | Conv | Age | Why it's hot | Sample tags |",
          "|---|---|---|---|---|---|---|---|"]
     for r in picks:
