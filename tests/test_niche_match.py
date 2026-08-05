@@ -31,12 +31,41 @@ REAL = [
 ]
 
 
-def test_the_query_splits_into_modifier_product_and_theme():
-    toks, products, themes = nm.split_query(QUERY)
-    assert toks == ["personalized", "embroidery", "halloween", "shirt"]
-    assert set(products) == {"embroidery", "shirt"}
+def test_the_query_splits_into_four_buckets():
+    c = nm.classify(QUERY)
+    assert c["modifier"] == ["personalized"]
+    # embroidery is HOW it is made, not WHAT is sold. product_fit lumps it into
+    # its noun set, which made "embroidered" look like the product.
+    assert c["technique"] == ["embroidery"]
+    assert c["product"] == ["shirt"]
     # halloween is the ONLY token that says which niche this is
-    assert themes == ["halloween"]
+    assert c["theme"] == ["halloween"]
+
+
+@pytest.mark.parametrize("token,want", [
+    ("personalized", "modifier"), ("custom", "modifier"), ("name", "modifier"),
+    ("monogram", "modifier"),
+    ("crew", "style"), ("oversized", "style"), ("comfort", "style"),
+    ("embroidery", "technique"), ("embroidered", "technique"),
+    ("printed", "technique"), ("engraved", "technique"),
+    ("shirt", "product"), ("hoodie", "product"), ("sweatshirt", "product"),
+    ("tote", "product"), ("cap", "product"), ("mug", "product"),
+    ("blanket", "product"),
+    # not in product_fit's noun set; supplier_ops knows it is a tote
+    ("handbag", "product"),
+    ("halloween", "theme"), ("teacher", "theme"), ("nurse", "theme"),
+    ("bride", "theme"), ("graduation", "theme"), ("birthday", "theme"),
+])
+def test_every_token_lands_in_the_right_bucket(token, want):
+    assert nm.bucket(token) == want
+
+
+def test_a_technique_is_never_mistaken_for_the_product():
+    """'embroidered hoodie' sells a HOODIE. If embroidery counted as the product,
+    an embroidered mug would satisfy the product requirement."""
+    c = nm.classify("embroidered hoodie")
+    assert c["product"] == ["hoodie"] and c["technique"] == ["embroidery"]
+    assert nm.match("Embroidered Ceramic Mug", "embroidered hoodie") is False
 
 
 @pytest.mark.parametrize("title", CONTAMINANTS)
@@ -78,22 +107,91 @@ def test_the_new_rule_is_strictly_narrower_never_wider():
             assert not nm.match(title, QUERY), title
 
 
-def test_why_labels_the_reason_a_listing_was_rejected():
-    """Feeds the evidence table's match-type column: staff must see WHY."""
-    ok, kind, shared = nm.why(CONTAMINANTS[0], QUERY)
-    assert (ok, kind) == (False, "product")
+def test_why_names_the_real_reason_not_just_the_shape():
+    """The rejection reason must say WHAT IS MISSING. A teacher shirt is not
+    rejected because it 'only shares a product' — it is rejected because it has
+    no halloween."""
+    ok, reason, shared = nm.why(CONTAMINANTS[0], QUERY)
+    assert (ok, reason) == (False, "rejected_missing_theme")
     assert set(shared) == {"personalized", "shirt"}
-    ok, kind, _ = nm.why(REAL[0], QUERY)
-    assert (ok, kind) == (True, "theme")
-    ok, kind, _ = nm.why("Custom Embroidered Halloween Shirt", QUERY)
-    assert (ok, kind) == (True, "theme")
+    assert nm.why(REAL[0], QUERY)[1] == "theme"
+    assert nm.why("Custom Embroidered Halloween Shirt", QUERY)[1] == "theme"
     assert nm.why("Ceramic Mug", QUERY)[1] == "none"
 
 
-def test_a_query_with_no_theme_is_unchanged():
-    """'tote bag' is all product nouns — there is no theme to require, so the
-    old overlap rule stands alone and nothing regresses."""
-    assert nm.split_query("tote bag")[2] == []
+@pytest.mark.parametrize("title", CONTAMINANTS)
+def test_every_halloween_contaminant_is_rejected_with_an_honest_reason(title):
+    """All rejected — and the reason names what is actually missing.
+
+    A listing that shares SOME query tokens but no halloween is
+    rejected_missing_theme. One that shares nothing at all is `none`: claiming a
+    missing theme there would overstate how close it came.
+    """
+    matched, reason, shared = nm.why(title, QUERY)
+    assert matched is False, title
+    assert reason == ("rejected_missing_theme" if shared else "none"), \
+        f"{title} -> {reason} (shared={shared})"
+
+
+def test_the_headline_contaminants_are_rejected_for_the_missing_theme():
+    """The ones that produced teacher 52% and the bride tags DID share tokens
+    with the query — {personalized, shirt} — so the reason must name the theme."""
+    for title in ("Personalized Teacher Shirt, Comfort Colors Back to School Tee",
+                  "Teacher Appreciation Shirt Personalized Name Gift",
+                  "Personalized Dog Mom Shirt Custom Name",
+                  "Personalized Bride Shirt, Fiancee Gift, Engagement Tee"):
+        matched, reason, shared = nm.why(title, QUERY)
+        assert (matched, reason) == (False, "rejected_missing_theme"), title
+        assert shared, title
+
+
+def test_the_reason_vocabulary_is_the_agreed_one():
+    seen = {nm.why(t, q)[1] for t, q in [
+        ("Personalized Dog Tag Custom", "personalized dog tag"),       # exact
+        (REAL[0], QUERY),                                              # theme
+        ("Custom Tee Personalized", "custom crew t-shirt"),            # synonym
+        ("Personalized Name Tote Bag", "custom name tote handbag"),    # product_only
+        (CONTAMINANTS[0], QUERY),                       # rejected_missing_theme
+        ("Personalized Name Mug", "custom name tote handbag"),
+        ("Ceramic Mug", QUERY)]}                                       # none
+    assert seen <= {"exact", "theme", "synonym", "product_only",
+                    "modifier_only", "rejected_missing_theme",
+                    "rejected_product_mismatch", "none"}
+    assert {"exact", "theme", "synonym", "product_only",
+            "rejected_missing_theme", "rejected_product_mismatch",
+            "none"} <= seen
+
+
+# --- the owner's edge cases ---------------------------------------------------
+@pytest.mark.parametrize("query,title,want", [
+    # theme present -> the theme is required
+    ("personalized embroidery halloween shirt",
+     "Personalized Halloween Embroidered Sweatshirt", True),
+    ("personalized embroidery halloween shirt",
+     "Personalized Teacher Shirt Comfort Colors", False),
+    # no theme -> the PRODUCT is required, and a seasonal word is not invented
+    ("custom name tote handbag", "Personalized Name Tote Bag", True),
+    ("custom name tote handbag", "Personalized Name Mug", False),
+    ("embroidered hoodie", "Embroidered Hoodie Custom Name", True),
+    ("embroidered hoodie", "Embroidered Ceramic Mug", False),
+    ("personalized dog tag", "Personalized Dog Tag Custom", True),
+    # 'crew' is a cut, not a niche: a plain tee must still match
+    ("custom crew t-shirt", "Custom Tee Personalized", True),
+    ("custom crew t-shirt", "Custom T-Shirt Personalized", True),
+    # the recipient IS the niche
+    ("teacher shirt", "Teacher Appreciation Shirt", True),
+    ("teacher shirt", "Halloween Ghost Shirt", False),
+    ("bride shirt", "Custom Future Mrs Bride Shirt", True),
+    ("bride shirt", "Personalized Teacher Shirt", False),
+])
+def test_the_owners_edge_cases(query, title, want):
+    assert nm.match(title, query) is want, f"{query!r} vs {title!r}"
+
+
+def test_a_query_with_no_theme_requires_the_product_not_just_overlap():
+    """'tote bag' has no theme to require, so the product carries it. A mug that
+    shares 'personalized' is not a tote."""
+    assert nm.classify("tote bag")["theme"] == []
     assert nm.match("Canvas Tote Bag Personalized", "tote bag") is True
     assert nm.match("Ceramic Mug Custom", "tote bag") is False
 
