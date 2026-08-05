@@ -119,16 +119,44 @@ def test_the_panel_cannot_disagree_with_the_batch_it_describes(captures):
 
 # --- 5. missing fields say so ---------------------------------------------
 def test_uncaptured_fields_are_named_never_blank_or_invented(captures):
+    """The fixture pool carries only title/price/shop, so the rich fields are
+    genuinely absent and must SAY so rather than render empty."""
     rep = eh.report(QUERY, "embroidery")
-    nc = rep["not_captured"]
-    for f in ("views", "favorites", "conversion", "revenue", "shop_country"):
-        assert nc[f] == "Not captured in SERP data", f
-    for f in ("shop_rating", "review_count", "image_count", "listing_age"):
-        assert "HeyEtsy" in nc[f], f
-    html = eh.render_html(rep)
-    assert "Not captured in SERP data" in html
-    # and never rendered as a zero, which would read as a measurement
-    assert ">views<" not in html or "0" not in nc["views"]
+    f = rep["fields"]
+    for name in ("views", "favorites", "conversion", "revenue", "shop_country"):
+        assert f[name] == eh.ABSENT_SERP, name
+    for name in ("shop_rating", "image_count"):
+        assert "HeyEtsy" in f[name], name
+    assert eh.ABSENT_SERP in eh.render_html(rep)
+
+
+def test_field_availability_is_measured_not_assumed():
+    """The PC pool is nearly empty; the VPS carries 109 headers including
+    views_24h, he_revenue_usd, country, reviews and age_days. Hardcoding the
+    local schema would tell staff a field is unavailable when the server has it
+    — a false negative that stops them looking for real data.
+    """
+    vps_headers = {"title", "price", "shop", "views_24h", "sold_24h",
+                   "he_favorites", "conversion_pct", "he_revenue_usd",
+                   "country", "reviews", "age_days", "he_tags", "listing_id",
+                   "url"}
+    got = eh.field_availability(vps_headers)
+    for name in ("views", "favorites", "conversion", "revenue", "shop_country",
+                 "review_count", "listing_age", "listing_id", "listing_url",
+                 "tags", "sold"):
+        assert got[name] is True, f"{name} IS captured on the VPS"
+    # genuinely absent everywhere in the SERP layer
+    assert got["shop_rating"] == eh.ABSENT_DEEP
+    assert got["image_count"] == eh.ABSENT_DEEP
+    # and an empty pool reports everything absent, never True
+    empty = eh.field_availability(set())
+    assert not any(v is True for v in empty.values())
+
+
+def test_capture_fields_reads_the_real_headers(captures):
+    got = captures.capture_fields()
+    assert {"title", "price", "shop"} <= got
+    assert "views_24h" not in got          # not in this fixture pool
 
 
 def test_absent_capture_dates_render_as_not_captured(captures, monkeypatch):
@@ -215,6 +243,118 @@ def test_a_two_theme_keyword_raises_the_mixed_cluster_warning(captures):
 def test_no_keyword_renders_nothing_rather_than_an_empty_panel():
     assert eh.render_html(eh.report("", None)) == ""
     assert eh.report(None)["strength"] == eh.LOW
+
+
+# --- the DB fast path ---------------------------------------------------------
+@pytest.fixture
+def db_source(tmp_path, monkeypatch):
+    """No raw captures, a populated index — the VPS shape."""
+    from src import pattern_miner as pm
+    monkeypatch.setattr(pm, "_SEARCH_DIR", tmp_path / "none")
+    monkeypatch.setattr(pm, "_IMPORT_DIR", tmp_path / "none2")
+    monkeypatch.setattr(pm, "MASTER", tmp_path / "nomaster.csv")
+    monkeypatch.setattr(pm, "_from_db", lambda kw: [
+        {"title": t, "price": 19.99, "shop": f"Shop{i}", "star": False,
+         "ad": False, "freeship": False, "tags": "", "view": kw}
+        for i, t in enumerate(REAL)])
+    return pm
+
+
+def _db_report(monkeypatch, version):
+    from src import data_store as ds
+    monkeypatch.setattr(ds, "matcher_version", lambda: version)
+    return eh.report(QUERY, "embroidery")
+
+
+def test_db_source_reports_rejected_as_not_available(db_source, monkeypatch):
+    rep = _db_report(monkeypatch, 2)
+    assert rep["source"] == "db"
+    assert rep["rejects_observable"] is False
+    assert "n/a" in eh.render_html(rep)
+
+
+def test_db_source_never_prints_a_fake_zero_rejected(db_source, monkeypatch):
+    """A 0 would read as 'nothing was off-niche', which the index cannot know."""
+    rep = _db_report(monkeypatch, 2)
+    html = eh.render_html(rep)
+    i = html.find("Rejected")
+    assert i > 0
+    cell = html[i:i + 220]
+    assert ">0<" not in cell, cell
+
+
+def test_db_source_shows_the_prefiltered_warning(db_source, monkeypatch):
+    rep = _db_report(monkeypatch, 2)
+    text = " ".join(t for _k, t in rep["warnings"])
+    assert "DB pre-filtered source" in text
+    assert "rejected rows are not observable" in text
+    assert "Rebuild the index after matcher changes" in text
+
+
+def test_an_index_built_under_an_older_matcher_warns_stale(db_source,
+                                                           monkeypatch):
+    rep = _db_report(monkeypatch, 1)          # built under the old rule
+    assert rep["index_stale"] is True
+    text = " ".join(t for _k, t in rep["warnings"])
+    assert "Index may be stale" in text and "rebuild required" in text.lower()
+    # and it can never be called a strong sample
+    assert rep["strength"] == eh.LOW
+
+
+def test_an_unstamped_index_counts_as_stale(db_source, monkeypatch):
+    """PRAGMA user_version defaults to 0 — every index built before the rule was
+    versioned reports 0 and must be treated as stale."""
+    for missing in (0, None):
+        rep = _db_report(monkeypatch, missing)
+        assert rep["index_stale"] is True, missing
+
+
+def test_a_current_index_does_not_warn_stale(db_source, monkeypatch):
+    from src import niche_match as nm
+    rep = _db_report(monkeypatch, nm.MATCHER_VERSION)
+    assert rep["index_stale"] is False
+    assert "Index may be stale" not in " ".join(t for _k, t in rep["warnings"])
+
+
+def test_raw_captures_are_preferred_over_the_prefiltered_index(captures,
+                                                               monkeypatch):
+    """The index cannot show rejections, so when raw captures exist for this
+    keyword the audit must read those instead."""
+    monkeypatch.setattr(captures, "_from_db", lambda kw: [
+        {"title": "Whatever From The Index", "price": 1.0, "shop": "X",
+         "star": False, "ad": False, "freeship": False, "tags": "", "view": kw}])
+    rep = eh.report(QUERY, "embroidery")
+    assert rep["source"] == "captures"
+    assert rep["rejects_observable"] is True
+    assert rep["rejected"] == len(CONTAMINANTS)
+
+
+def test_the_index_path_still_applies_the_niche_filter(monkeypatch):
+    """Even on the fast path, Phase 0 must apply — otherwise a populated index
+    silently bypasses the whole fix. Exercises the REAL _from_db, so no fixture
+    that stubs it may be used here."""
+    from src import pattern_miner as pm
+    from src import data_store as ds
+    monkeypatch.setattr(ds, "listings_for_keyword", lambda kw: [
+        {"title": t, "price_usd": 1.0, "shop": "S", "is_star": 0, "is_ad": 0,
+         "free_ship": 0, "tags": "", "source_keyword": "mixed capture"}
+        for t in REAL + CONTAMINANTS])
+    got = [r["title"] for r in pm._from_db(QUERY)]
+    assert got, "the fixture returned nothing — the test proves nothing"
+    for bad in CONTAMINANTS:
+        assert bad not in got, bad
+    for good in REAL:
+        assert good in got
+
+
+def test_data_store_search_selection_uses_the_shared_rule():
+    """_kw_match was a FOURTH copy of the old shared-token rule, so a populated
+    index bypassed Phase 0 entirely — load_batch tries it first."""
+    from src import data_store as ds
+    qt = ds._toks(QUERY)
+    assert ds._kw_match(qt, "personalized halloween shirt", QUERY) is True
+    assert ds._kw_match(qt, "personalized teacher shirt", QUERY) is False
+    assert ds._kw_match(qt, "personalized dog mom shirt", QUERY) is False
 
 
 # --- 8/9. guardrails ----------------------------------------------------------

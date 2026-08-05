@@ -238,14 +238,63 @@ def index_capture(view, headers, rows, source_site="etsy"):
 # --------------------------------------------------------------------------- #
 # read  (what Pattern Miner / lookups query)
 # --------------------------------------------------------------------------- #
-def _kw_match(query_toks, stored_kw):
-    """A stored source_keyword belongs to the query when it shares the query
-    tokens (>=2, or >=1 for a single-word query)."""
+def matcher_version():
+    """Which niche-matcher rule this index was last built under. 0 = never
+    stamped, i.e. built before the rule was versioned. PRAGMA user_version needs
+    no schema migration."""
+    try:
+        if not DB_PATH.is_file():
+            return None
+        con = _connect()
+        try:
+            return int(con.execute("PRAGMA user_version").fetchone()[0])
+        finally:
+            con.close()
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def stamp_matcher_version(version=None):
+    """Record the matcher rule the index was built under. Called after indexing."""
+    try:
+        from src import niche_match as nm
+        v = int(version if version is not None else nm.MATCHER_VERSION)
+        con = _connect()
+        try:
+            con.execute(f"PRAGMA user_version = {v}")
+            con.commit()
+        finally:
+            con.close()
+        return v
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _kw_match(query_toks, stored_kw, query=None):
+    """Does a stored source_keyword (the SEARCH a capture came from) belong to
+    this query?
+
+    This was a FOURTH copy of the old shared-token rule and Phase 0 missed it, so
+    on any machine with a populated index the fix was bypassed entirely -
+    load_batch tries this path FIRST. Measured for
+    "personalized embroidery halloween shirt" it pulled in the SERPs captured
+    from "personalized teacher shirt" and "personalized dog mom shirt" while
+    EXCLUDING "embroidered halloween sweatshirt", the actual niche.
+
+    Same shared rule as pattern_miner._view_matches now. Falls back to the old
+    behaviour only if niche_match cannot be imported, so a broken import degrades
+    to today's results rather than to zero rows.
+    """
     if not query_toks:
         return True
-    st = set(_toks(stored_kw))
-    hits = sum(1 for t in query_toks if t in st)
-    return hits >= min(2, len(query_toks))
+    try:
+        from src import niche_match as nm
+        return nm.match(stored_kw, query if query is not None
+                        else " ".join(query_toks))
+    except Exception:  # noqa: BLE001
+        st = set(_toks(stored_kw))
+        hits = sum(1 for t in query_toks if t in st)
+        return hits >= min(2, len(query_toks))
 
 
 def listings_for_keyword(keyword):
@@ -259,7 +308,7 @@ def listings_for_keyword(keyword):
             kws = [r["source_keyword"] for r in
                    con.execute("SELECT DISTINCT source_keyword FROM listings")]
             qt = _toks(keyword)
-            hit = [k for k in kws if _kw_match(qt, k)]
+            hit = [k for k in kws if _kw_match(qt, k, keyword)]
             if not hit:
                 return []
             q = ("SELECT * FROM listings WHERE source_keyword IN (%s)"

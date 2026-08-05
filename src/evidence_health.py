@@ -35,19 +35,52 @@ from datetime import datetime
 # exactly these). Everything the evidence-table spec asks for beyond this list is
 # absent from the SERP layer and must say so instead of rendering an empty cell.
 SERP_FIELDS = ("title", "price", "shop", "star", "ad", "freeship", "tags")
-NOT_IN_SERP = {
-    "views": "Not captured in SERP data",
-    "favorites": "Not captured in SERP data",
-    "favorite_rate": "Not captured in SERP data",
-    "conversion": "Not captured in SERP data",
-    "revenue": "Not captured in SERP data",
-    "sold": "Not captured in SERP data",
-    "shop_country": "Not captured in SERP data",
-    "shop_rating": "Available only from HeyEtsy / opened listing evidence",
-    "review_count": "Available only from HeyEtsy / opened listing evidence",
-    "image_count": "Available only from HeyEtsy / opened listing evidence",
-    "listing_age": "Available only from HeyEtsy / opened listing evidence",
+
+# Which capture columns would satisfy each field the evidence table wants.
+# MEASURED against the pool, never assumed: the PC's capture dir is nearly empty
+# while the VPS carries 109 distinct headers including views_24h,
+# he_revenue_usd, country, reviews and age_days. A hardcoded "not captured" list
+# built from the local schema tells staff a field is unavailable when the server
+# has it — a false negative that stops them looking for real data.
+FIELD_ALIASES = {
+    "views": ("views_24h", "he_views", "he_views_avg"),
+    "favorites": ("he_favorites", "favorites_24h", "he_fav_pct"),
+    "conversion": ("conversion_pct", "conversion"),
+    "revenue": ("he_revenue_usd",),
+    "sold": ("sold_24h", "he_sold", "shop_daily_sold", "sold 24h"),
+    "shop_country": ("country",),
+    "review_count": ("reviews",),
+    "listing_age": ("age_days", "age (days)", "freshness"),
+    "listing_id": ("listing_id",),
+    "listing_url": ("url",),
+    "tags": ("he_tags", "tags"),
+    "shop_rating": (),          # no capture column supplies it
+    "image_count": (),          # opened-listing lane only
 }
+# Shown when no alias is present. Distinguishes "this layer cannot carry it" from
+# "your pool has not captured it yet".
+ABSENT_SERP = "Not captured in SERP data"
+ABSENT_DEEP = "Available only from HeyEtsy / opened listing evidence"
+DEEP_ONLY = {"shop_rating", "image_count"}
+
+
+def field_availability(present=None):
+    """{field: True | 'reason'} — measured against the real capture headers."""
+    if present is None:
+        try:
+            from src import pattern_miner as pm
+            present = pm.capture_fields()
+        except Exception:  # noqa: BLE001
+            present = set()
+    present = {str(p).strip().lower() for p in (present or ())}
+    out = {}
+    for field, aliases in FIELD_ALIASES.items():
+        hit = next((a for a in aliases if a in present), None)
+        if hit:
+            out[field] = True
+        else:
+            out[field] = ABSENT_DEEP if field in DEEP_ONLY else ABSENT_SERP
+    return out
 
 # Match reasons that mean "this listing is in the niche because of a real niche
 # signal" versus "it only shared a product noun or a personalisation word".
@@ -163,9 +196,13 @@ def report(keyword, mode=None):
         "price_confidence": (round(100 * a["with_price"] / matched)
                              if matched else None),
         "tags_known": a["with_tags"],
-        "not_captured": dict(NOT_IN_SERP),
+        "fields": field_availability(),
         "why_it_matters": WHY_IT_MATTERS,
     }
+    rep["index_version"] = a.get("index_version")
+    rep["matcher_version"] = nm.MATCHER_VERSION
+    rep["index_stale"] = (rep["source"] == "db"
+                          and (a.get("index_version") or 0) < nm.MATCHER_VERSION)
     rep["warnings"] = _warnings(rep, deep)
     rep["strength"] = _strength(rep)
     return rep
@@ -180,6 +217,18 @@ def _warnings(rep, deep):
         w.append(("none", "No listing matched this keyword — nothing below is "
                           "based on your captures."))
         return w
+    if not rep["rejects_observable"]:
+        # The index selects whole SEARCHES and returns only rows it already
+        # judged a match, so "0 rejected" would be a fabrication, not a finding.
+        w.append(("prefiltered",
+                  "DB pre-filtered source — rejected rows are not observable. "
+                  "Rebuild the index after matcher changes before trusting "
+                  "strict-match counts."))
+    if rep.get("index_stale"):
+        w.append(("stale_index",
+                  "Index may be stale — rebuild required after matcher change "
+                  f"(index built under matcher v{rep.get('index_version') or 0}, "
+                  f"current is v{rep.get('matcher_version')})."))
     if rep["rejected"] and rep["match_rate"] is not None \
             and rep["match_rate"] < 50:
         w.append(("filtered",
@@ -227,6 +276,10 @@ def _strength(rep):
         return LOW
     if "mixed" in kinds:
         return MIXED
+    if "stale_index" in kinds:
+        # Rows selected by a superseded rule cannot be a strong sample, however
+        # many of them there are.
+        return LOW
     if "weak" in kinds or m < 10 or rep["shops"] < 5:
         return LOW
     if "detail" in kinds and m >= _STRONG_MIN_LISTINGS:
@@ -239,7 +292,8 @@ def _strength(rep):
 # ------------------------------------------------------------------ rendering
 _CHIP = {"none": "#99271F", "filtered": "#3B6E8F", "detail": "#B45309",
          "weak": "#B45309", "mixed": "#99271F", "stale": "#B45309",
-         "price": "#6E6455", "cap": "#B45309", "reviews": "#1E6B54"}
+         "price": "#6E6455", "cap": "#B45309", "reviews": "#1E6B54",
+         "prefiltered": "#B45309", "stale_index": "#99271F"}
 _STRENGTH_BG = {STRONG: "#1E6B54", DIRECTIONAL: "#3B6E8F",
                 WEAK_DETAIL: "#B45309", MIXED: "#99271F", LOW: "#6E6455"}
 
@@ -272,7 +326,8 @@ def render_html(rep):
               None if rep["rejects_observable"]
               else "source is keyword-keyed; rejects not observable"),
         _card("Rejected", f'{rep["rejected"]:,}' if rep["rejects_observable"]
-              else "n/a"),
+              else "n/a",
+              None if rep["rejects_observable"] else "not observable via index"),
         _card("Match rate", rate),
         _card("Unique shops", f'{rep["shops"]:,}'),
     ])
@@ -298,9 +353,16 @@ def render_html(rep):
               None if rep["price_confidence"] is None
               else f'{rep["price_confidence"]}% of matched'),
     ])
+    fields = rep.get("fields") or {}
+    have = sorted(k for k, v in fields.items() if v is True)
+    lack = sorted((k, v) for k, v in fields.items() if v is not True)
     missing = "".join(
         f'<li><b>{_esc(k.replace("_", " "))}</b> — {_esc(v)}</li>'
-        for k, v in sorted(rep["not_captured"].items()))
+        for k, v in lack) or '<li>Every field the table needs is captured.</li>'
+    if have:
+        missing = ('<li style="color:var(--ok)"><b>Captured and available:</b> '
+                   + _esc(", ".join(h.replace("_", " ") for h in have))
+                   + "</li>") + missing
 
     return (
         '<style>'
@@ -333,7 +395,10 @@ def render_html(rep):
         f'<span class="ehstr" style="background:{_STRENGTH_BG.get(strength, "#6E6455")}">'
         f'{_esc(strength)}</span></div>'
         f'<p class="ehsub">Seed keyword <b>{_esc(rep["keyword"])}</b> · '
-        f'mode <b>{_esc(rep["mode"])}</b> · source <b>{_esc(rep["source"])}</b></p>'
+        f'mode <b>{_esc(rep["mode"])}</b> · source <b>{_esc(rep["source"])}</b>'
+        + (f' · index matcher <b>v{_esc(rep.get("index_version") or 0)}</b> '
+           f'(current v{_esc(rep.get("matcher_version"))})'
+           if rep["source"] == "db" else "") + '</p>'
         f'{chips and f"<div class=ehchips>{chips}</div>"}'
         '<div class="ehlayer">1 · SERP capture layer</div>'
         f'<div class="ehgrid">{l1}</div>'
@@ -343,7 +408,7 @@ def render_html(rep):
         f'<div class="ehgrid">{l2}</div>'
         '<div class="ehlayer">Capture recency &amp; price confidence</div>'
         f'<div class="ehgrid">{dates}</div>'
-        f'<details><summary>Not captured in SERP data — what this panel cannot '
-        f'tell you</summary><ul>{missing}</ul></details>'
+        f'<details><summary>Field coverage — what your captures do and do not '
+        f'carry</summary><ul>{missing}</ul></details>'
         f'<p class="ehwhy"><b>Why this matters:</b> {_esc(rep["why_it_matters"])}</p>'
         '</section>')

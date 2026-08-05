@@ -260,11 +260,58 @@ def _from_db(keyword):
         rows = _ds.listings_for_keyword(keyword)
     except Exception:  # noqa: BLE001
         return []
-    return [{"title": r.get("title") or "", "price": r.get("price_usd"),
-             "shop": r.get("shop"), "star": bool(r.get("is_star")),
-             "ad": bool(r.get("is_ad")), "freeship": bool(r.get("free_ship")),
-             "tags": r.get("tags") or "", "view": r.get("source_keyword") or ""}
-            for r in rows if (r.get("title") or "").strip()]
+    out = [{"title": r.get("title") or "", "price": r.get("price_usd"),
+            "shop": r.get("shop"), "star": bool(r.get("is_star")),
+            "ad": bool(r.get("is_ad")), "freeship": bool(r.get("free_ship")),
+            "tags": r.get("tags") or "", "view": r.get("source_keyword") or ""}
+           for r in rows if (r.get("title") or "").strip()]
+    # The index selects whole SEARCHES, so every listing of a matched SERP comes
+    # back unfiltered. Apply the SAME niche rule the capture path applies, or a
+    # populated index silently bypasses Phase 0 — and rows indexed before the fix
+    # stay mixed forever.
+    qtoks = _query_tokens(keyword)
+    return [r for r in out
+            if _view_matches(r.get("view"), qtoks)
+            or _title_matches(r["title"], qtoks, keyword)]
+
+
+_FIELDS_CACHE = {}
+
+
+def capture_fields(limit=400):
+    """Every column name present across the capture pool, lowercased.
+
+    Measured, not assumed. The PC's pool is nearly empty while the VPS carries
+    109 distinct headers — `views_24h`, `he_revenue_usd`, `country`, `reviews`,
+    `age_days` and more. A hardcoded "not captured in SERP data" list built from
+    the local schema would tell staff a field is unavailable when the server has
+    it, which stops them looking for real data.
+    """
+    files = []
+    for d in (_IMPORT_DIR, _SEARCH_DIR):
+        if d.is_dir():
+            files += list(d.glob("*.json"))
+    if not files:
+        return set()
+    files = sorted(files, key=lambda p: p.stat().st_mtime, reverse=True)[:limit]
+    key = (len(files), files[0].stat().st_mtime if files else 0)
+    hit = _FIELDS_CACHE.get(key)
+    if hit is not None:
+        return hit
+    import json as _json
+    found = set()
+    for f in files:
+        try:
+            payload = _json.loads(f.read_text(encoding="utf-8")) or {}
+        except Exception:  # noqa: BLE001
+            continue
+        for h in (payload.get("headers") or []):
+            t = str(h).strip().lower()
+            if t:
+                found.add(t)
+    _FIELDS_CACHE.clear()
+    _FIELDS_CACHE[key] = found
+    return found
 
 
 def audit(keyword):
@@ -275,20 +322,37 @@ def audit(keyword):
     niche_match.why(), the same call that decides the filtering, so the panel can
     never disagree with the batch it describes.
 
-    `source` is honest about the layer used: the SQLite index is keyword-keyed
-    and hands back only matches, so rejections are not observable through it.
+    SOURCE ORDER IS DELIBERATELY THE OPPOSITE OF load_batch. load_batch prefers
+    the SQLite index because it is fast; the audit prefers the RAW captures
+    because they are the only layer that still contains the rejected rows. The
+    index is keyword-keyed and hands back only what it already judged a match, so
+    through it `rejected` is unknowable — `rejects_observable` says so and
+    `index_version` reports which matcher rule built it (0/None = built before
+    the rule was versioned, so its selection is stale).
     """
     from src import niche_match as nm
     out = {"keyword": keyword, "source": "none", "scanned": 0, "matched": 0,
            "rejected": 0, "reasons": {}, "shops": 0, "with_price": 0,
            "with_tags": 0, "newest": None, "oldest": None,
-           "rejects_observable": True, "matched_rows": []}
-    db_batch = _from_db(keyword) if keyword else []
-    if db_batch:
-        out.update(source="db", scanned=len(db_batch), matched=len(db_batch),
-                   rejects_observable=False, matched_rows=db_batch)
-    else:
-        _hint, rows, newest, oldest = _gather_import(keyword)
+           "rejects_observable": True, "matched_rows": [],
+           "index_version": None}
+    # RAW CAPTURES FIRST, unlike load_batch. The index is keyword-keyed and hands
+    # back only rows it already decided were matches, so it can never show what
+    # was rejected. When the raw pool holds this keyword we audit that instead and
+    # the panel can report a real captured-vs-matched breakdown.
+    _hint, rows, newest, oldest = _gather_import(keyword) if keyword else \
+        (None, [], None, None)
+    if not rows and keyword:
+        db_batch = _from_db(keyword)
+        if db_batch:
+            try:
+                from src import data_store as _ds
+                out["index_version"] = _ds.matcher_version()
+            except Exception:  # noqa: BLE001
+                pass
+            out.update(source="db", scanned=len(db_batch), matched=len(db_batch),
+                       rejects_observable=False, matched_rows=db_batch)
+    if out["source"] == "none":
         if rows:
             out.update(source="captures", scanned=len(rows),
                        newest=newest, oldest=oldest)

@@ -43,6 +43,12 @@ silently match nothing.
 """
 import re
 
+# Bump when the matching RULE changes. Anything that cached or indexed rows under
+# an older version is stale and must be rebuilt before its counts can be trusted.
+#   1  the original shared-token rule: hits >= min(2, len(qtoks))
+#   2  four buckets; a theme (or product, when no theme) must match
+MATCHER_VERSION = 2
+
 _STOP = {"the", "a", "an", "for", "with", "of", "and", "to", "your", "you", "in",
          "on", "by", "or", "at", "is", "it", "my", "our", "this", "that", "from"}
 
