@@ -2069,6 +2069,16 @@ def _pin_badge(keyword):
         return None
 
 
+def _inbox_age(keyword):
+    """Freshness for ONE inbox row. Cached inside freshness by file mtime, so
+    calling it per row costs one read for the whole page, not one per row."""
+    from src import freshness as fr
+    try:
+        return fr.age_label(fr.first_seen(keyword))
+    except Exception:  # noqa: BLE001 - the column never breaks the worklist
+        return ""
+
+
 def _inbox_row(i, r):
     """One ranked table row (shared by the FOCUS table and the full list)."""
     kw = _clean(r["keyword"])
@@ -2136,12 +2146,12 @@ def _inbox_row(i, r):
     comp = int(r["comp"]) if r["comp"] is not None else "—"
     conv = f"{r['conv']*100:.1f}%" if r["conv"] is not None else "—"
     mom = int(r["momentum"]) if r["momentum"] is not None else "—"
-    return (f"| {i} | {kw} | {proof_cell} | {fit} | {action} | {mkt} | {comp} "
-            f"| {conv} | {mom} | {_inbox_do(r)} |")
+    return (f"| {i} | {kw} | {_inbox_age(r['keyword'])} | {proof_cell} | {fit} "
+            f"| {action} | {mkt} | {comp} | {conv} | {mom} | {_inbox_do(r)} |")
 
 
-_INBOX_HDR = ["| # | Keyword | Etsy proof | Product-fit | Final action | Market | Comp. | Conv. | Mom. | Do |",
-              "|---|---|---|---|---|---|---|---|---|---|"]
+_INBOX_HDR = ["| # | Keyword | Added | Etsy proof | Product-fit | Final action | Market | Comp. | Conv. | Mom. | Do |",
+              "|---|---|---|---|---|---|---|---|---|---|---|"]
 
 
 # ---------------------------------------------------------------------------

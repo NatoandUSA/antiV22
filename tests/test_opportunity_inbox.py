@@ -140,11 +140,21 @@ def test_sellability_overlay_changes_no_verdict_action_or_score(monkeypatch):
     assert with_overlay == without
 
 
-def test_sellability_rides_in_the_action_cell_not_an_11th_column():
-    """The supplier badge set the rule: same question, no 11th column."""
+def test_sellability_rides_in_the_action_cell_not_its_own_column():
+    """The supplier badge set the rule: a badge answering the SAME question as an
+    existing column rides in that column instead of adding one.
+
+    Sellability answers "which confirm-first do I confirm first?" — the action
+    column's own question — so it rides there. `Added` answers a question no
+    column answered (how fresh is this row?), so it earns a column of its own.
+    The invariant is that rule, not a fixed column count, so this now pins the
+    header and the row agreeing rather than a magic number.
+    """
     from src import interactive as ia
-    hdr = ia._INBOX_HDR[0]
-    assert hdr.count("|") == 11                    # 10 columns, unchanged
+    hdr, sep = ia._INBOX_HDR
+    assert hdr.count("|") == sep.count("|"), "header and separator disagree"
+    assert "| Added |" in hdr, "the freshness column went missing"
+    assert "Sell" not in hdr, "sellability must not have its own column"
     row = ia._inbox_row(1, {
         "keyword": "custom shirt logo", "action": "CONFIRM_FIRST",
         "verdict": "CONDITIONAL", "score": 70.0, "fit_label": "POD product",
@@ -152,8 +162,11 @@ def test_sellability_rides_in_the_action_cell_not_an_11th_column():
         "comp": 34, "conv": 0.053, "momentum": 40, "route": "analyze",
         "action_reason": "", "evidence": "", "sub_scores": {}, "rationale": [],
     })
-    assert row.count("|") == 11                    # still 10 columns
-    assert "\U0001F4B0 83.5 PUSH" in row
+    assert row.count("|") == hdr.count("|"), "row and header column counts differ"
+    # the sellability score is INSIDE the action cell, not a cell of its own
+    cells = [c.strip() for c in row.split("|")[1:-1]]
+    action_cell = next(c for c in cells if "Confirm First" in c)
+    assert "\U0001F4B0 83.5 PUSH" in action_cell
 
 
 def test_seller_count_reaches_the_lane_so_the_concentration_penalty_can_fire():

@@ -346,6 +346,12 @@ def test_the_four_pinterest_badges_are_the_ones_the_owner_asked_for():
     assert set(fg.PIN_LABELS.values()) == {"Rising", "Flat", "None", "Unknown"}
 
 
+def _fit_cell(row):
+    """The product-fit cell, found by CONTENT not position — a new column (the
+    freshness one) shifted the index and broke a positional lookup."""
+    return next(c for c in row.split("|") if "POD product" in c)
+
+
 def test_the_inbox_row_shows_both_badges_and_stays_quiet_when_unchecked(monkeypatch):
     """Item F: supplier AND Pinterest visible on the row. UNKNOWN prints nothing —
     on a 1,700-row table 'we did not check' on every row is noise."""
@@ -360,11 +366,11 @@ def test_the_inbox_row_shows_both_badges_and_stays_quiet_when_unchecked(monkeypa
     for sig, want in (({"status": "ok", "on_growing_list": True}, "rising"),
                       ({"status": "ok", "on_growing_list": False}, "flat")):
         monkeypatch.setattr(fg, "_cached_pinterest", lambda kw, s=sig: s)
-        cell = it._inbox_row(0, dict(row)).split("|")[4]
+        cell = _fit_cell(it._inbox_row(0, dict(row)))
         assert "makeable" in cell and want in cell, cell
     # not checked -> supplier badge stays, Pinterest badge disappears
     monkeypatch.setattr(fg, "_cached_pinterest", lambda kw: {"status": "no_data"})
-    cell = it._inbox_row(0, dict(row)).split("|")[4]
+    cell = _fit_cell(it._inbox_row(0, dict(row)))
     assert "makeable" in cell and "\U0001F4CC" not in cell, cell
 
 
