@@ -2,35 +2,83 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from src import keyword_lab as kl
 
 
-def _seed_spy(tmpdir=Path("data/imports/etsy_spy")):
-    tmpdir.mkdir(parents=True, exist_ok=True)
-    p = tmpdir / "zz_test_lab.json"
-    p.write_text(json.dumps({
+@pytest.fixture
+def seeded_captures(tmp_path, monkeypatch):
+    """Seed a capture fixture AND guarantee the miner actually reads it.
+
+    Two defects this replaces. The fixture used to be written into the REAL
+    `data/imports/etsy_spy`, polluting live capture data. And `load_batch`
+    prefers the SQLite index over capture files, so on any machine with a
+    populated `data/db/etsy.db` the seeded rows were silently ignored and the
+    test graded whatever the server happened to hold — on the VPS that is 102
+    graduation-embroidery listings, which derive the subject
+    "embroidery graduation" instead of "nurse".
+
+    Every source `load_batch` consults is redirected: captures to tmp_path, the
+    index to an empty temp DB, the master CSV to a path that does not exist.
+    """
+    from src import data_store as ds
+    from src import pattern_miner as pm
+
+    caps = tmp_path / "etsy_spy"
+    caps.mkdir()
+    (caps / "zz_test_lab.json").write_text(json.dumps({
         "view": "etsy",
         "headers": ["title", "price", "shop", "search"],
         "rows": [["Personalized Nurse Embroidered Sweatshirts", "39.99", "A", "nurse"],
                  ["Custom Nurse RN Sweatshirt Gift", "42", "B", "nurse"]]}),
         encoding="utf-8")
-    return p
+    monkeypatch.setattr(pm, "_IMPORT_DIR", caps)
+    monkeypatch.setattr(pm, "_SEARCH_DIR", tmp_path / "etsy_search")   # absent
+    monkeypatch.setattr(pm, "MASTER", tmp_path / "no_master.csv")      # absent
+    monkeypatch.setattr(ds, "DB_PATH", tmp_path / "db" / "empty.db")   # empty
+
+    # THE GUARD, checked on the RESULT rather than on the call. Wrapping
+    # _from_db looks stronger but anything that later re-patches it silently
+    # disables the wrapper; asking the index directly cannot be bypassed.
+    yield caps
+    rows = pm._from_db("nurse sweatshirt")
+    assert not rows, (
+        "DB fast-path returned %d row(s) while a capture fixture was seeded — "
+        "the fixture is being shadowed by the SQLite index, so the assertions "
+        "graded unrelated data: %s"
+        % (len(rows), [r.get("title") for r in rows[:3]]))
 
 
-def test_candidates_are_long_tail_only_and_subject_sane():
-    p = _seed_spy()
-    try:
-        g = kl.generate("nurse sweatshirt")
-        assert g["candidates"], "should generate candidates"
-        for c in g["candidates"]:
-            assert len(c["keyword"].split()) >= 3, c
-            assert "sweatshirts" not in c["keyword"]          # no plural garbage
-            assert c["keyword"].count("sweatshirt") <= 1      # no product doubling
-        # adjacent-buyer expansion present
-        assert any("er nurse" in c["keyword"] or "icu nurse" in c["keyword"]
-                   for c in g["candidates"])
-    finally:
-        p.unlink(missing_ok=True)
+def test_candidates_are_long_tail_only_and_subject_sane(seeded_captures):
+    g = kl.generate("nurse sweatshirt")
+    assert g["candidates"], "should generate candidates"
+    # the seeded fixture is the data under test, not the server's captures
+    assert g.get("subject") == "nurse", g.get("subject")
+    for c in g["candidates"]:
+        assert len(c["keyword"].split()) >= 3, c
+        assert "sweatshirts" not in c["keyword"]          # no plural garbage
+        assert c["keyword"].count("sweatshirt") <= 1      # no product doubling
+    # adjacent-buyer expansion present
+    assert any("er nurse" in c["keyword"] or "icu nurse" in c["keyword"]
+               for c in g["candidates"])
+
+
+def test_the_seeded_fixture_is_the_data_actually_mined(seeded_captures):
+    """Proves the isolation itself, so a future regression cannot make the test
+    above pass against unrelated server data."""
+    from src import pattern_miner as pm
+    res = pm.mine("nurse sweatshirt")
+    assert res["n"] == 2, res["n"]
+    titles = {b["title"] for b in pm.load_batch("nurse sweatshirt")[1]}
+    assert titles == {"Personalized Nurse Embroidered Sweatshirts",
+                      "Custom Nurse RN Sweatshirt Gift"}
+
+
+def test_the_fixture_never_writes_into_the_real_capture_dir(seeded_captures):
+    """The old helper wrote into data/imports/etsy_spy and deleted it afterwards
+    — a test that mutates live capture data."""
+    assert not (Path("data/imports/etsy_spy") / "zz_test_lab.json").exists()
 
 
 def test_trademarked_seed_not_suggested_as_buildable():
