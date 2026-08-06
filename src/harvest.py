@@ -252,26 +252,52 @@ KDATA_FIELDS = ["keyword", "etsy_listings", "seller_count", "views_24h",
                 "source", "collected_at"]
 
 
-def merge_existing(store, path="keyword_data.csv"):
+# master column -> store key, for the fields that carry enrichment. One map, so
+# the carry-over branch and the preserve branch below cannot drift apart.
+_ENRICHED = {
+    "etsy_listings": "listings", "seller_count": "sellers",
+    "views_24h": "views", "avg_price": "price", "avg_revenue": "revenue",
+    "total_revenue": "revenue_total", "conversion_rate": "conv",
+    "momentum": "momentum", "niche_age_days": "age",
+    "opportunity_score": "opportunity",
+}
+
+
+def merge_existing(store, path="keyword_data.csv", report=False):
     """Fold the keywords ALREADY in the master back into a fresh pull.
 
     harvest() used to hand write_keyword_data() nothing but the live MCP pull,
     and write_keyword_data() opens the file with "w" — so every keyword the MCP
     did not return that run was deleted. That silently wiped every Keyword Lab
     long-tail, every Pinterest/supplier lane lead and every extension import on
-    the next `main.py harvest`, which is why generated long-tails never
-    accumulated (the base stayed ~1100 MCP rows with 30 Keyword Lab rows).
+    the next `main.py harvest`.
 
-    A keyword the fresh pull DID return keeps the fresh metrics but its original
-    source, so the growth ledger can still say who first added it. Returns the
-    number of rows carried over.
+    BLANK NEVER BEATS KNOWN (the second half of that same bug). Carrying only the
+    keywords the pull MISSED still lost data: for a keyword the pull DID return,
+    this kept the fresh row and copied nothing but `source`. The VPS IP is
+    blocked from YTrends, so its pulls come back thin — and every thin row
+    overwrote a rich one. Measured on the server, one 06:00 cron took revenue
+    from 998 rows to 256 and conversion from 1,458 to 721 while correctly adding
+    97 new keywords.
+
+    There was a guard for a TOTAL outage (harvest() skips the write on an empty
+    store) but none for a PARTIAL one, which is the case that actually happens.
+
+    So a keyword present in BOTH is now merged field by field: a fresh value wins
+    only when it is actually a value. `_f()` maps blank AND zero to None, so a
+    zero from an API — which usually means "I don't know" — cannot overwrite a
+    measurement either.
+
+    Returns the carried count, or a {carried, preserved, fields_preserved} report
+    when report=True: silent preservation is as hard to trust as silent loss.
     """
-    carried = 0
+    carried = preserved = fields_preserved = 0
     try:
         with open(path, encoding="utf-8-sig") as fh:
             rows = list(csv.DictReader(fh))
     except OSError:
-        return 0
+        return {"carried": 0, "preserved": 0, "fields_preserved": 0} if report else 0
+
     def _f(row, key):
         v = _num(row.get(key), float, None)
         return v if v else None
@@ -284,19 +310,27 @@ def merge_existing(store, path="keyword_data.csv"):
         cur = store.get(tag)
         if cur is not None:
             cur["source"] = src or cur["source"]      # provenance is sticky
+            hit = 0
+            for col, key in _ENRICHED.items():
+                if _num(cur.get(key), float, None):
+                    continue                          # the pull has a real value
+                old = _f(row, col)
+                if old is not None:
+                    cur[key] = old                    # keep what we already knew
+                    hit += 1
+            if hit:
+                preserved += 1
+                fields_preserved += hit
             continue
         store[tag] = {
             "tag": tag, "score": _num(row.get("momentum")), "source": src,
-            "listings": _f(row, "etsy_listings"),
-            "sellers": _f(row, "seller_count"), "comp": None,
-            "price": _f(row, "avg_price"), "conv": _f(row, "conversion_rate"),
-            "revenue": _f(row, "avg_revenue"),
-            "revenue_total": _f(row, "total_revenue"),
-            "momentum": _f(row, "momentum"), "sold": None,
-            "views": _f(row, "views_24h"), "age": _f(row, "niche_age_days"),
-            "opportunity": _f(row, "opportunity_score"),
+            "comp": None, "sold": None,
+            **{key: _f(row, col) for col, key in _ENRICHED.items()},
         }
         carried += 1
+    if report:
+        return {"carried": carried, "preserved": preserved,
+                "fields_preserved": fields_preserved}
     return carried
 
 
@@ -371,6 +405,49 @@ def merge_master(other_path, path="keyword_data.csv"):
         for r in local:
             w.writerow({c: r.get(c, "") for c in header})
     return carried, enriched
+
+
+# Fields worth guarding: the ones a thin pull actually destroyed in production.
+_GUARDED = ("total_revenue", "conversion_rate", "avg_price", "views_24h")
+# A rewrite may lose a little to genuine corrections; losing a tenth of the
+# shop's measured data is never a correction.
+_MAX_DROP = 0.10
+
+
+def _enrichment_density(path="keyword_data.csv"):
+    """{field: how many rows carry a value} for the master on disk."""
+    out = {f: 0 for f in _GUARDED}
+    try:
+        with open(path, encoding="utf-8-sig") as fh:
+            for row in csv.DictReader(fh):
+                for f in _GUARDED:
+                    if (row.get(f) or "").strip():
+                        out[f] += 1
+    except OSError:
+        pass
+    return out
+
+
+def _density_of_store(store):
+    """The same count for what is ABOUT to be written."""
+    keys = {"total_revenue": "revenue_total", "conversion_rate": "conv",
+            "avg_price": "price", "views_24h": "views"}
+    out = {f: 0 for f in _GUARDED}
+    for rec in (store or {}).values():
+        for f, k in keys.items():
+            if _num(rec.get(k), float, None):
+                out[f] += 1
+    return out
+
+
+def _density_drop(before, after, max_drop=_MAX_DROP):
+    """A human-readable reason to abort, or None when the write is safe."""
+    for f in _GUARDED:
+        b, a = before.get(f, 0), after.get(f, 0)
+        if b and a < b * (1 - max_drop):
+            return (f"{f} {b} -> {a} "
+                    f"({round(100 * (b - a) / b)}% of the measured rows)")
+    return None
 
 
 def write_keyword_data(store, path="keyword_data.csv"):
@@ -519,10 +596,26 @@ def harvest(append=True, cap_pod=140, cap_emb=90, log=lambda s: None):
         # lane leads, extension imports).
         # (keywords.csv, the small curated Google-Trends seed list, is left
         #  alone; the permanent archive of discoveries is the DB below.)
-        carried = merge_existing(store)
-        if carried:
-            log(f"  carried over {carried} existing keyword(s) not in this pull")
-        wrote_data = write_keyword_data(store)
+        before_density = _enrichment_density()
+        rep = merge_existing(store, report=True)
+        if rep["carried"]:
+            log(f"  carried over {rep['carried']} existing keyword(s) not in "
+                "this pull")
+        if rep["preserved"]:
+            log(f"  preserved {rep['fields_preserved']} enriched field(s) on "
+                f"{rep['preserved']} keyword(s) the pull returned thin")
+        # BELT AND BRACES. merge_existing now protects field-by-field, but a
+        # future writer, a column rename or an alias drift could still gut the
+        # master, and the cron runs unattended at 06:00. A wholesale rewrite that
+        # LOSES enrichment is never legitimate: refuse it and keep the file.
+        after_density = _density_of_store(store)
+        drop = _density_drop(before_density, after_density)
+        if drop:
+            log("  [!] ABORTING the keyword_data.csv write — enrichment would "
+                f"fall {drop}. Existing file kept untouched. Fields: "
+                f"before={before_density} after={after_density}")
+        else:
+            wrote_data = write_keyword_data(store)
         try:                       # audit trail (spec §5): raw + normalized
             write_raw_and_processed(store)
         except Exception:  # noqa: BLE001 - never let the audit dump break harvest
