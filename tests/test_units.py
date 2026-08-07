@@ -130,6 +130,7 @@ def _ready_candidate():
         "cluster_has_flagged": False,
         "profit_model": {"net_profit": 8},
         "manual_review": "yes",
+        "real_photo_confirmed": "yes",
     }
 
 
@@ -168,6 +169,114 @@ def test_placeholder_description_blocks_publish():
     c["description"] = "NEED_SUPPLIER_DETAILS material and size"
     g = publish_gate(c)
     assert "no_placeholders" in g["blocked_by"]
+
+
+def _photo_test_supplier_record(real_photo=""):
+    """A SUPPLIER_CONFIRMED record for the real candidate-building path
+    (product_manager.listing_package), with every gate satisfied except
+    real_photo_confirmed - so it isolates that one gate."""
+    rec = {
+        "last_verified": "2026-08-01",
+        "product_url": "https://printify.com/app/products/1090",
+        "supplier_catalog_url": "https://printify.com/catalog",
+        "material": "clear TPU",
+        "available_sizes": "one size",
+        "base_cost": "8.50",
+        "shipping_cost": "4.75",
+        "processing_time": "3 days",
+        "production_partner_required": "no",
+        "seller_original_design_confirmed": "yes",
+        "manual_review": "yes",
+    }
+    if real_photo:
+        rec["real_photo_confirmed"] = real_photo
+    return (rec, "SUPPLIER_CONFIRMED", [])
+
+
+def test_real_listing_package_path_blocks_without_real_photo_confirmed():
+    """Proves the actual production candidate-builder (not a hand-built
+    dict) reads real_photo_confirmed from the saved supplier record and
+    the canonical gate blocks on it when unset."""
+    from src import product_manager as pm
+    sup = {"base_cost": "8.50", "shipping_cost": "4.75",
+           "supplier_name": "Printify"}
+    pkg = pm.listing_package(
+        "Personalized Clear Concert Bag", sup, "COMPETITOR_AUDIT_OK",
+        tm_states=["TM_VERIFIED_CLEAR"],
+        supplier_record=_photo_test_supplier_record())
+    assert "real_photo_confirmed" in pkg["blocked_by"]
+    assert pkg["publish_status"] != "PUBLISH_READY"
+
+
+def test_real_listing_package_path_clears_once_real_photo_confirmed():
+    from src import product_manager as pm
+    sup = {"base_cost": "8.50", "shipping_cost": "4.75",
+           "supplier_name": "Printify"}
+    pkg = pm.listing_package(
+        "Personalized Clear Concert Bag", sup, "COMPETITOR_AUDIT_OK",
+        tm_states=["TM_VERIFIED_CLEAR"],
+        supplier_record=_photo_test_supplier_record("yes"))
+    assert "real_photo_confirmed" not in pkg["blocked_by"]
+
+
+# --------------------------------------------------------------------------
+# no_placeholders: the description must use the real confirmed material/size
+# from supplier_products.csv, not a hardcoded placeholder regardless of data.
+# --------------------------------------------------------------------------
+
+def _full_valid_sup():
+    """The 'current best supplier' cost dict the real cluster pipeline hands
+    to listing_package - includes processing_time like the real production
+    best['supplier'] aggregate does."""
+    return {"base_cost": "8.50", "shipping_cost": "4.75",
+            "supplier_name": "Printify", "processing_time": "3 days"}
+
+
+def test_listing_package_blocks_on_missing_material_and_size():
+    from src import product_manager as pm
+    rec, status, missing = _photo_test_supplier_record("yes")
+    rec = {**rec, "material": "", "available_sizes": ""}
+    pkg = pm.listing_package(
+        "Personalized Clear Concert Bag", _full_valid_sup(),
+        "COMPETITOR_AUDIT_OK", tm_states=["TM_VERIFIED_CLEAR"],
+        supplier_record=(rec, status, missing))
+    assert "no_placeholders" in pkg["blocked_by"]
+    assert pkg["publish_status"] != "PUBLISH_READY"
+    assert "NEED_SUPPLIER_DETAILS" in pkg["description"]
+
+
+def test_listing_package_uses_real_material_and_size():
+    from src import product_manager as pm
+    pkg = pm.listing_package(
+        "Personalized Clear Concert Bag", _full_valid_sup(),
+        "COMPETITOR_AUDIT_OK", tm_states=["TM_VERIFIED_CLEAR"],
+        supplier_record=_photo_test_supplier_record("yes"))
+    assert "no_placeholders" not in pkg["blocked_by"]
+    assert "Material: clear TPU" in pkg["description"]
+    assert "Size: one size" in pkg["description"]
+
+
+def test_listing_package_reaches_publish_ready_when_fully_valid():
+    from src import product_manager as pm
+    pkg = pm.listing_package(
+        "Personalized Clear Concert Bag", _full_valid_sup(),
+        "COMPETITOR_AUDIT_OK", tm_states=["TM_VERIFIED_CLEAR"],
+        supplier_record=_photo_test_supplier_record("yes"))
+    assert pkg["publish_status"] == "PUBLISH_READY"
+    assert pkg["blocked_by"] == []
+
+
+def test_listing_package_still_blocked_without_real_photo_even_if_material_ok():
+    """Fixing the material/size placeholder must not accidentally widen the
+    real_photo_confirmed gate added earlier - both are required."""
+    from src import product_manager as pm
+    pkg = pm.listing_package(
+        "Personalized Clear Concert Bag", _full_valid_sup(),
+        "COMPETITOR_AUDIT_OK", tm_states=["TM_VERIFIED_CLEAR"],
+        supplier_record=_photo_test_supplier_record())
+    assert pkg["publish_status"] != "PUBLISH_READY"
+    assert "real_photo_confirmed" in pkg["blocked_by"]
+    assert "no_placeholders" not in pkg["blocked_by"]
 
 
 @pytest.mark.parametrize("required,disclosed,expected", [

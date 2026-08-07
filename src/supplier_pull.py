@@ -57,7 +57,8 @@ FIELDS = ["product_idea", "production_type", "supplier_name",
           "supplier_notes", "supplier_status", "missing_fields", "sku",
           "fulfillment_region", "last_verified",
           "production_partner_disclosed",
-          "seller_original_design_confirmed", "manual_review"]
+          "seller_original_design_confirmed", "manual_review",
+          "real_photo_confirmed"]
 
 POD_REQUIRED = ["product_url", "base_cost", "shipping_cost", "material",
                 "available_sizes", "processing_time"]

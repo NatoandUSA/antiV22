@@ -13,7 +13,10 @@ PERF = Path("data/performance")
 STORE = PERF / "profit_center.json"
 CSV_STORE = PERF / "profit_center.csv"
 
-# Etsy US fee model (adjust here if Etsy changes rates).
+# Etsy US fee model. Source: Etsy "Fees and Taxes for Selling on Etsy"
+# (help.etsy.com/hc/en-us/articles/115014483627), verified through 2026-08-06.
+# Re-check that page (and the shop's actual Payment Account) before trusting
+# these rates on a date far past that.
 LISTING_FEE = 0.20            # per listing / renewal
 TRANSACTION_RATE = 0.065      # 6.5% of item + shipping
 PAYMENT_RATE = 0.03           # ~3% ...

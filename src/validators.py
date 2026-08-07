@@ -22,6 +22,12 @@ MATERIAL_CLAIMS = {"leather", "organic", "waterproof", "14k", "gold",
 GENERIC_TAGS = {"gift", "gifts", "cute", "trendy", "new", "best seller",
                 "handmade", "custom", "personalized", "unique", "popular"}
 
+# Etsy policy + 2026 title guidance: titles must describe the product, not
+# advertise price/promotion. These terms never belong in a title.
+TITLE_SPAM_TERMS = ("% off", "off sale", "free shipping", "clearance",
+                     "discount", "on sale", "limited time", "best seller",
+                     "top rated", "lowest price")
+
 STOP = {"a", "an", "the", "for", "with", "and", "of", "to", "in", "on"}
 
 # Occasion / buyer-intent tokens: >=2 tags should target one (Etsy buyers search
@@ -83,6 +89,10 @@ def validate_title(title, confirmed_material="", primary_keyword=""):
     first5 = set(words[:5])
     if not first5 & PRODUCT_NOUNS:
         issues.append("no product noun in the first 5 words")
+    spam = [t for t in TITLE_SPAM_TERMS if t in title.lower()]
+    if spam:
+        issues.append(f"promotional/price text in title (against Etsy "
+                      f"policy): {', '.join(spam)}")
     risk, why = tm_check(title)
     if risk == "HIGH":
         issues.append(f"trademark/brand term: {why}")

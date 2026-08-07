@@ -534,8 +534,18 @@ def listing_package(name, sup, audit_status, primary_data_check=False,
     if audit_status == "COMPETITOR_AUDIT_FAILED":
         fails.append("COMPETITOR_AUDIT_FAILED: do not publish until audit fixed")
 
+    sup_status = supplier_record[1] if supplier_record else "NEED_SUPPLIER_DETAILS"
+    sup_rec = supplier_record[0] if supplier_record else {}
+
+    # Real confirmed supplier fields, not invented - NEED_SUPPLIER_DETAILS only
+    # shows for a field that is actually still blank on the saved record.
     processing = sup.get("processing_time") if sup else None
-    material = "NEED_SUPPLIER_DETAILS (material & size from supplier page)"
+    material = (sup_rec.get("material") or "").strip()
+    size = (sup_rec.get("available_sizes") or "").strip()
+    specs = (sup_rec.get("product_name_from_supplier") or "").strip()
+    material_line = (f"Material: {material}" if material
+                     else "Material: NEED_SUPPLIER_DETAILS")
+    size_line = f"Size: {size}" if size else "Size: NEED_SUPPLIER_DETAILS"
     price = profit_model(0.0, sup)["price_for_10_profit"] if False else None
     pm = None
     if sup:
@@ -543,6 +553,15 @@ def listing_package(name, sup, audit_status, primary_data_check=False,
         pm = profit_model(max(raw_price,
                               profit_model(raw_price, sup)["price_for_6_profit"]),
                           sup)
+
+    details = [f"- {material_line}", f"- {size_line}"]
+    if specs:
+        # Internal supplier catalog name/specs, useful buyer-facing detail -
+        # not the supplier URL itself, which stays internal (see
+        # supplier_product_url below) so the listing never names the source.
+        details.append(f"- Product: {specs}")
+    details += ["- Personalization: name, initials, or short phrase",
+                f"- Processing time: {processing or 'NEED_SUPPLIER_DETAILS'}"]
 
     desc = "\n".join([
         f"Make every event easier with your own {name} - made to order and "
@@ -556,15 +575,11 @@ def listing_package(name, sup, audit_status, primary_data_check=False,
         "3. Check spelling twice - we make it exactly as entered!",
         "",
         "DETAILS",
-        f"- {material}",
-        "- Personalization: name, initials, or short phrase",
-        f"- Processing time: {processing or 'NEED_SUPPLIER_DETAILS'}",
+        *details,
         "",
         "Buying a set for your bridal party or team? Message us - sets of "
         "4+ get a discount.",
     ])
-    sup_status = supplier_record[1] if supplier_record else "NEED_SUPPLIER_DETAILS"
-    sup_rec = supplier_record[0] if supplier_record else {}
     from src.publish_gate import publish_gate
     gate_result = publish_gate({
         "title": p["title"], "tags": p["tags"], "description": desc,
@@ -578,6 +593,7 @@ def listing_package(name, sup, audit_status, primary_data_check=False,
         "profit_model": pm,
         "policy_violations": policy_check(p, sup_rec),
         "manual_review": sup_rec.get("manual_review", ""),
+        "real_photo_confirmed": sup_rec.get("real_photo_confirmed", ""),
     })
     gates = {k: v["passed"] for k, v in gate_result["gates"].items()}
     gates["exactly_13_tags"] = len(p["tags"]) == 13

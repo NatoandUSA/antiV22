@@ -31,6 +31,7 @@ EVIDENCE = {"supplier_confirmed", "product_url_recorded",
             "processing_time_verified",
             "production_partner_disclosed",
             "seller_original_design_confirmed",
+            "real_photo_confirmed",
             "competitor_audit_complete", "keyword_data_verified",
             "profitability_verified", "no_placeholders", "no_flagged_data",
             "trademark_verified_or_approved"}
@@ -109,6 +110,10 @@ def publish_gate(c):
             ((sup.get("seller_original_design_confirmed") or ""
               ).strip().lower() == "yes",
              "confirm the design is the seller's original work"),
+        "real_photo_confirmed":
+            ((c.get("real_photo_confirmed") or "").strip().lower() == "yes",
+             "hero/macro/measurements/sew-out photos must be the REAL "
+             "product, not an AI mockup - confirm real photos are ready"),
         "trademark_clear":
             (not any(s in ("TM_BLOCKED", "TM_CAUTION_UNVERIFIED")
                      for s in tm_states),
