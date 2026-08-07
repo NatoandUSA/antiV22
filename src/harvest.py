@@ -491,6 +491,26 @@ def write_keyword_data(store, path="keyword_data.csv"):
             return ""
         return n if cast is int else round(n, nd)
 
+    def _views(v):
+        """views_24h, preserving POSITIVE FRACTIONS.
+
+        `_opt(v, int)` truncated every value below 1.0 to 0. Measured on the live
+        master: 155 rows hold fractional views (0.81, 0.97, 0.43) and lost them
+        on EVERY write — the 06:00 cron included, so the loss repeated daily and
+        looked like the data had simply never been there.
+
+        Integers still write as integers, so the column does not grow 169.0-style
+        noise, and the zero/blank behaviour is unchanged: `_f()` in
+        merge_existing already maps 0 -> None on the carry path, so a 0 reaching
+        here is a genuine store value and stays 0 exactly as before.
+        """
+        if v is None:
+            return ""
+        n = _num(v, float, None)
+        if n is None:
+            return ""
+        return int(n) if float(n).is_integer() else round(n, 2)
+
     rows = sorted(store.values(), key=lambda r: r["score"], reverse=True)
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=KDATA_FIELDS)
@@ -500,7 +520,7 @@ def write_keyword_data(store, path="keyword_data.csv"):
                 "keyword": r["tag"],
                 "etsy_listings": _opt(r["listings"], int),
                 "seller_count": _opt(r["sellers"], int),
-                "views_24h": _opt(r["views"], int),     # 24h demand (views, or
+                "views_24h": _views(r["views"]),        # 24h demand (views, or
                                                         # sales/conversion est.)
                 "avg_price": _opt(r["price"]),
                 "avg_revenue": _opt(r["revenue"]),

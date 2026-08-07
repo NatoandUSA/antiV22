@@ -218,3 +218,51 @@ def test_an_empty_master_never_blocks_the_first_write():
     install into never writing."""
     assert H._density_drop({f: 0 for f in H._GUARDED},
                            {f: 0 for f in H._GUARDED}) is None
+
+
+# --- fractional views: the second writer bug ----------------------------------
+@pytest.mark.parametrize("value,expect", [
+    (0.81, 0.81),        # the real production values that were truncated to 0
+    (0.97, 0.97),
+    (0.43, 0.43),
+    (12, 12),            # integers stay integers, no 12.0 noise
+    (169.0, 169),
+])
+def test_write_keyword_data_round_trips_views(tmp_path, value, expect):
+    """`_opt(v, int)` truncated everything under 1.0 to 0. Measured on the live
+    master: 155 rows held fractional views and lost them on EVERY write."""
+    row = _rich()
+    row["views_24h"] = value
+    rows, _ = _roundtrip(tmp_path, [row], {})
+    got = rows["mini bride tote bags"]["views_24h"]
+    assert float(got) == pytest.approx(float(expect)), f"{value} -> {got}"
+    if float(expect).is_integer():
+        assert "." not in got, f"integer views wrote as {got}"
+
+
+def test_a_zero_views_value_keeps_todays_behaviour(tmp_path):
+    """The fix must change truncation ONLY. merge_existing's _f() already maps
+    0 -> None on the carry path, so a 0 reaching the writer is a genuine store
+    value and must serialise exactly as it did before."""
+    store = _thin("mini bride tote bags")
+    store["views"] = 0
+    rows, _ = _roundtrip(tmp_path, [], {"mini bride tote bags": store})
+    assert rows["mini bride tote bags"]["views_24h"] in ("0", "")
+
+
+def test_a_harvest_merge_never_reduces_the_positive_views_count(tmp_path):
+    """The invariant the recovery guard enforces, pinned at the writer."""
+    master = [dict(_rich(f"kw {i}"), views_24h=v)
+              for i, v in enumerate([0.81, 0.97, 0.43, 12, 169.0, 0])]
+    store = {f"kw {i}": _thin(f"kw {i}") for i in range(6)}
+    rows, _ = _roundtrip(tmp_path, master, store)
+
+    def positive(d):
+        n = 0
+        for r in d.values():
+            try:
+                n += 1 if float(r.get("views_24h") or 0) > 0 else 0
+            except ValueError:
+                pass
+        return n
+    assert positive(rows) == 5, "a positive views row was lost by the round-trip"
