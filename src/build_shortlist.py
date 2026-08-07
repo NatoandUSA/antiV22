@@ -20,6 +20,7 @@ import csv
 import math
 import os
 import time
+from datetime import date, timedelta
 from pathlib import Path
 
 MASTER = Path("keyword_data.csv")
@@ -82,6 +83,21 @@ def _load_master(path=None):
     return rows
 
 
+# The two end states a keyword can reach. DONE means "we finished working it"
+# (designed, or decided against). PUBLISHED_MANUALLY means the owner actually put
+# the listing live on Etsy BY HAND — the tool never publishes, so this is the
+# only way that fact can enter the system.
+DONE, PUBLISHED = "DONE", "PUBLISHED_MANUALLY"
+# Post-launch review points. Day 3 = is it getting impressions at all.
+# Day 7 = enough signal to keep, re-tag, or kill.
+CHECK_DAYS = (3, 7)
+
+# Appended columns are optional on read, so rows written before this existed
+# (keyword,user,ts) still load — they simply read as DONE with no checks due.
+_FIELDS = ["keyword", "user", "ts", "status", "listing_url",
+           "check_day3", "check_day7"]
+
+
 def load_actioned():
     done = {}
     if not ACTIONED.is_file():
@@ -90,26 +106,73 @@ def load_actioned():
         with ACTIONED.open(encoding="utf-8-sig") as f:
             for r in csv.DictReader(f):
                 k = (r.get("keyword") or "").strip().lower()
-                if k:
-                    done[k] = {"user": r.get("user", ""), "ts": r.get("ts", "")}
+                if not k:
+                    continue
+                # last write wins: a keyword marked DONE then PUBLISHED ends
+                # PUBLISHED, because the file is an append-only ledger
+                done[k] = {"user": r.get("user", ""), "ts": r.get("ts", ""),
+                           "status": (r.get("status") or DONE).strip() or DONE,
+                           "listing_url": (r.get("listing_url") or "").strip(),
+                           "check_day3": (r.get("check_day3") or "").strip(),
+                           "check_day7": (r.get("check_day7") or "").strip()}
     except OSError:
         pass
     return done
 
 
-def mark_done(keyword, user=""):
+def mark_done(keyword, user="", status=DONE, listing_url=""):
+    """Append an end state for a keyword. Never rewrites, never deletes.
+
+    PUBLISHED_MANUALLY also stamps the day-3 and day-7 review dates, so the
+    follow-up is scheduled by the act of publishing rather than remembered.
+    """
     keyword = (keyword or "").strip()
     if not keyword:
         return False
+    status = (status or DONE).strip().upper()
+    if status not in (DONE, PUBLISHED):
+        status = DONE
+    checks = {}
+    if status == PUBLISHED:
+        today = date.today()
+        for d in CHECK_DAYS:
+            checks[f"check_day{d}"] = str(today + timedelta(days=d))
     ACTIONED.parent.mkdir(parents=True, exist_ok=True)
     new = not ACTIONED.is_file()
     with ACTIONED.open("a", encoding="utf-8", newline="") as f:
-        w = csv.writer(f)
+        w = csv.DictWriter(f, fieldnames=_FIELDS, extrasaction="ignore")
         if new:
-            w.writerow(["keyword", "user", "ts"])
-        w.writerow([keyword, (user or "")[:60],
-                    time.strftime("%Y-%m-%d %H:%M")])
+            w.writeheader()
+        w.writerow({"keyword": keyword, "user": (user or "")[:60],
+                    "ts": time.strftime("%Y-%m-%d %H:%M"), "status": status,
+                    "listing_url": (listing_url or "")[:300], **checks})
     return True
+
+
+def follow_ups(today=None):
+    """[(keyword, day, due_date)] for published listings whose review is due.
+
+    Read-only. Nothing schedules itself or nags — this is the list the owner
+    looks at, so a launch cannot quietly go unreviewed.
+    """
+    now = today or date.today()
+    if isinstance(now, str):
+        now = date.fromisoformat(now[:10])
+    out = []
+    for kw, rec in load_actioned().items():
+        if rec.get("status") != PUBLISHED:
+            continue
+        for d in CHECK_DAYS:
+            due = rec.get(f"check_day{d}") or ""
+            if not due:
+                continue
+            try:
+                when = date.fromisoformat(due)
+            except ValueError:
+                continue
+            if when <= now:
+                out.append((kw, d, due))
+    return sorted(out, key=lambda x: (x[2], x[1]))
 
 
 def _classify(r):
@@ -181,7 +244,11 @@ def analyze(path=None, source=None):
             p["build_score"] = round(100 * score, 1)
             p["theme"] = _theme(p["keyword"])
             p["tm"] = _tm_level(p["keyword"])
-            p["done"] = p["keyword"].lower() in actioned
+            rec = actioned.get(p["keyword"].lower())
+            p["done"] = rec is not None
+            if rec:
+                p.update({k: rec.get(k, "") for k in
+                          ("status", "listing_url", "check_day3", "check_day7")})
             # buildable = proven, not too crowded, real margin, not a hard TM hit
             if (p["listings"] <= MAX_LISTINGS and p["price"] >= MIN_PRICE
                     and p["tm"] != "HIGH"):
@@ -268,17 +335,34 @@ def _row_html(i, p, csrf, age=None):
     donecls = ' style="opacity:.5"' if p["done"] else ""
     kw = _esc(p["keyword"])
     if p["done"]:
-        action = '<span class="note">✅ done</span>'
+        st = (p.get("status") or DONE)
+        if st == PUBLISHED:
+            due = " · ".join(f"day {d} {p.get('check_day%d' % d)}"
+                             for d in CHECK_DAYS if p.get("check_day%d" % d))
+            action = ('<span class="note">🏷 published manually'
+                      + (f'<br>review: {_esc(due)}' if due else "") + '</span>')
+        else:
+            action = '<span class="note">✅ done</span>'
     else:
+        def _mark(status, label, title, cls=""):
+            return (f'<form method="post" action="/build-queue/done" '
+                    'style="display:inline">'
+                    f'<input type="hidden" name="csrf" value="{csrf}">'
+                    f'<input type="hidden" name="keyword" value="{kw}">'
+                    f'<input type="hidden" name="status" value="{status}">'
+                    f'<button class="tkbtn {cls}" title="{title}">{label}'
+                    '</button></form> ')
         action = (
             f'<a class="tkbtn" href="/design-analyzer?q={kw}" '
             'title="Analyze / design this">🎨 Design</a> '
             f'<a class="tkbtn" href="/launch-kit?q={kw}" '
             'title="Full launch kit">🚀 Kit</a> '
-            f'<form method="post" action="/build-queue/done" style="display:inline">'
-            f'<input type="hidden" name="csrf" value="{csrf}">'
-            f'<input type="hidden" name="keyword" value="{kw}">'
-            '<button class="tkbtn primary" title="Mark done">✓</button></form>')
+            # PUBLISHED_MANUALLY is the only way the tool learns a listing went
+            # live: it never publishes, so the owner records the fact by hand.
+            + _mark(PUBLISHED, "🏷 Published",
+                    "I published this on Etsy myself — schedules day 3 / day 7 review",
+                    "primary")
+            + _mark(DONE, "✓", "Mark done (worked, not published)"))
     fresh = age(p) if age else ""
     return (
         f'<tr{donecls}><td>{i}</td>'
@@ -325,7 +409,20 @@ def render_html(data, csrf, limit=40):
     age = _ages(list(data["open"][:limit]) + list(data["done"]))
     open_rows = "".join(_row_html(i + 1, p, csrf, age)
                         for i, p in enumerate(data["open"][:limit]))
-    body = ('<h2>🔨 To build (top ' + str(min(limit, len(data["open"]))) +
+    # Post-launch reviews that are due. A launch nobody reviews is how a bad
+    # listing sits live for a month, so this rides above the queue.
+    due = ""
+    try:
+        pend = follow_ups()
+        if pend:
+            items = " · ".join(f"<b>{_esc(k)}</b> day {d}" for k, d, _t in pend[:8])
+            due = ('<p class="note" style="background:var(--accent-bg);'
+                   'border:1px solid var(--accent);border-radius:9px;'
+                   f'padding:9px 12px">📅 <b>Post-launch review due:</b> {items}'
+                   ' — check impressions/views, then keep, re-tag, or kill.</p>')
+    except Exception:  # noqa: BLE001 - never break the queue
+        due = ""
+    body = (due + '<h2>🔨 To build (top ' + str(min(limit, len(data["open"]))) +
             ')</h2>' + thead + open_rows + '</table>')
     if len(data["open"]) > limit:
         body += (f'<p class="note">+{len(data["open"]) - limit} more buildable '

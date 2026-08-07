@@ -4006,8 +4006,12 @@ def build_app(password, secret):
         _check_csrf()
         from src import build_shortlist as bq
         _u = current_user() or {}
+        # status comes from which button was pressed. Unknown/absent -> DONE, so
+        # an older form that posts no status keeps working.
         bq.mark_done(request.form.get("keyword", ""),
-                     _u.get("display_name") or _u.get("email") or "")
+                     _u.get("display_name") or _u.get("email") or "",
+                     status=request.form.get("status") or bq.DONE,
+                     listing_url=request.form.get("listing_url", ""))
         return redirect("/build-queue")
 
     @app.route("/build-queue/archive-empties", methods=["POST"])
