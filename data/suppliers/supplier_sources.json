@@ -46,5 +46,17 @@
     "type": "csv_upload",
     "modes": ["EMBROIDERY", "CHENILLE_PATCH"],
     "csv_file": "Embroidery.csv"
+  },
+  "hpw": {
+    "name": "HPW",
+    "type": "csv_upload",
+    "modes": ["EMBROIDERY", "CHENILLE_PATCH"],
+    "csv_file": "hpw.csv"
+  },
+  "hogotopod": {
+    "name": "HogoToPod",
+    "type": "catalog_url",
+    "modes": ["EMBROIDERY", "CHENILLE_PATCH"],
+    "catalog_url": "https://seller.hogotopod.com/catalog"
   }
 }
