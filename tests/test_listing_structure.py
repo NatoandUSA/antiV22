@@ -80,3 +80,23 @@ def test_pattern_miner_attaches_structure(sandbox):
     assert "listing_structure" in res
     assert res["listing_structure"]["has_structure"] is True
     assert res["listing_structure"]["listings"] >= 1
+
+
+def test_jsonld_fallback_used_when_dom_scrape_blank(sandbox):
+    """v3.6.3 sends jsonld_rating/jsonld_review_count/jsonld_availability
+    specifically because they survive when Etsy's CSS/class names change and
+    the DOM-scraped listing_rating/listing_review_count come back blank. The
+    normalizer must actually fall through to them when the DOM value is
+    empty, not just when the DOM column is entirely absent."""
+    row = _row(listing_id="777", title="Personalized Nurse Sweatshirt Embroidered",
+               shop_name="ShopA", price="39.99",
+               listing_tags="nurse sweatshirt",
+               # DOM scrape came back empty (CSS changed) ...
+               listing_rating="", listing_review_count="",
+               # ... but the JSON-LD structured data still had it.
+               jsonld_rating="4.8", jsonld_review_count="612",
+               jsonld_availability="InStock")
+    s = fer.save_listing_structure(DETAIL_HDR, [row], source_hint="etsy-listing")
+    assert s["rating"] == 4.8
+    assert s["review_count"] == 612
+    assert s["availability"] == "InStock"
