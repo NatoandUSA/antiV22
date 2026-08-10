@@ -100,3 +100,34 @@ def test_jsonld_fallback_used_when_dom_scrape_blank(sandbox):
     assert s["rating"] == 4.8
     assert s["review_count"] == 612
     assert s["availability"] == "InStock"
+
+
+def test_three_tier_rating_fallback_priority(sandbox):
+    """rating/review_count have THREE independent scrapes (buy-box "rating",
+    review-section "listing_rating", structured-data "jsonld_rating"), each a
+    fallback for the one before it. Pin the priority order in both directions."""
+    # tier 1 (bare "rating") wins even when tier 2 and 3 are also populated.
+    s1 = fer.save_listing_structure(DETAIL_HDR, [_row(
+        listing_id="801", title="Personalized Nurse Sweatshirt Embroidered",
+        shop_name="ShopA", price="10", listing_tags="nurse sweatshirt",
+        rating="4.2", review_count="50",
+        listing_rating="4.5", listing_review_count="300",
+        jsonld_rating="4.8", jsonld_review_count="612")])
+    assert s1["rating"] == 4.2 and s1["review_count"] == 50
+
+    # tier 1 blank -> tier 2 (listing_rating) wins over tier 3 (jsonld).
+    s2 = fer.save_listing_structure(DETAIL_HDR, [_row(
+        listing_id="802", title="Personalized Nurse Sweatshirt Embroidered",
+        shop_name="ShopB", price="10", listing_tags="nurse sweatshirt",
+        rating="", review_count="",
+        listing_rating="4.5", listing_review_count="300",
+        jsonld_rating="4.8", jsonld_review_count="612")])
+    assert s2["rating"] == 4.5 and s2["review_count"] == 300
+
+    # tier 1 and 2 both blank -> tier 3 (jsonld) is the last resort.
+    s3 = fer.save_listing_structure(DETAIL_HDR, [_row(
+        listing_id="803", title="Personalized Nurse Sweatshirt Embroidered",
+        shop_name="ShopC", price="10", listing_tags="nurse sweatshirt",
+        rating="", review_count="", listing_rating="", listing_review_count="",
+        jsonld_rating="4.8", jsonld_review_count="612")])
+    assert s3["rating"] == 4.8 and s3["review_count"] == 612

@@ -1349,10 +1349,23 @@ def normalize_listing_structure(headers, rows, source_hint=None):
         "shop_url": _ci(headers, "shop_url"),
         "price": _ci(headers, "price", exclude=("was", "compare")),
         "currency": _ci(headers, "currency"),
-        "rating": _ci(headers, "listing_rating", "rating",
-                      exclude=("count", "distribution", "shop", "jsonld")),
-        "review_count": _ci(headers, "listing_review_count", "review_count",
-                            exclude=("shop", "jsonld")),
+        # Three INDEPENDENT scrapes of the same logical value, each a fallback
+        # for the one before it (the extension's own design -- see v3.6.2's
+        # CHANGELOG: "listing_rating" was added because the buy-box "rating"
+        # widget scrape can come back blank; v3.6.3 added "jsonld_rating" as a
+        # third, most-structurally-stable source). Each needs its OWN _ci
+        # lookup with the others excluded -- _ci matches by SUBSTRING, and
+        # "rating" is a substring of both "listing_rating" and "jsonld_rating",
+        # so a single combined lookup could never actually reach column 2 or 3
+        # (it always resolves to the first/leftmost header in file order).
+        "rating": _ci(headers, "rating",
+                      exclude=("count", "distribution", "shop", "listing", "jsonld")),
+        "listing_rating": _ci(headers, "listing_rating"),
+        "jsonld_rating": _ci(headers, "jsonld_rating"),
+        "review_count": _ci(headers, "review_count",
+                            exclude=("shop", "listing", "jsonld")),
+        "listing_review_count": _ci(headers, "listing_review_count"),
+        "jsonld_review_count": _ci(headers, "jsonld_review_count"),
         "tags": _ci(headers, "listing_tags", "he_tags", "tags",
                     exclude=("count", "categor")),
         "description": _ci(headers, "description"),
@@ -1364,15 +1377,6 @@ def normalize_listing_structure(headers, rows, source_hint=None):
         "images": _ci(headers, "image_urls"),
         "url": _ci(headers, "etsy_url", "url", "link"),
         "jsonld_price": _ci(headers, "jsonld_price"),
-        # v3.6.3: JSON-LD structured-data fallbacks. These survive when Etsy
-        # changes CSS/class names and the DOM scrape above comes back blank
-        # (see the `or` fallback below) -- a dedicated lookup, not folded into
-        # "rating"/"review_count" above, because _ci returns the FIRST header
-        # matching ANY needle in FILE order: the DOM column always sits before
-        # its jsonld_* counterpart in the extension's export, so folding them
-        # into one lookup would make the jsonld_* needle permanently dead.
-        "jsonld_rating": _ci(headers, "jsonld_rating"),
-        "jsonld_review_count": _ci(headers, "jsonld_review_count"),
         "jsonld_availability": _ci(headers, "jsonld_availability"),
     }
     row = rows[0]
@@ -1404,8 +1408,10 @@ def normalize_listing_structure(headers, rows, source_hint=None):
         or parse_market_number(_row_get(row, idx["jsonld_price"])),
         "currency": clean_text(_row_get(row, idx["currency"])),
         "rating": parse_market_number(_row_get(row, idx["rating"]))
+        or parse_market_number(_row_get(row, idx["listing_rating"]))
         or parse_market_number(_row_get(row, idx["jsonld_rating"])),
         "review_count": parse_market_number(_row_get(row, idx["review_count"]))
+        or parse_market_number(_row_get(row, idx["listing_review_count"]))
         or parse_market_number(_row_get(row, idx["jsonld_review_count"])),
         "availability": clean_text(_row_get(row, idx["jsonld_availability"])),
         "tags": tags,
