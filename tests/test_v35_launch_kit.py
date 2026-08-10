@@ -154,6 +154,49 @@ def test_launch_kit_policies_bag_care_not_wash_instructions():
     assert "machine wash cold" in shirt_policy.lower()
 
 
+# --------------------------- V38.3 title placeholder fix --------------------
+
+def test_title_never_contains_bracket_placeholder(sandbox):
+    from src import launch_kit_page as lkp
+    title = lkp._title("mens carry on bag", "pod")
+    assert "[Recipient]" not in title and "[" not in title
+
+
+def test_title_uses_real_recipient_when_evidence_exists(sandbox, monkeypatch):
+    from src import launch_kit_page as lkp
+    monkeypatch.setattr(
+        "src.feed_evidence_router.evidence_for_keyword",
+        lambda kw, max_listings=6: {"recipient_nouns": [{"value": "granddaughter", "count": 3}]})
+    title = lkp._title("personalized name tote handbag", "pod")
+    assert "Gift for Granddaughter" in title
+    assert "[Recipient]" not in title
+
+
+def test_title_omits_gift_clause_without_evidence(sandbox, monkeypatch):
+    from src import launch_kit_page as lkp
+    monkeypatch.setattr(
+        "src.feed_evidence_router.evidence_for_keyword",
+        lambda kw, max_listings=6: {"recipient_nouns": []})
+    title = lkp._title("mens carry on bag", "pod")
+    assert "Gift for" not in title
+    assert "[Recipient]" not in title
+
+
+def test_photo_brief_care_durability_claim_matches_mode():
+    from src import photo_brief as pb
+    pod_slots = pb.build("mens carry on bag", product="Printed Tote Bag", mode="pod")
+    care = next(s for s in pod_slots if "care" in s["slot"].lower())
+    assert "embroidery" not in care["prompt"].lower()
+    # POD print quality varies by supplier/ink -- no absolute durability
+    # promise without manufacturer evidence, care guidance instead.
+    assert "won't fade" not in care["prompt"].lower()
+    assert "won't crack" not in care["prompt"].lower()
+    assert "preserve print quality" in care["prompt"].lower()
+    emb_slots = pb.build("teacher shirt 4x", mode="embroidery")
+    care2 = next(s for s in emb_slots if "care" in s["slot"].lower())
+    assert "embroidery won't crack or fade" in care2["prompt"].lower()
+
+
 def test_gpt_runner_contains_all_12_briefs():
     from src import photo_brief as pb
     r = pb.runner("teacher shirt 4x", mode="embroidery")

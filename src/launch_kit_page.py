@@ -65,11 +65,28 @@ def _block(tid, heading, text, note="", red=False):
 
 # --------------------------- listing copy ----------------------------------
 
+def _top_recipient(kw):
+    """Real, review-derived recipient noun for this keyword, or None. Never
+    invented: no evidence means the title's 'Gift for X' clause is omitted
+    entirely rather than filled with a guess or a bracket placeholder."""
+    try:
+        from src import feed_evidence_router as fer
+        recip = fer.evidence_for_keyword(kw).get("recipient_nouns") or []
+    except Exception:  # noqa: BLE001 - evidence lookup is best-effort
+        return None
+    if not recip:
+        return None
+    value = recip[0].get("value") if isinstance(recip[0], dict) else recip[0]
+    return str(value).strip().title() if value else None
+
+
 def _title(kw, mode):
     base = kw.strip().title()
     prod = "Embroidered" if mode == "embroidery" else "Custom"
-    parts = [base, f"Personalized {prod} Gift", "Custom Name",
-             "Gift for [Recipient]"]
+    parts = [base, f"Personalized {prod} Gift", "Custom Name"]
+    recipient = _top_recipient(kw)
+    if recipient:
+        parts.append(f"Gift for {recipient}")
     return ", ".join(dict.fromkeys(parts))[:140]
 
 

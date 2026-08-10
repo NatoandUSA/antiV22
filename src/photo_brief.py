@@ -109,6 +109,12 @@ def build(keyword, product="Embroidered Sweatshirt", mode="embroidery", pers=Tru
     emb = (mode or "").lower().startswith("emb")
     made = "embroidered" if emb else "printed"
     bag = _is_bag(kw) or _is_bag(prod)
+    # Embroidery is stitched thread -- "won't crack or fade" is a safe, near-
+    # universal claim about the METHOD. Print quality varies by supplier/ink/
+    # process, so an equally absolute print claim isn't ours to make without
+    # manufacturer evidence -- care guidance instead of a durability promise.
+    durability = ("Embroidery won't crack or fade" if emb else
+                 "Follow the care instructions to help preserve print quality")
 
     hero_prompt = (
         f"Lifestyle product photo: a {prod.lower()} with a {made} '{kw}' design "
@@ -198,11 +204,11 @@ def build(keyword, product="Embroidered Sweatshirt", mode="embroidery", pers=Tru
 
         ("Care + processing", "Sets expectations - handmade, care, dispatch time.", False,
          ("A simple icon graphic: 'Made to order', 'Ships in [X] business days', "
-          "'Spot clean only', 'Embroidery won't crack or fade', on a soft solid "
+          f"'Spot clean only', '{durability}', on a soft solid "
           "background with clean line icons and short labels. " + rules + ".")
          if bag else
          ("A simple icon graphic: 'Made to order', 'Ships in [X] business days', "
-          "'Wash cold / inside out', 'Embroidery won't crack or fade', on a soft "
+          f"'Wash cold / inside out', '{durability}', on a soft "
           "solid background with clean line icons and short labels. " + rules + ".")),
 
         ("Video thumbnail / 360", "Video lifts Etsy quality score.", True,
