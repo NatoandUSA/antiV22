@@ -203,13 +203,19 @@ def build(keyword, product="Embroidered Sweatshirt", mode="embroidery", pers=Tru
           "quality, weight and fit, photorealistic.")),
 
         ("Care + processing", "Sets expectations - handmade, care, dispatch time.", False,
-         ("A simple icon graphic: 'Made to order', 'Ships in [X] business days', "
-          f"'Spot clean only', '{durability}', on a soft solid "
-          "background with clean line icons and short labels. " + rules + ".")
+         # No real per-day processing time is known at prompt-build time, and
+         # this text gets rendered as literal pixels by an image generator --
+         # unlike listing copy, there's no human-edit step before publish, so
+         # a bracket placeholder here would bake "[X]" into the graphic itself
+         # instead of getting caught and filled in. Omit the day-count clause
+         # rather than guess or leave a placeholder for the AI to render.
+         ("A simple icon graphic: 'Made to order', 'Spot clean only', "
+          f"'{durability}', on a soft solid background with clean line icons "
+          "and short labels. " + rules + ".")
          if bag else
-         ("A simple icon graphic: 'Made to order', 'Ships in [X] business days', "
-          f"'Wash cold / inside out', '{durability}', on a soft "
-          "solid background with clean line icons and short labels. " + rules + ".")),
+         ("A simple icon graphic: 'Made to order', 'Wash cold / inside out', "
+          f"'{durability}', on a soft solid background with clean line icons "
+          "and short labels. " + rules + ".")),
 
         ("Video thumbnail / 360", "Video lifts Etsy quality score.", True,
          (f"A single video-frame style image: slow 360 turn of the {prod.lower()} "

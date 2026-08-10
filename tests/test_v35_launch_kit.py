@@ -197,6 +197,22 @@ def test_photo_brief_care_durability_claim_matches_mode():
     assert "embroidery won't crack or fade" in care2["prompt"].lower()
 
 
+def test_photo_brief_no_shipping_day_placeholder_baked_into_image_prompt():
+    """'[X] business days' sat inside the literal render-this-text portion of
+    an image-generation prompt -- no human-edit step exists between this
+    prompt and an AI generator, so the bracket would get drawn as pixels.
+    'Made to order' alone stays true without guessing a real number."""
+    from src import photo_brief as pb
+    for kw, kwargs in (("mens carry on bag",
+                        {"product": "Printed Tote Bag", "mode": "pod"}),
+                       ("teacher shirt 4x", {"mode": "embroidery"})):
+        slots = pb.build(kw, **kwargs)
+        care = next(s for s in slots if "care" in s["slot"].lower())
+        assert "[X]" not in care["prompt"]
+        assert "business days" not in care["prompt"].lower()
+        assert "made to order" in care["prompt"].lower()
+
+
 def test_gpt_runner_contains_all_12_briefs():
     from src import photo_brief as pb
     r = pb.runner("teacher shirt 4x", mode="embroidery")
