@@ -1,0 +1,46 @@
+#ytx-toolbar {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 2147483647;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  background: #ffffff;
+  border: 1px solid #e5e5e5;
+  border-radius: 12px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.16);
+  padding: 8px 10px;
+  max-width: 360px;
+}
+#ytx-toolbar .ytx-row { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+#ytx-toolbar .ytx-row2 {
+  margin-top: 7px; padding-top: 7px; border-top: 1px solid #eee;
+}
+#ytx-toolbar .ytx-tag {
+  font-size: 10px; font-weight: 700; color: #777; text-transform: uppercase;
+  letter-spacing: .04em; margin-right: 2px; white-space: nowrap;
+}
+#ytx-toolbar .ytx-btn.ytx-sm { padding: 5px 9px; font-size: 12px; }
+#ytx-toolbar .ytx-brand {
+  font-size: 11px; font-weight: 700; color: #F1641E;
+  letter-spacing: .02em; margin-right: 2px; white-space: nowrap;
+}
+#ytx-toolbar .ytx-btn {
+  border: 1px solid #e0ddd8; background: #fff; color: #222;
+  border-radius: 8px; padding: 6px 11px; font-size: 12.5px; font-weight: 600;
+  cursor: pointer; white-space: nowrap;
+}
+#ytx-toolbar .ytx-btn:hover { background: #f6f4f1; }
+#ytx-toolbar .ytx-primary { background: #F1641E; border-color: #F1641E; color: #fff; }
+#ytx-toolbar .ytx-primary:hover { background: #d9531a; }
+#ytx-toolbar .ytx-x {
+  border: 0; background: transparent; color: #999; font-size: 18px;
+  line-height: 1; cursor: pointer; padding: 0 2px;
+}
+#ytx-toolbar .ytx-status {
+  font-size: 11.5px; color: #555; margin-top: 5px; min-height: 14px;
+  max-width: 320px; word-break: break-word;
+}
+
+#ytx-toolbar a.ytx-btn { text-decoration: none; display: inline-block; }
+#ytx-toolbar .ytx-btn:disabled { opacity: .55; cursor: not-allowed; }
+#ytx-toolbar .ytx-btn:disabled:hover { background: #fff; }

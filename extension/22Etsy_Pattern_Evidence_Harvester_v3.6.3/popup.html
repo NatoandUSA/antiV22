@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+         width: 320px; margin: 0; padding: 14px; color: #222; }
+  h1 { font-size: 14px; margin: 0 0 4px; }
+  p { font-size: 12px; color: #666; margin: 0 0 10px; line-height: 1.45; }
+  label { font-size: 12px; font-weight: 600; display: block; margin: 8px 0 4px; }
+  input { width: 100%; box-sizing: border-box; padding: 8px; font-size: 13px;
+          border: 1px solid #ddd; border-radius: 8px; }
+  button { margin-top: 10px; width: 100%; background: #F1641E; color: #fff; border: 0;
+           border-radius: 8px; padding: 9px; font-weight: 700; font-size: 13px; cursor: pointer; }
+  button:hover { background: #d9531a; }
+  button.secondary { background: #fff; color: #F1641E; border: 1px solid #F1641E; }
+  button.secondary:hover { background: #fff5ef; }
+  .ok { color: #15803d; font-size: 12px; margin-top: 8px; min-height: 14px; }
+  .status { font-size: 11px; color: #555; margin-top: 10px; line-height: 1.6;
+            border-top: 1px solid #eee; padding-top: 8px; }
+  .status b { color: #222; }
+  .dot-on { color: #15803d; font-weight: 700; }
+  .dot-off { color: #b91c1c; font-weight: 700; }
+  .hint { font-size: 11px; color: #888; margin-top: 8px; line-height: 1.5; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .grid button { margin-top: 10px; }
+</style>
+</head>
+<body>
+  <h1>22Etsy Pattern Evidence Harvester v3.6.0</h1>
+  <p>Capture public rendered Etsy keyword, listing, shop, review and HeyEtsy evidence for Pattern Miner / Research Queue.</p>
+
+  <label for="operator">Your name (operator, for import history)</label>
+  <input id="operator" type="text" placeholder="e.g. Linh, Minh, Alex">
+
+
+  <label for="focus">Focus keyword / Pattern batch keyword</label>
+  <input id="focus" type="text" placeholder="e.g. personalized name tote bag">
+
+  <label for="agent">Agent import URL</label>
+  <input id="agent" type="text" placeholder="https://etsy.theglobalserviceteam.site/api/import">
+
+  <label for="token">Import token (X-Import-Token)</label>
+  <input id="token" type="password" autocomplete="off" placeholder="matches YTX_IMPORT_TOKEN in the agent .env">
+
+  <button id="save">Save settings</button>
+  <button id="test" class="secondary">Test connection to /api/import</button>
+  <div class="grid">
+    <button id="open-imports" class="secondary">Open Import Center</button>
+    <button id="open-pattern" class="secondary">Open Pattern Miner</button>
+    <button id="open-rerank" class="secondary">Open Re-rank</button>
+    <button id="clear-token" class="secondary">Clear token</button>
+  </div>
+  <div class="ok" id="ok"></div>
+
+  <div class="status">
+    <div>Agent URL: <span id="st-url" class="dot-off">not set</span></div>
+    <div>Token: <span id="st-token" class="dot-off">not set</span></div>
+    <div>Last test: <span id="st-test">—</span></div>
+  </div>
+  <div class="hint">Read-only public/rendered evidence only. Auto-scroll is allowed; no marketplace clicks, no ChatGPT toolbar, no GPT RESULT_JSON, only <b>/api/import</b>. Focus keyword is sent as context so listing/review evidence can map to the right Rank/Pattern/Re-rank batch.</div>
+</body>
+<script src="popup.js"></script>
+</html>
