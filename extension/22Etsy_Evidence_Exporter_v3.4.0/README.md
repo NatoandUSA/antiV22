@@ -1,4 +1,8 @@
-# 22Etsy Evidence Exporter — v3.3.0
+# 22Etsy Evidence Exporter — v3.4.0
+
+> **v3.4 adds:** dedicated Etsy listing-review capture, a review-only
+> de-duplicated batch, agent-ready review rows, and review CSV export. Review
+> evidence stays separate from HeyEtsy estimates and listing/search rows.
 
 A clean, read-only Chrome extension that captures the data **already rendered on your screen** and turns it into a CSV, a JSON file, or a push to your 22etsy agent's `/api/import` endpoint.
 
@@ -15,6 +19,7 @@ It never clicks anything on a marketplace, never logs in, never automates a stor
 | **YTrends** (`trends.ytuong.ai`) | Any rendered data table — keywords, gems, categories, etc. |
 | **ytuong.me** "Hot" cards | listing id / title / price + 24h sold / views / favorites |
 | **Etsy** search results | listing id, title, shop, price, reviews, badges — **plus** the full HeyEtsy overlay (lifetime sold, revenue, views, favorites, conversion, created/age, tags, categories) when the HeyEtsy panel is on |
+| **Etsy** listing reviews | Public rendered review ID, listing ID, rating, date, text, buyer display name, selected variations, image ID/photo when available, aggregate rating, buyer recommendation, feature phrases, and category counts |
 | **HeyEtsy** `/listing/{id}` | Single-record analytics page: sold, revenue, views, favorites, conversion, created/updated, shop stats, tags, image URLs |
 | **Pinterest** | Pins from hydration JSON first, DOM fallback — saves, comments, board, outbound link, image |
 | **Amazon** search results | asin, title, price, list price, rating, ratings count, "bought past month", sponsored, prime |
@@ -31,6 +36,7 @@ Empty fields are left empty. The extension **never invents** a missing value (`e
 - **JSON** — download the evidence payload as JSON.
 - **Send to agent** — POST the payload to your configured `/api/import` URL.
 - **Multi-page batch** — `+ Add page`, `Batch CSV`, `Send batch`, `Clear`. You navigate the pages yourself; the extension de-dupes rows into one set. It never clicks pagination.
+- **Listing reviews** — on an Etsy listing, `+ Add reviews` saves the currently rendered review cards into a separate review-only batch. Change Etsy's review page/filter yourself, then click it again. `Reviews CSV` and `Send reviews` use the de-duplicated batch. `Clear reviews` starts a different listing.
 - **×** — hide the toolbar.
 
 ---
@@ -52,11 +58,11 @@ Then **Save settings**. Use **Test connection to /api/import** to confirm the UR
 ```json
 {
   "schema_version": "1.1",
-  "exporter_version": "3.3.0",
+  "exporter_version": "3.4.0",
   "view": "source-viewslug",
   "captured_at": "ISO timestamp",
   "source": "current page URL",
-  "source_type": "heyetsy_listing_detail | etsy | ytrends | pinterest | amazon | alibaba | supplier-1688 | ...",
+  "source_type": "heyetsy_listing_detail | etsy_listing_reviews | etsy | ytrends | pinterest | amazon | alibaba | supplier-1688 | ...",
   "evidence_policy": "rendered_page_only_no_invention",
   "operator": "optional operator name",
   "headers": ["..."],
@@ -65,6 +71,20 @@ Then **Save settings**. Use **Test connection to /api/import** to confirm the UR
 ```
 
 The **only** endpoint the background worker will post to is `/api/import` on the 22etsy agent host (plus `localhost` / `127.0.0.1` `/api/import` for local dev). There is no design-result path anymore.
+
+### Review evidence contract
+
+Review imports use `source_type: "etsy_listing_reviews"` and one row per
+rendered review. `review_id` is the de-duplication key and `listing_id` joins the
+review to the listing/HeyEtsy evidence. Etsy's feature and category summaries
+are preserved as JSON strings; the exporter does not convert review text into
+SEO keywords or sentiment scores. That interpretation belongs in the agent,
+where frequency, buyer intent, complaints, and product attributes can be
+scored transparently.
+
+For maximum coverage, choose a review sort/filter in Etsy, click **+ Add
+reviews**, move to the next review page or filter, and repeat. The extension
+does not bypass Etsy pagination or call a private Etsy API.
 
 ---
 

@@ -1,4 +1,4 @@
-/* 22Etsy Evidence Exporter v3.3 - content script.
+/* 22Etsy Evidence Exporter v3.4.0 - content script.
  *
  * One-click capture of the data ALREADY RENDERED on your screen, as CSV/JSON
  * download or a push to your 22etsy agent (/api/import). Read-only: it never
@@ -35,6 +35,9 @@
   function isYtuongMe() { return /(^|\.)ytuong\.me$/.test(location.hostname); }
   function isHeyEtsyListing() {
     return isHeyEtsy() && /\/listing\/\d+/.test(location.pathname);
+  }
+  function isEtsyListing() {
+    return isEtsy() && /\/listing\/\d+/.test(location.pathname);
   }
 
   function agentPost(url, token, body, callback) {
@@ -389,29 +392,38 @@
       document.title.replace(/^\d+\s*\|\s*/, ""));
     const etsyLink = Array.from(document.querySelectorAll('a[href*="etsy.com/listing/"]'))
       .map((a) => a.href).find((href) => new RegExp("/listing/" + listingId + "(?:/|$)").test(href)) || "";
-    const imageUrl = Array.from(document.querySelectorAll("img, [wire\\:click]"))
+    const imageCandidates = Array.from(document.querySelectorAll("img, [wire\\:click]"))
       .map((el) => {
         const wire = el.getAttribute && (el.getAttribute("wire:click") || "");
         const wm = wire.match(/https:\/\/i\.etsystatic\.com\/[^'")\s]+/i);
-        if (wm) return wm[0];
+        if (wm) return { url: wm[0], area: 0 };
         const src = el.currentSrc || el.src || "";
-        return /^https:\/\/i\.etsystatic\.com\//i.test(src) ? src : "";
-      }).find(Boolean) || "";
+        return /^https:\/\/i\.etsystatic\.com\//i.test(src) ? {
+          url: src,
+          area: Math.max(el.naturalWidth || 0, el.width || 0) *
+            Math.max(el.naturalHeight || 0, el.height || 0)
+        } : null;
+      }).filter(Boolean);
+    const imageUrl = imageCandidates
+      .sort((a, b) => b.area - a.area)[0]?.url || "";
     const shopLink = document.querySelector('a[href*="heyetsy.com/shop/"]');
     const shop = clean(shopLink?.textContent || "");
     const shopUrl = (shopLink?.href || "").split("?")[0];
-    const tagsButton = Array.from(document.querySelectorAll("button"))
-      .find((el) => /clipboard\.writeText/.test(el.getAttribute("@click") || ""));
+    const tagsHeading = Array.from(document.querySelectorAll("h1, h2, h3, h4"))
+      .find((el) => clean(el.textContent).toLowerCase() === "tags");
+    const tagsContainer = tagsHeading?.closest(".relative, section, article, div") || null;
+    const tagsButton = tagsContainer && Array.from(tagsContainer.querySelectorAll("button"))
+      .find((el) => {
+        const click = el.getAttribute("@click") || "";
+        const m = click.match(/clipboard\.writeText\((?:'([^']*)'|"([^"]*)")\)/);
+        return m && (m[1] || m[2] || "").includes(",");
+      });
     const tagsClick = tagsButton ? (tagsButton.getAttribute("@click") || "") : "";
     const tagsMatch = tagsClick.match(/clipboard\.writeText\((?:'([^']*)'|"([^"]*)")\)/);
     const tags = clean(tagsMatch ? (tagsMatch[1] || tagsMatch[2] || "") : "");
-    const imageUrls = Array.from(document.querySelectorAll("img, [wire\\:click]"))
-      .map((el) => {
-        const wire = el.getAttribute && (el.getAttribute("wire:click") || "");
-        const wm = wire.match(/https:\/\/i\.etsystatic\.com\/[^'")\s]+/i);
-        const src = wm ? wm[0] : (el.currentSrc || el.src || "");
-        return /^https:\/\/i\.etsystatic\.com\//i.test(src) ? src : "";
-      }).filter((url, index, all) => url && all.indexOf(url) === index);
+    const imageUrls = imageCandidates
+      .map((candidate) => candidate.url)
+      .filter((url, index, all) => url && all.indexOf(url) === index);
     const price = value(/(?:^|\s)([\d.,]+\s*USD)\s+(?:View on Etsy|Preview)/i);
     const sold = value(/Estimated Total Sales:\s*([\d,]+)\+?\s*Sold/i);
     const revenue = value(/Estimated Revenue:\s*([\d.,]+\s*[KM]?)\s*USD/i);
@@ -422,14 +434,11 @@
     const createdBlock = T.match(/The listing was created\.\s*(\d{1,2}\/\d{1,2}\/\d{4})(?:\s*\(([^)]+)\))?/i);
     const updatedBlock = T.match(/The listing was last updated\.\s*(\d{1,2}\/\d{1,2}\/\d{4})(?:\s*\(([^)]+)\))?/i);
     let ageDays = "";
-    if (createdBlock) {
-      const parts = createdBlock[1].split("/").map(Number);
-      const createdUtc = Date.UTC(parts[2], parts[1] - 1, parts[0]);
-      const today = new Date();
-      const todayUtc = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
-      if (Number.isFinite(createdUtc) && createdUtc <= todayUtc) {
-        ageDays = String(Math.floor((todayUtc - createdUtc) / 86400000));
-      }
+    const ageText = createdBlock ? clean(createdBlock[2] || "") : "";
+    const ageMatch = ageText.match(/(\d+)\s*(day|week|month|year)s?/i);
+    if (ageMatch) {
+      const factors = { day: 1, week: 7, month: 30, year: 365 };
+      ageDays = String(parseInt(ageMatch[1], 10) * factors[ageMatch[2].toLowerCase()]);
     }
     const conversion = value(/Estimated conversion rate of the listing\.\s*~?\s*(-?[\d.]+)\s*%/i);
     const shopSales = value(/([\d,]+)\s+Sales\s+Chart on HeyEtsy\.com/i);
@@ -447,7 +456,7 @@
       listingId, title, shop, price, sold, revenue, viewsAverage, views,
       favoriteRate, favorites,
       createdBlock ? createdBlock[1] : "", ageDays,
-      createdBlock ? clean(createdBlock[2] || "") : "",
+      ageText,
       updatedBlock ? updatedBlock[1] : "", updatedBlock ? clean(updatedBlock[2] || "") : "",
       conversion, shopSales, shopRating, shopReviews, shopUrl, tags,
       JSON.stringify(imageUrls), imageUrl, etsyLink.split("?")[0],
@@ -455,6 +464,103 @@
       "HeyEtsy values are estimates captured from the rendered page; empty values were not inferred."
     ];
     return { headers, rows: [row] };
+  }
+
+  // ---- Etsy listing reviews --------------------------------------------------
+  // Reviews are a separate evidence type. They must never be merged into the
+  // listing-sales row because review language and HeyEtsy estimates have
+  // different provenance. Capture only review cards currently rendered by
+  // Etsy, plus Etsy's rendered aggregate/tag summaries.
+  function parseJsonAttr(el, name) {
+    if (!el) return null;
+    try { return JSON.parse(el.getAttribute(name) || ""); } catch (e) { return null; }
+  }
+
+  function reviewSummary() {
+    const pageText = clean(document.body.innerText || document.body.textContent || "");
+    const featureEl = document.querySelector('[data-appears-component-name="reviews_feature_tags"]');
+    const categoryEl = document.querySelector('[data-appears-component-name="reviews_categorical_tags"]');
+    const featureData = parseJsonAttr(featureEl, "data-appears-event-data") || {};
+    const categoryData = parseJsonAttr(categoryEl, "data-appears-event-data") || {};
+    const containerEl = document.querySelector('[data-appears-component-name="listing_page_reviews_container_top"]');
+    const containerData = parseJsonAttr(containerEl, "data-appears-event-data") || {};
+    const ratingMatch = pageText.match(/Reviews for this item\s*.*?([\d.]+)\s*Item average/i);
+    const recommendMatch = pageText.match(/(\d{1,3})%\s*Buyers recommend/i);
+    const subrating = (label) => {
+      const re = new RegExp("([\\d.]+)\\s*" + label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+      const m = pageText.match(re);
+      return m ? m[1] : "";
+    };
+    return {
+      listing_rating: ratingMatch ? ratingMatch[1] : "",
+      listing_review_count: String(containerData.listing_rating_count || ""),
+      shop_review_count: String(containerData.shop_rating_count || ""),
+      buyers_recommend_pct: recommendMatch ? recommendMatch[1] : "",
+      item_quality_rating: subrating("Item quality"),
+      shipping_rating: subrating("Shipping"),
+      customer_service_rating: subrating("Customer service"),
+      feature_tags_json: JSON.stringify(featureData.tags || []),
+      categorical_tags_json: JSON.stringify(categoryData.tags || [])
+    };
+  }
+
+  function extractEtsyReviews() {
+    if (!isEtsyListing()) return null;
+    const idMatch = location.pathname.match(/\/listing\/(\d+)/);
+    const listingId = idMatch ? idMatch[1] : "";
+    const listingUrl = location.origin + location.pathname.replace(/\/$/, "");
+    const title = clean(document.querySelector("h1")?.textContent ||
+      document.querySelector('meta[property="og:title"]')?.content || document.title);
+    const shopLink = document.querySelector('a[href*="/shop/"]');
+    const shopMatch = (shopLink?.href || "").match(/\/shop\/([^/?#]+)/);
+    const shop = shopMatch ? decodeURIComponent(shopMatch[1]) : clean(shopLink?.textContent || "");
+    const summary = reviewSummary();
+    const headers = [
+      "review_id", "listing_id", "listing_title", "shop", "rating",
+      "review_date_raw", "review_text", "buyer_display_name",
+      "variation_json", "review_image_id", "review_photo_url",
+      "listing_rating", "listing_review_count", "shop_review_count",
+      "buyers_recommend_pct", "item_quality_rating", "shipping_rating",
+      "customer_service_rating", "feature_tags_json", "categorical_tags_json",
+      "etsy_url", "evidence_source", "evidence_note"
+    ];
+    const rows = [];
+    for (const card of document.querySelectorAll("[data-review-container]")) {
+      const reviewId = card.getAttribute("data-content-pane") || "";
+      const text = clean(card.querySelector("[data-review-text]")?.textContent || "");
+      if (!reviewId && !text) continue;
+      const rating = card.querySelector('input[name="rating"]')?.value ||
+        card.querySelector('input[name="initial-rating"]')?.value || "";
+      const buyerInfo = card.querySelector(".buyer-info");
+      const buyer = clean(buyerInfo?.querySelector(".buyer-name")?.textContent || "");
+      const dateEl = buyerInfo && Array.from(buyerInfo.children)
+        .find((el) => !el.classList.contains("buyer-name"));
+      const reviewDate = clean(dateEl?.textContent || "");
+      const variations = {};
+      for (const li of card.querySelectorAll(".variation-info")) {
+        const key = clean(li.querySelector(".wt-text-caption-title")?.textContent || "")
+          .replace(/:\s*$/, "");
+        const values = Array.from(li.querySelectorAll(".wt-text-caption"))
+          .map((el) => clean(el.textContent)).filter(Boolean);
+        if (key && values.length) variations[key] = values.join(" ");
+      }
+      const photo = Array.from(card.querySelectorAll("img"))
+        .find((img) => !img.closest(".buyer-info") && !img.closest("[data-listing-card]") &&
+          /etsystatic\.com/i.test(img.currentSrc || img.src || ""));
+      rows.push([
+        reviewId, card.getAttribute("data-listing-id") || listingId, title, shop,
+        rating, reviewDate, text, buyer, JSON.stringify(variations),
+        card.getAttribute("data-image-id") || "",
+        photo ? (photo.currentSrc || photo.src || "") : "",
+        summary.listing_rating, summary.listing_review_count, summary.shop_review_count,
+        summary.buyers_recommend_pct, summary.item_quality_rating,
+        summary.shipping_rating, summary.customer_service_rating,
+        summary.feature_tags_json, summary.categorical_tags_json,
+        listingUrl, "etsy_rendered_review",
+        "Public review evidence captured from the rendered Etsy listing page; no sentiment or keywords were invented."
+      ]);
+    }
+    return rows.length ? { headers, rows } : null;
   }
 
   // ---- CSV / naming ----------------------------------------------------------
@@ -517,14 +623,16 @@
     return d && d.rows.length ? d : null;
   }
 
-  function payload(data) {
+  function payload(data, meta) {
+    const m = meta || {};
     return {
       schema_version: "1.1",
-      exporter_version: "3.3.0",
-      view: `${sourceTag()}-${viewSlug()}`,
+      exporter_version: "3.4.0",
+      view: m.view || `${sourceTag()}-${viewSlug()}`,
       captured_at: new Date().toISOString(),
-      source: location.href,
-      source_type: isHeyEtsyListing() ? "heyetsy_listing_detail" : sourceTag(),
+      source: m.source || location.href,
+      source_type: m.sourceType ||
+        (isHeyEtsyListing() ? "heyetsy_listing_detail" : sourceTag()),
       evidence_policy: "rendered_page_only_no_invention",
       headers: data.headers,
       rows: data.rows
@@ -568,12 +676,12 @@
   // Shared POST used by both single-page Send and batch Send. Works on EVERY
   // site: payload() tags the view by sourceTag()/viewSlug() of the current page,
   // and the agent auto-routes by columns. Always posts to /api/import only.
-  function sendData(data, label) {
+  function sendData(data, label, meta) {
     chrome.storage.local.get({ agentUrl: "", agentToken: "", operator: "" }, (cfg) => {
       const url = (cfg.agentUrl || "").trim();
       if (!url) { flash("Set your agent import URL in the extension popup first.", false); return; }
       flash("Sending " + label + " to agent...", null);
-      const body = payload(data);
+      const body = payload(data, meta);
       if ((cfg.operator || "").trim()) body.operator = cfg.operator.trim();
       agentPost(url, cfg.agentToken, body, (r) => {
         if (!r.ok) {
@@ -593,6 +701,86 @@
     sendData(data, sourceTag());
   }
 
+  // Review rows use their own batch so listing/search evidence can never be
+  // mixed with review text. Etsy may replace review cards when the user changes
+  // review page or filter; each click captures the cards currently rendered.
+  function loadReviewBatch(cb) {
+    chrome.storage.local.get({ ytxReviewBatch: null }, (o) => cb(o.ytxReviewBatch));
+  }
+  function saveReviewBatch(b, cb) {
+    chrome.storage.local.set({ ytxReviewBatch: b }, cb || (() => {}));
+  }
+  function updateReviewButtons(b) {
+    const n = b?.rows?.length || 0;
+    const csv = document.getElementById("ytx-reviews-csv");
+    const send = document.getElementById("ytx-reviews-send");
+    if (csv) csv.textContent = n ? `Reviews CSV (${n})` : "Reviews CSV";
+    if (send) send.textContent = n ? `Send reviews (${n})` : "Send reviews";
+  }
+  function onAddReviews() {
+    const data = extractEtsyReviews();
+    if (!data) { flash("No rendered listing reviews found.", false); return; }
+    const listingId = data.rows[0][data.headers.indexOf("listing_id")] || "";
+    loadReviewBatch((b) => {
+      if (b && b.listingId !== listingId && b.rows.length) {
+        flash(`Review batch belongs to listing ${b.listingId}. Clear it before adding ${listingId}.`, false);
+        return;
+      }
+      if (!b || b.listingId !== listingId) {
+        b = {
+          listingId, headers: data.headers, rows: [], pageKeys: [],
+          source: location.href.split("#")[0]
+        };
+      }
+      const idIndex = b.headers.indexOf("review_id");
+      const seen = new Set(b.rows.map((row) => String(row[idIndex] || JSON.stringify(row))));
+      let added = 0;
+      for (const row of data.rows) {
+        const key = String(row[idIndex] || JSON.stringify(row));
+        if (seen.has(key)) continue;
+        seen.add(key); b.rows.push(row); added++;
+      }
+      const pageKey = location.href.split("#")[0] + "|" +
+        b.rows.map((row) => row[idIndex]).slice(-data.rows.length).join(",");
+      if (!b.pageKeys.includes(pageKey)) b.pageKeys.push(pageKey);
+      saveReviewBatch(b, () => {
+        updateReviewButtons(b);
+        flash(`Review batch: ${b.rows.length} unique reviews (+${added} new).`, true);
+      });
+    });
+  }
+  function onReviewsCSV() {
+    loadReviewBatch((b) => {
+      if (!b?.rows?.length) {
+        const data = extractEtsyReviews();
+        if (!data) { flash("No review batch or rendered reviews found.", false); return; }
+        download(toCSV(data), `etsy_reviews_${data.rows[0][1]}_${today()}.csv`);
+        flash(`Downloaded ${data.rows.length} rendered reviews.`, true);
+        return;
+      }
+      download(toCSV(b), `etsy_reviews_${b.listingId}_${b.rows.length}_${today()}.csv`);
+      flash(`Downloaded ${b.rows.length} unique reviews.`, true);
+    });
+  }
+  function onReviewsSend() {
+    loadReviewBatch((b) => {
+      const data = b?.rows?.length ? { headers: b.headers, rows: b.rows } : extractEtsyReviews();
+      if (!data) { flash("No review batch or rendered reviews found.", false); return; }
+      const listingId = data.rows[0][data.headers.indexOf("listing_id")] || "";
+      sendData(data, `Etsy reviews ${listingId}`, {
+        source: b?.source || location.href,
+        sourceType: "etsy_listing_reviews",
+        view: `etsy-listing-${listingId}-reviews`
+      });
+    });
+  }
+  function onReviewsClear() {
+    chrome.storage.local.remove("ytxReviewBatch", () => {
+      updateReviewButtons(null);
+      flash("Review batch cleared.", true);
+    });
+  }
+
   // ---- multi-page batch: accumulate pages you visit into ONE de-duped set ----
   // Survives page navigation via chrome.storage.local, so on paginated sites
   // (Etsy, Amazon) you click "+ Add page" on page 1, go to page 2, add again...
@@ -604,7 +792,8 @@
     return -1; // fall back to whole-row signature
   }
   function rowKey(b, r) {
-    return b.keyCol >= 0 ? String(r[b.keyCol] || "") : JSON.stringify(r);
+    const key = b.keyCol >= 0 ? String(r[b.keyCol] || "").trim() : "";
+    return key || JSON.stringify(r);
   }
   function loadBatch(cb) { chrome.storage.local.get({ ytxBatch: null }, (o) => cb(o.ytxBatch)); }
   function saveBatch(b, cb) { chrome.storage.local.set({ ytxBatch: b }, cb || (() => {})); }
@@ -633,8 +822,13 @@
           return;
         }
         if (!b || b.sig !== sig) {
-          b = { sig, site, headers: data.headers, rows: [], pages: 0,
-                keyCol: batchKeyCol(data.headers) };
+          b = {
+            sig, site, headers: data.headers, rows: [], pages: 0,
+            keyCol: batchKeyCol(data.headers), pageKeys: [],
+            source: location.href,
+            sourceType: isHeyEtsyListing() ? "heyetsy_listing_detail" : site,
+            view: `${site}-${viewSlug()}`
+          };
         }
         const seen = new Set(b.rows.map((r) => rowKey(b, r)));
         let added = 0;
@@ -643,7 +837,12 @@
           if (seen.has(k)) continue;
           seen.add(k); b.rows.push(r); added++;
         }
-        b.pages += 1;
+        if (!Array.isArray(b.pageKeys)) b.pageKeys = [];
+        const pageKey = location.href.split("#")[0];
+        if (!b.pageKeys.includes(pageKey)) {
+          b.pageKeys.push(pageKey);
+          b.pages = b.pageKeys.length;
+        }
         saveBatch(b, () => {
           updateBatchBtn(b);
           flash(`Batch: ${b.rows.length} rows over ${b.pages} page(s)  (+${added} new).`, true);
@@ -668,7 +867,11 @@
   function onBatchSend() {
     loadBatch((b) => {
       if (!b || !b.rows.length) { flash("Batch is empty - click '+ Add page' first.", false); return; }
-      sendData({ headers: b.headers, rows: b.rows }, `${b.site} batch / ${b.pages} pages`);
+      sendData(
+        { headers: b.headers, rows: b.rows },
+        `${b.site} batch / ${b.pages} pages`,
+        { source: b.source, sourceType: b.sourceType, view: b.view }
+      );
     });
   }
 
@@ -748,7 +951,16 @@
       '  <button id="ytx-batch-csv" class="ytx-btn ytx-sm">Batch CSV</button>' +
       '  <button id="ytx-batch-send" class="ytx-btn ytx-sm">Send batch</button>' +
       '  <button id="ytx-batch-clear" class="ytx-btn ytx-sm" title="Empty the batch">Clear</button>' +
-      '</div><div id="ytx-status" class="ytx-status"></div>';
+      '</div>' +
+      (isEtsyListing() ?
+      '<div class="ytx-row ytx-row2">' +
+      '  <span class="ytx-tag" title="Capture only public reviews currently rendered by Etsy">Listing reviews</span>' +
+      '  <button id="ytx-reviews-add" class="ytx-btn ytx-sm" title="Add currently rendered reviews to a separate de-duplicated batch">+ Add reviews</button>' +
+      '  <button id="ytx-reviews-csv" class="ytx-btn ytx-sm">Reviews CSV</button>' +
+      '  <button id="ytx-reviews-send" class="ytx-btn ytx-sm">Send reviews</button>' +
+      '  <button id="ytx-reviews-clear" class="ytx-btn ytx-sm">Clear reviews</button>' +
+      '</div>' : '') +
+      '<div id="ytx-status" class="ytx-status"></div>';
     document.body.appendChild(bar);
     document.getElementById("ytx-grab").addEventListener("click", onGrabAll);
     document.getElementById("ytx-export").addEventListener("click", onExport);
@@ -758,6 +970,13 @@
     document.getElementById("ytx-batch-csv").addEventListener("click", onBatchCSV);
     document.getElementById("ytx-batch-send").addEventListener("click", onBatchSend);
     document.getElementById("ytx-batch-clear").addEventListener("click", onBatchClear);
+    if (isEtsyListing()) {
+      document.getElementById("ytx-reviews-add").addEventListener("click", onAddReviews);
+      document.getElementById("ytx-reviews-csv").addEventListener("click", onReviewsCSV);
+      document.getElementById("ytx-reviews-send").addEventListener("click", onReviewsSend);
+      document.getElementById("ytx-reviews-clear").addEventListener("click", onReviewsClear);
+      loadReviewBatch(updateReviewButtons);
+    }
     document.getElementById("ytx-hide").addEventListener("click", () => bar.remove());
     loadBatch(updateBatchBtn);   // restore the running batch count across pages
     // show what's detected so an empty page is never a silent mystery

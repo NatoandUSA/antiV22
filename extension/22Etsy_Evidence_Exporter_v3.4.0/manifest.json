@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "22Etsy Evidence Exporter",
-  "version": "3.3.0",
-  "description": "Clean evidence capture for Etsy, HeyEtsy, YTrends, Pinterest, Amazon, Alibaba, and supplier pages. Exports CSV/JSON or sends captured evidence to 22etsy /api/import. No ChatGPT automation and no marketplace actions.",
+  "version": "3.4.0",
+  "description": "Capture listing, market, and Etsy review evidence as CSV/JSON or send it to 22etsy /api/import. Rendered data only; no invented values or marketplace writes.",
   "icons": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" },
   "permissions": ["storage", "downloads"],
   "host_permissions": [

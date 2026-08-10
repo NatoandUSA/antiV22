@@ -46,7 +46,7 @@ document.getElementById("test").addEventListener("click", () => {
   stTest.textContent = "testing…";
   const body = {
     schema_version: "1.1",
-    exporter_version: "3.3.0",
+    exporter_version: "3.4.0",
     view: "connection-test",
     captured_at: new Date().toISOString(),
     source: "extension-popup",
@@ -66,8 +66,10 @@ document.getElementById("test").addEventListener("click", () => {
       if (!r) { stTest.textContent = "no response from worker"; return; }
       if (r.status === 401 || r.status === 403) {
         stTest.textContent = "reached ✓ but token rejected (" + r.status + ")";
+      } else if (r.ok) {
+        stTest.textContent = "connected ✓ (HTTP " + r.status + ")";
       } else if (r.status && r.status > 0) {
-        stTest.textContent = "reached ✓ (HTTP " + r.status + ")";
+        stTest.textContent = "reached, but rejected (HTTP " + r.status + ")";
       } else {
         stTest.textContent = "could not reach: " + (r.error || "unknown");
       }
