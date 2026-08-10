@@ -221,21 +221,164 @@ def _import_embroidery(reader, country):
     return out
 
 
+def _money(s):
+    """Normalize a price cell to a plain decimal string, or "" if blank.
+
+    The HogoToPod sheet mixes '$9.00' (period decimal) with '13,88' and
+    '$13,07' (comma decimal -- the sheet's original locale) in the SAME
+    column. There is no thousands-separator use in this sheet (every value
+    is a single/double-digit dollar amount), so: no period present + a comma
+    present means the comma IS the decimal point, not a thousands marker."""
+    t = str(s or "").strip().lstrip("$").strip()
+    if not t:
+        return ""
+    if "." not in t and "," in t:
+        t = t.replace(",", ".")
+    else:
+        t = t.replace(",", "")
+    try:
+        return f"{float(t):.2f}"
+    except ValueError:
+        return ""
+
+
+def _vnd(s):
+    """VND cell like '130,000' (comma = thousands separator here, the
+    opposite convention from _money's HogoToPod columns) -> plain digits,
+    or "" if blank. Never converted to USD -- see _import_hpw."""
+    t = str(s or "").strip().replace(",", "").replace(".", "")
+    return t if t.isdigit() else ""
+
+
+def _import_hpw(rows, country):
+    """HPW price sheet: blank + processing cost in VND, real USD fast-line
+    (6-8 day) shipping already quoted per-row. VND is NOT converted to USD
+    here -- no live FX rate is available to this tool, and guessing one
+    would silently corrupt margin math anywhere downstream that reads
+    base_cost as USD. The raw VND figures are kept exact in `notes`;
+    base_cost stays blank (honest missing data, not a wrong number)."""
+    out = []
+    for r in rows:
+        name = (r[0] if len(r) > 0 else "").strip()
+        if not name:
+            continue
+        ptype, size = (r[1] if len(r) > 1 else "").strip(), (r[2] if len(r) > 2 else "").strip()
+        price_vnd = _vnd(r[3] if len(r) > 3 else "")
+        proc_vnd = _vnd(r[4] if len(r) > 4 else "")
+        weight = (r[6] if len(r) > 6 else "").strip()
+        ship_usd = _money(r[7] if len(r) > 7 else "")
+        rec = _blank()
+        notes = []
+        if price_vnd or proc_vnd:
+            notes.append(f"Blank {price_vnd or '?'} VND + processing {proc_vnd or '?'} "
+                        "VND (raw, NOT converted to USD -- no live FX rate; "
+                        "convert before computing margin).")
+        if weight:
+            notes.append(f"Weight {weight}g.")
+        rec.update({
+            "supplier_id": "hpw", "supplier_name": "HPW",
+            "supplier_type": "csv_upload", "production_mode": "EMBROIDERY",
+            "product_name": name, "product_type": ptype,
+            "product_category": product_family(name) or product_family(ptype) or "",
+            "sizes": size, "shipping_cost": ship_usd,
+            "shipping_time_min": "6", "shipping_time_max": "8",
+            "embroidery_supported": "yes", "personalization_supported": "yes",
+            "target_country": country, "production_partner_required": "yes",
+            "csv_source_file": "hpw.csv", "last_updated": str(date.today()),
+            "notes": " ".join(notes),
+        })
+        st, miss = _status(rec)
+        rec["supplier_status"], rec["missing_fields"] = st, ";".join(miss)
+        out.append(rec)
+    return out
+
+
+# HogoToPod's sheet: 3 header rows, then one row per (product, size); the
+# product name is only written on that group's FIRST row (merged cell in the
+# source), every size row after it leaves column 0 blank. Real column
+# positions, confirmed against the actual export (not the rendered display,
+# which splits embedded newlines into extra lines): 0=product name,
+# 2=size/dimension, 3=base cost with NO shipping, 4=US fulfillment 7-12 day,
+# 7=US-WW/UK/CA fulfillment variants, 9=TikTok-label fulfillment. Rows below
+# the tracking-number section (```PHƯƠNG THỨC THEO DÕI```) are footer, not
+# products, and are excluded.
+_HOGO_DATA_START = 4
+_HOGO_FOOTER_MARKERS = ("PHƯƠNG THỨC THEO DÕI", "Tuyến US", "Tuyến CA", "Tuyến AU")
+
+
+def _import_hogotopod(rows, country):
+    out = []
+    product = ""
+    for r in rows[_HOGO_DATA_START:]:
+        r = r + [""] * max(0, 10 - len(r))
+        col0 = r[0].strip()
+        if any(m in col0 for m in _HOGO_FOOTER_MARKERS):
+            break
+        if col0:
+            product = col0
+        if not product:
+            continue
+        size = r[2].strip()
+        base_no_ship = _money(r[3])
+        us_7_12 = _money(r[4])
+        tiktok = _money(r[9])
+        if not (size or base_no_ship or us_7_12):
+            continue  # blank separator row between product groups
+        rec = _blank()
+        notes = []
+        if not base_no_ship and us_7_12:
+            # No un-bundled base cost on this row (true for every specialty
+            # item past the core apparel lines) -- the fulfillment price
+            # already includes shipping, same convention as the existing
+            # "embroidery" internal-partner import.
+            notes.append("Base cost with US 7-12 day shipping already bundled "
+                         "(no separate no-ship base cost given).")
+        rec.update({
+            "supplier_id": "hogotopod", "supplier_name": "HogoToPod",
+            "supplier_type": "catalog_url",
+            "catalog_url": "https://seller.hogotopod.com/catalog",
+            "production_mode": "EMBROIDERY",
+            "product_name": product, "sizes": size,
+            "product_category": product_family(product) or "",
+            "base_cost": base_no_ship or us_7_12,
+            "shipping_cost": "0.00" if not base_no_ship else "",
+            "shipping_time_min": "7" if not base_no_ship else "",
+            "shipping_time_max": "12" if not base_no_ship else "",
+            "embroidery_supported": "yes", "personalization_supported": "yes",
+            "target_country": country, "production_partner_required": "yes",
+            "csv_source_file": "hogotopod.csv", "last_updated": str(date.today()),
+            "notes": (" ".join(notes) +
+                     (f" TikTok-label fulfillment: ${tiktok}." if tiktok else "")).strip(),
+        })
+        st, miss = _status(rec)
+        rec["supplier_status"], rec["missing_fields"] = st, ";".join(miss)
+        out.append(rec)
+    return out
+
+
 def import_csv(source, file, out=DEFAULT_OUT, country="US"):
     src = source.lower()
     p = Path(file)
     if not p.exists():
         print(f"CSV not found: {file}  (status: CSV_REQUIRED)")
         return []
-    with p.open(newline="", encoding="utf-8") as f:
-        reader = list(csv.DictReader(f))
-    if src == "shineon":
-        new = _import_shineon(reader, country)
-    elif src == "embroidery":
-        new = _import_embroidery(reader, country)
+    if src in ("hpw", "hogotopod"):
+        # Both sheets have multi-row / merged-cell headers a plain
+        # DictReader can't represent -- read raw positional rows instead.
+        with p.open(newline="", encoding="utf-8-sig") as f:
+            raw = list(csv.reader(f))
+        new = _import_hpw(raw[1:], country) if src == "hpw" else _import_hogotopod(raw, country)
     else:
-        print(f"import-csv supports shineon | embroidery, not '{source}'.")
-        return []
+        with p.open(newline="", encoding="utf-8") as f:
+            reader = list(csv.DictReader(f))
+        if src == "shineon":
+            new = _import_shineon(reader, country)
+        elif src == "embroidery":
+            new = _import_embroidery(reader, country)
+        else:
+            print(f"import-csv supports shineon | embroidery | hpw | hogotopod, "
+                  f"not '{source}'.")
+            return []
     kept = [r for r in load_products(out) if r.get("supplier_id") != src]
     save_products(kept + new, out)
     confirmed = sum(1 for r in new if r["supplier_status"] == "SUPPLIER_CONFIRMED")

@@ -189,3 +189,114 @@ def test_scores_stay_ranked_and_bounded(lib):
     assert [s for s, _ in scored] == sorted((s for s, _ in scored), reverse=True)
     assert all(0 <= s <= 100 for s, _ in scored)
     assert scored[0][1]["product_name"] == "WASH CAP"      # the right supplier
+
+
+# --- V38.3: HPW + HogoToPod price-sheet importers ---------------------------
+# Both sheets have multi-row/merged-cell headers a plain DictReader can't
+# represent, and mix decimal-separator conventions cell to cell. Real-shaped
+# fixtures below (not just clean synthetic rows) pin the parsing quirks
+# actually found in the live sheets, not an idealized version of them.
+
+def test_money_normalizes_mixed_decimal_separators():
+    """Same column, same sheet, both '$9.00' and '13,88' (comma-decimal,
+    the sheet's original locale) appear -- no thousands-separator use
+    anywhere in this sheet (every value is a single/double-digit dollar
+    amount), so a lone comma is always the decimal point here."""
+    assert so._money("$9.00") == "9.00"
+    assert so._money("13,88") == "13.88"
+    assert so._money("$13,07") == "13.07"
+    assert so._money("18,4") == "18.40"
+    assert so._money("") == ""
+    assert so._money(None) == ""
+
+
+def test_vnd_strips_thousands_separator_never_converts():
+    assert so._vnd("130,000") == "130000"
+    assert so._vnd("43,000") == "43000"
+    assert so._vnd("") == ""
+
+
+def _hpw_sheet(tmp_path, *rows):
+    # real header: col0's cell literally contains an embedded newline in the
+    # source sheet (a stray ID bled into row 1 col A) -- csv correctly reads
+    # it as ONE header row when properly quoted, same as the live export.
+    header = ('"FN1.3985710955 \n",Loại áo,SIZE,GIÁ,Gia công,,'
+             'TRỌNG LƯƠNG,SHIP HPW LINE NHANH 6-8')
+    p = tmp_path / "hpw.csv"
+    p.write_text("\n".join([header, *rows]) + "\n", encoding="utf-8")
+    return str(p)
+
+
+def test_hpw_import_keeps_vnd_raw_and_uses_real_usd_shipping(tmp_path):
+    out = str(tmp_path / "out.csv")
+    sheet = _hpw_sheet(
+        tmp_path,
+        'Sweatshirt - S,SWEATER,S,"130,000","120,000",,446,11.91',
+        'Tote bag,TÚI TOTE,,"43,000","120,000",,200,7.29')
+    new = so.import_csv("hpw", sheet, out)
+    assert len(new) == 2
+    tote = next(r for r in new if r["product_name"] == "Tote bag")
+    assert tote["shipping_cost"] == "7.29"          # real USD, used directly
+    assert tote["base_cost"] == ""                  # never a guessed USD conversion
+    assert "43000 VND" in tote["notes"] and "120000 VND" in tote["notes"]
+    assert "NOT converted to USD" in tote["notes"]
+    assert tote["shipping_time_min"] == "6" and tote["shipping_time_max"] == "8"
+
+
+def _hogo_sheet(tmp_path, *product_rows):
+    p = tmp_path / "hogotopod.csv"
+    header_rows = [
+        "title,,,,,,,,,",
+        "Product,Picture Demo,Size Chart US,Base cost ($) With Standard shipping,,,,,,",
+        ",,,EMBROIDERY,,,,,,",
+        ',,,sub,sub,sub,sub,sub,sub,sub',
+    ]
+    footer = ["PHƯƠNG THỨC THEO DÕI TRẠNG THÁI VẬN ĐƠN,,,,,,,,,",
+             "1. Tuyến US,,,,,,,,,"]
+    p.write_text("\n".join(header_rows + list(product_rows) + footer) + "\n",
+                encoding="utf-8")
+    return str(p)
+
+
+def test_hogotopod_forward_fills_product_name_across_size_rows(tmp_path):
+    """The product name is written ONLY on a group's first row (merged cell
+    in the source); every size row after it must inherit it, not go blank."""
+    out = str(tmp_path / "out.csv")
+    sheet = _hogo_sheet(
+        tmp_path,
+        'T-SHIRT,,S,$9.00,$16.93,$17.86,$19.55,$23.31,$21.75,$14.10',
+        ',,M,$9.00,$17.49,$18.41,$20.49,$23.59,$21.99,$14.32')
+    new = so.import_csv("hogotopod", sheet, out)
+    assert [r["product_name"] for r in new] == ["T-SHIRT", "T-SHIRT"]
+    assert [r["sizes"] for r in new] == ["S", "M"]
+    assert new[0]["base_cost"] == "9.00"
+
+
+def test_hogotopod_bundles_shipping_when_no_bare_base_cost_is_given(tmp_path):
+    """Specialty items (dog bandana, tote, wreath sash...) have no separate
+    no-ship base cost column filled in -- only bundled fulfillment prices.
+    That must not silently double-count as base_cost + a real shipping_cost."""
+    out = str(tmp_path / "out.csv")
+    sheet = _hogo_sheet(
+        tmp_path,
+        'Dog Bandana,,23.6x17.7 inch,,"$13,07","$13,72","$14,99","$20,24","$18,72","$10,53"')
+    new = so.import_csv("hogotopod", sheet, out)
+    assert len(new) == 1
+    r = new[0]
+    assert r["base_cost"] == "13.07"        # the US 7-12d fulfillment price
+    assert r["shipping_cost"] == "0.00"     # already included, not double-counted
+    assert "already bundled" in r["notes"]
+    assert "TikTok-label fulfillment: $10.53" in r["notes"]
+
+
+def test_hogotopod_excludes_the_tracking_footer_section(tmp_path):
+    out = str(tmp_path / "out.csv")
+    sheet = _hogo_sheet(
+        tmp_path,
+        'Patch,,2x2,,,,,,,')
+    new = so.import_csv("hogotopod", sheet, out)
+    names = [r["product_name"] for r in new]
+    assert "PHƯƠNG THỨC THEO DÕI TRẠNG THÁI VẬN ĐƠN" not in names
+    assert "1. Tuyến US" not in names
+    # a row with no cost data at all is still imported, honestly empty
+    assert new[0]["product_name"] == "Patch" and new[0]["base_cost"] == ""
