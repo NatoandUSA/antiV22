@@ -111,6 +111,49 @@ def test_every_slot_has_ai_prompt_and_real_flags():
     assert sum(1 for s in slots if s["real_photo"]) >= 4
 
 
+# --------------------------- V38.3 bag-vs-apparel audit fix -----------------
+# Launch Kit's audit (owner: "make sure output quality is right, not just the
+# pipeline") found every copy/photo template hardcoded to apparel (sizing S-3XL,
+# garment color, worn-on-chest photos) regardless of actual product. 2 of the
+# 3 open Build Queue sprint keywords are bags. Minimal bag branch, not a full
+# product-category system -- pin that apparel keeps its original wording and
+# bag keywords get bag-appropriate wording, in both files that had the bug.
+
+def test_photo_brief_bag_prompts_avoid_garment_anatomy():
+    from src import photo_brief as pb
+    slots = pb.build("mens carry on bag", product="Printed Tote Bag", mode="pod")
+    joined = " ".join(s["prompt"].lower() for s in slots)
+    for bad in ("chest", "cuff", "collar", "worn by a smiling model",
+                "garment color", "garment silhouette"):
+        assert bad not in joined, f"garment-only phrase leaked into bag prompts: {bad!r}"
+    assert "handles" in joined or "strap" in joined
+
+
+def test_photo_brief_apparel_prompts_unchanged():
+    from src import photo_brief as pb
+    slots = pb.build("teacher shirt 4x", mode="embroidery")
+    joined = " ".join(s["prompt"].lower() for s in slots)
+    assert "chest" in joined and "cuff" in joined and "collar" in joined
+
+
+def test_launch_kit_description_bag_vs_apparel():
+    from src import launch_kit_page as lkp
+    bag_desc = lkp._description("mens carry on bag", "pod", "[price note]")
+    assert "s–3xl" not in bag_desc.lower() and "garment color" not in bag_desc.lower()
+    assert "dimensions" in bag_desc.lower() or "capacity" in bag_desc.lower()
+    shirt_desc = lkp._description("teacher shirt", "pod", "[price note]")
+    assert "s–3xl" in shirt_desc.lower()
+
+
+def test_launch_kit_policies_bag_care_not_wash_instructions():
+    from src import launch_kit_page as lkp
+    bag_policy = lkp._policies("mini bride tote bags", "pod")
+    assert "machine wash cold" not in bag_policy.lower()
+    assert "spot clean" in bag_policy.lower()
+    shirt_policy = lkp._policies("teacher shirt", "pod")
+    assert "machine wash cold" in shirt_policy.lower()
+
+
 def test_gpt_runner_contains_all_12_briefs():
     from src import photo_brief as pb
     r = pb.runner("teacher shirt 4x", mode="embroidery")

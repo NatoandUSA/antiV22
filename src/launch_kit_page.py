@@ -23,6 +23,20 @@ from src import photo_brief
 
 _MONEY = iv._money
 
+# Copy/photo templates below default to apparel (sizing, garment color, care-
+# by-ironing). That is wrong for a bag -- wrong sizing model, wrong care
+# instructions, wrong photo anatomy -- so bag keywords get their own branch
+# rather than silently inheriting garment copy. Minimal, keyword-based: not a
+# full product-category system, just the one confusion found in the V35
+# Launch Kit audit (2 of the 3 open Build Queue sprint keywords are bags).
+_BAG_WORDS = ("bag", "tote", "pouch", "purse", "backpack", "duffel", "duffle",
+              "clutch", "satchel")
+
+
+def _is_bag(kw):
+    k = (kw or "").lower()
+    return any(w in k for w in _BAG_WORDS)
+
 
 def _e(t):
     return _h.escape(str(t if t is not None else ""), quote=True)
@@ -65,6 +79,24 @@ def _description(kw, mode, price_note):
     detail = ("Stitched with up to 6 thread colors in bold, clean shapes that "
               "will not crack, peel or fade" if mode == "embroidery" else
               "Printed in vibrant, long-lasting color with crisp edges")
+    if _is_bag(kw):
+        details_block = (f"DETAILS & MATERIALS\n"
+                         f"• Durable canvas/vegan-leather exterior [confirm your REAL material] with a lined interior\n"
+                         f"• Design {made} directly on the bag (no vinyl, no transfers)\n"
+                         "• Made to order — ships in [X] business days [confirm your real production time]")
+        fit_block = ("SIZE & CAPACITY\n"
+                    "• Dimensions: [W x H x D in] — [confirm your REAL measurements]\n"
+                    "• See the size/capacity photo for scale")
+        order_step1 = "1. Choose your color/style"
+    else:
+        details_block = (f"DETAILS & MATERIALS\n"
+                         f"• Soft, premium cotton-blend garment, unisex fit\n"
+                         f"• Design {made} directly on the garment (no vinyl, no transfers)\n"
+                         "• Made to order — ships in [X] business days [confirm your real production time]")
+        fit_block = ("SIZING\n"
+                    "• Sizes S–3XL — see the size chart in the photos\n"
+                    "• Between sizes? We recommend sizing up for a relaxed fit")
+        order_step1 = "1. Choose your size and garment color"
     return f"""{t} — made just for you. 🧵
 
 WHY YOU'LL LOVE IT
@@ -73,17 +105,12 @@ WHY YOU'LL LOVE IT
 ★ {detail}
 ★ A gift that feels chosen, not bought
 
-DETAILS & MATERIALS
-• Soft, premium cotton-blend garment, unisex fit
-• Design {made} directly on the garment (no vinyl, no transfers)
-• Made to order — ships in [X] business days [confirm your real production time]
+{details_block}
 
-SIZING
-• Sizes S–3XL — see the size chart in the photos
-• Between sizes? We recommend sizing up for a relaxed fit
+{fit_block}
 
 HOW TO ORDER
-1. Choose your size and garment color
+{order_step1}
 2. Type the name EXACTLY as you want it in the Personalization box
 3. Add to cart — we make it and ship it with tracking
 
@@ -92,7 +119,7 @@ HOW TO ORDER
 Questions? Message us — we answer within 24 hours.
 
 [CHECK REQUIRED BEFORE PUBLISHING — confirm price, production time, material
-details and sizing numbers, then DELETE this line]"""
+details and {"dimensions" if _is_bag(kw) else "sizing numbers"}, then DELETE this line]"""
 
 
 def _personalization(kw, mode="embroidery"):
@@ -114,9 +141,11 @@ Instructions shown to the buyer:
 def _how_to_order(kw, mode="embroidery"):
     t = kw.strip().title()
     make = "stitch" if mode == "embroidery" else "print"
+    step1 = ("1. Pick your COLOR/STYLE (see photos)." if _is_bag(kw) else
+             "1. Pick your SIZE (S–3XL — size chart is in the photos) and garment COLOR.")
     return f"""HOW TO ORDER YOUR {t.upper()} (buyer guide — paste in FAQ or first listing photo caption):
 
-1. Pick your SIZE (S–3XL — size chart is in the photos) and garment COLOR.
+{step1}
 2. In the Personalization box, type the name EXACTLY as you want it — max 12 characters. We {make} what you type!
 3. (Optional) Want to see it first? Add a note "preview please" and we'll message a mockup for approval before we make it.
 4. Add to cart and check out. You'll get a tracking number as soon as it ships.
@@ -126,6 +155,16 @@ def _how_to_order(kw, mode="embroidery"):
 def _policies(kw, mode):
     made = "embroidery" if mode == "embroidery" else "print"
     verb = "stitch" if mode == "embroidery" else "print"
+    if _is_bag(kw):
+        care = ("CARE\n"
+               "• Spot clean with a damp cloth; avoid soaking\n"
+               "• Do not machine wash or iron directly on the design\n"
+               f"• {'Embroidery keeps its color — it will not crack or peel.' if mode == 'embroidery' else 'Keep the printed design out of direct high heat.'}")
+    else:
+        care = ("CARE\n"
+               "• Machine wash cold, inside out, gentle cycle\n"
+               "• No bleach; hang dry or tumble low\n"
+               f"• {'Embroidery keeps its color — it will not crack or peel.' if mode == 'embroidery' else 'Do not iron directly on the print.'}")
     return f"""NOTES & POLICIES (paste into your listing's bottom section / shop policies):
 
 PRODUCTION TIME
@@ -136,10 +175,7 @@ SHIPPING (Vietnam → USA)
 • A tracking number is added to your order the day it ships
 • Need it by a date? Message us BEFORE ordering and we'll confirm honestly.
 
-CARE
-• Machine wash cold, inside out, gentle cycle
-• No bleach; hang dry or tumble low
-• {"Embroidery keeps its color — it will not crack or peel." if mode == "embroidery" else "Do not iron directly on the print."}
+{care}
 
 RETURNS ON PERSONALIZED ITEMS
 • Personalized orders are made just for you and can't be resold, so returns/exchanges are only for damaged or defective items — send us a photo within 48h of delivery and we'll remake or refund.
@@ -483,8 +519,12 @@ def build(kw, mode=None, sent=False):
     kw = (kw or "").strip()
     mode = iv._mode_for(kw, mode)
     label = iv.MODE_LABEL.get(mode, mode)
-    product = ("Embroidered Sweatshirt" if mode == "embroidery"
-               else "Printed T-Shirt")
+    is_bag = _is_bag(kw)
+    if is_bag:
+        product = "Embroidered Tote Bag" if mode == "embroidery" else "Printed Tote Bag"
+    else:
+        product = ("Embroidered Sweatshirt" if mode == "embroidery"
+                   else "Printed T-Shirt")
 
     ev = iv.kit_evidence(kw, mode)
     tag_infos = iv.tags_with_sources(kw, mode=mode)

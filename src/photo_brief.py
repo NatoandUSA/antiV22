@@ -29,6 +29,19 @@ def _rules(mode):
     return EMB_RULES if (mode or "").lower().startswith("emb") else POD_RULES
 
 
+# Several slots below default to garment anatomy (chest, cuff, collar, worn by
+# a model, chest measurements) -- wrong for a bag. Minimal, keyword-based
+# branch, same word list as launch_kit_page._is_bag (kept local: 8 words, not
+# worth a cross-module import for this).
+_BAG_WORDS = ("bag", "tote", "pouch", "purse", "backpack", "duffel", "duffle",
+              "clutch", "satchel")
+
+
+def _is_bag(kw):
+    k = (kw or "").lower()
+    return any(w in k for w in _BAG_WORDS)
+
+
 # V37.4: turn rival-review complaints (from the Evidence Router) into concrete
 # "what to PROVE with this photo" guidance, mapped to the slots that can answer
 # each worry. Each entry = (slot-name substrings that match, note). Buyer worries
@@ -95,15 +108,24 @@ def build(keyword, product="Embroidered Sweatshirt", mode="embroidery", pers=Tru
     rules = _rules(mode)
     emb = (mode or "").lower().startswith("emb")
     made = "embroidered" if emb else "printed"
+    bag = _is_bag(kw) or _is_bag(prod)
+
+    hero_prompt = (
+        f"Lifestyle product photo: a {prod.lower()} with a {made} '{kw}' design "
+        "on the front, held or set down naturally by a person in a bright, "
+        "natural setting that fits the buyer (e.g. an airport, a doorway before "
+        "travel). Soft daylight, shallow depth of field, product sharp and "
+        "centered, warm inviting mood, photorealistic. Square 2000x2000."
+        if bag else
+        f"Lifestyle product photo: a {prod.lower()} with a {made} '{kw}' design "
+        "on the chest, worn by a smiling model in a bright, natural setting that "
+        "fits the buyer (e.g. a cozy cafe or sunny doorway). Soft daylight, "
+        "shallow depth of field, product sharp and centered, warm inviting mood, "
+        "photorealistic. Square 2000x2000.")
 
     slots = [
-        ("Hero / thumbnail", "Converts the click. Product worn in a real, on-brand "
-         "scene - this one image decides your CTR.", True,
-         f"Lifestyle product photo: a {prod.lower()} with a {made} '{kw}' design "
-         "on the chest, worn by a smiling model in a bright, natural setting that "
-         "fits the buyer (e.g. a cozy cafe or sunny doorway). Soft daylight, "
-         "shallow depth of field, product sharp and centered, warm inviting mood, "
-         "photorealistic. Square 2000x2000."),
+        ("Hero / thumbnail", "Converts the click. Product shown in a real, on-brand "
+         "scene - this one image decides your CTR.", True, hero_prompt),
 
         ("Front flat", "Clean full view of the product + design on a neutral surface.",
          True,
@@ -124,18 +146,25 @@ def build(keyword, product="Embroidered Sweatshirt", mode="embroidery", pers=Tru
         ("Personalization example", "Shows exactly what the buyer customizes and how "
          "it looks. Kills 'how does the name appear?' questions.", False,
          f"Clean informational graphic on a soft solid background: a mockup of the "
-         f"{prod.lower()} chest area with an example name in the {made} font, an "
-         "arrow/callout pointing to the personalization spot, short label 'Add any "
-         "name - max 12 characters'. Simple, modern, legible; " + rules + "."),
+         f"{prod.lower()} {'front panel' if bag else 'chest area'} with an example "
+         f"name in the {made} font, an arrow/callout pointing to the "
+         "personalization spot, short label 'Add any name - max 12 characters'. "
+         "Simple, modern, legible; " + rules + "."),
 
-        ("Size chart", "Reduces returns + wrong-size messages.", False,
-         "A clean, modern size-chart graphic (S-3XL) with chest width and length in "
-         "inches and cm, brand-neutral soft background, large legible sans-serif "
-         "type, a small garment silhouette showing where measurements are taken. "
-         "[Replace the numbers with your blank's real measurements.]"),
+        ("Size chart", "Reduces returns + wrong-size / wrong-capacity messages.", False,
+         ("A clean, modern dimensions graphic showing width x height x depth in "
+          "inches and cm, brand-neutral soft background, large legible "
+          "sans-serif type, a small product silhouette showing where each "
+          "measurement is taken. [Replace the numbers with your blank's real "
+          "measurements.]") if bag else
+         ("A clean, modern size-chart graphic (S-3XL) with chest width and length "
+          "in inches and cm, brand-neutral soft background, large legible "
+          "sans-serif type, a small garment silhouette showing where "
+          "measurements are taken. [Replace the numbers with your blank's real "
+          "measurements.]")),
 
         ("Color / variant grid", "Lets the buyer self-select their color fast.", False,
-         f"A tidy grid showing the {prod.lower()} in each available garment color "
+         f"A tidy grid showing the {prod.lower()} in each available color "
          f"with the {made} '{kw}' design on each, evenly lit, color name under each "
          "swatch, clean neutral background. Mockups are fine here; keep colors true."),
 
@@ -157,20 +186,32 @@ def build(keyword, product="Embroidered Sweatshirt", mode="embroidery", pers=Tru
          f"light, suggesting a thoughtful '{kw}' gift. Product/design must match your "
          "real item (composite a REAL product photo into the styled scene)."),
 
-        ("Fabric / fit detail", "Second trust signal - drape, cuff, weight.", True,
-         f"Detail product photo of the {prod.lower()} cuff, collar and fabric "
-         "drape on a model or wooden hanger, soft window light showing garment "
-         "quality, weight and fit, photorealistic."),
+        (("Material / hardware detail" if bag else "Fabric / fit detail"),
+         ("Second trust signal - straps, closure, lining quality." if bag else
+          "Second trust signal - drape, cuff, weight."), True,
+         (f"Detail product photo of the {prod.lower()}'s handles/strap, closure "
+          "and interior lining, soft window light showing material quality and "
+          "construction, photorealistic.") if bag else
+         (f"Detail product photo of the {prod.lower()} cuff, collar and fabric "
+          "drape on a model or wooden hanger, soft window light showing garment "
+          "quality, weight and fit, photorealistic.")),
 
         ("Care + processing", "Sets expectations - handmade, care, dispatch time.", False,
-         "A simple icon graphic: 'Made to order', 'Ships in [X] business days', "
-         "'Wash cold / inside out', 'Embroidery won't crack or fade', on a soft "
-         "solid background with clean line icons and short labels. " + rules + "."),
+         ("A simple icon graphic: 'Made to order', 'Ships in [X] business days', "
+          "'Spot clean only', 'Embroidery won't crack or fade', on a soft solid "
+          "background with clean line icons and short labels. " + rules + ".")
+         if bag else
+         ("A simple icon graphic: 'Made to order', 'Ships in [X] business days', "
+          "'Wash cold / inside out', 'Embroidery won't crack or fade', on a soft "
+          "solid background with clean line icons and short labels. " + rules + ".")),
 
         ("Video thumbnail / 360", "Video lifts Etsy quality score.", True,
-         f"A single video-frame style image: slow 360 turn of the {prod.lower()} "
-         f"on a model showing the {made} '{kw}' design and texture up close, "
-         "bright even light, smooth studio background, photorealistic."),
+         (f"A single video-frame style image: slow 360 turn of the {prod.lower()} "
+          f"on a turntable showing the {made} '{kw}' design and texture up close, "
+          "bright even light, smooth studio background, photorealistic.") if bag else
+         (f"A single video-frame style image: slow 360 turn of the {prod.lower()} "
+          f"on a model showing the {made} '{kw}' design and texture up close, "
+          "bright even light, smooth studio background, photorealistic.")),
     ]
     proof = _proof_notes(evidence)
     out = []
