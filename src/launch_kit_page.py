@@ -38,6 +38,28 @@ def _is_bag(kw):
     return any(w in k for w in _BAG_WORDS)
 
 
+_BAG_STYLE_NAMES = (
+    ("duffel", "Duffel Bag"), ("duffle", "Duffel Bag"),
+    ("weekender", "Weekender Bag"), ("backpack", "Backpack"),
+    ("crossbody", "Crossbody Bag"), ("messenger bag", "Messenger Bag"),
+    ("satchel", "Satchel"), ("clutch", "Clutch Bag"), ("purse", "Purse"),
+    ("pouch", "Pouch"), ("tote", "Tote Bag"))
+
+
+def _bag_style(kw):
+    """The bag sub-type named IN the keyword itself, or the neutral "Bag"
+    when it isn't (e.g. "mens carry on bag" names no sub-type). Echoing the
+    keyword's own word is not a claim we're inventing; defaulting every bag
+    keyword to "Tote Bag" regardless of what it actually says would be --
+    a tote is a specific, recognizable style and "carry on" doesn't imply
+    one. Order matters: check compounds before their substrings."""
+    k = (kw or "").lower()
+    for needle, name in _BAG_STYLE_NAMES:
+        if needle in k:
+            return name
+    return "Bag"
+
+
 def _e(t):
     return _h.escape(str(t if t is not None else ""), quote=True)
 
@@ -538,7 +560,8 @@ def build(kw, mode=None, sent=False):
     label = iv.MODE_LABEL.get(mode, mode)
     is_bag = _is_bag(kw)
     if is_bag:
-        product = "Embroidered Tote Bag" if mode == "embroidery" else "Printed Tote Bag"
+        style = _bag_style(kw)
+        product = f"Embroidered {style}" if mode == "embroidery" else f"Printed {style}"
     else:
         product = ("Embroidered Sweatshirt" if mode == "embroidery"
                    else "Printed T-Shirt")

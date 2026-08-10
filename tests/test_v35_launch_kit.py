@@ -154,6 +154,30 @@ def test_launch_kit_policies_bag_care_not_wash_instructions():
     assert "machine wash cold" in shirt_policy.lower()
 
 
+def test_bag_style_echoes_keyword_not_a_default_tote():
+    """Defaulting every bag keyword's photo/description product label to
+    'Tote Bag' would assert a specific style the keyword never claimed.
+    Only name a sub-type when the keyword itself says one."""
+    from src import launch_kit_page as lkp
+    assert lkp._bag_style("mens carry on bag") == "Bag"          # no sub-type named -> neutral
+    assert lkp._bag_style("mini bride tote bags") == "Tote Bag"  # keyword says tote -> echo it
+    assert lkp._bag_style("mens duffel bag") == "Duffel Bag"
+    assert lkp._bag_style("weekender bag for men") == "Weekender Bag"
+    assert lkp._bag_style("leather backpack purse") == "Backpack"  # first/most-specific match wins
+
+
+def test_launch_kit_build_product_label_uses_bag_style(monkeypatch):
+    from src import etsy_proof as ep
+    monkeypatch.setattr(ep, "build_proof", lambda mode=None: {})
+    monkeypatch.setattr(
+        "src.shortlister_integration._enrich_row", lambda d, m=None: False)
+    from src import launch_kit_page as lkp
+    html = lkp.build("mens carry on bag", "pod")
+    assert "tote bag" not in html.lower()
+    html2 = lkp.build("mini bride tote bags", "pod")
+    assert "tote bag" in html2.lower()
+
+
 # --------------------------- V38.3 title placeholder fix --------------------
 
 def test_title_never_contains_bracket_placeholder(sandbox):
