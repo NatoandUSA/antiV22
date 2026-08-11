@@ -119,8 +119,8 @@ def run(limit=None, mode=None, pause=0.5, save_every=25, path=MASTER,
     fieldnames, rows = _read(path)
     if not rows:
         log("no keyword_data.csv — nothing to enrich")
-        return {"targeted": 0, "enriched": 0, "filled": 0, "written": 0,
-                "timed_out": 0, "stopped_early": None}
+        return {"targeted": 0, "attempted": 0, "enriched": 0, "filled": 0,
+                "written": 0, "timed_out": 0, "stopped_early": None}
 
     # The master has drifted a column behind harvest.KDATA_FIELDS (no
     # opportunity_score locally). Append any canonical column we are about to
@@ -142,7 +142,7 @@ def run(limit=None, mode=None, pause=0.5, save_every=25, path=MASTER,
     started = time.time()
     pool = ThreadPoolExecutor(max_workers=1)
     fails = 0
-    enriched = filled = written = timed_out = 0
+    attempted = enriched = filled = written = timed_out = 0
     stopped_early = None
     try:
         for i, kw in enumerate(todo, 1):
@@ -155,6 +155,7 @@ def run(limit=None, mode=None, pause=0.5, save_every=25, path=MASTER,
             if fails >= 2:                       # MCP looks down - stop spending time
                 stopped_early = "2 consecutive failures (MCP unreachable?)"
                 break
+            attempted += 1
             d = {"tag": kw}
             try:
                 fut = pool.submit(si._enrich_row, d, mode)
@@ -190,8 +191,9 @@ def run(limit=None, mode=None, pause=0.5, save_every=25, path=MASTER,
         pool.shutdown(wait=False)
     _write(path, fieldnames, rows)
     written = len(todo)
-    log(f"done · {enriched} keyword(s) returned data · {filled} field(s) filled"
+    log(f"done · {attempted}/{len(todo)} attempted · {enriched} keyword(s) "
+        f"returned data · {filled} field(s) filled"
         + (f" · stopped early: {stopped_early}" if stopped_early else ""))
-    return {"targeted": len(todo), "enriched": enriched, "filled": filled,
-            "written": written, "timed_out": timed_out,
+    return {"targeted": len(todo), "attempted": attempted, "enriched": enriched,
+            "filled": filled, "written": written, "timed_out": timed_out,
             "stopped_early": stopped_early}

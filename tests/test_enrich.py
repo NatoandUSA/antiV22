@@ -222,6 +222,13 @@ def test_max_runtime_s_stops_before_the_whole_backlog(tmp_path, monkeypatch):
     res = enrich.run(pause=0, max_runtime_s=0.5, log=lambda *_a: None)
     assert len(calls) < 5, "should have stopped before the whole backlog"
     assert res["stopped_early"] == "max_runtime_s reached"
+    # "targeted" is the requested slice size (5); "attempted" must reflect
+    # only what the loop actually reached before time ran out, matching the
+    # real calls made - not the full slice (see enrichment_runner's
+    # regression test for why this distinction matters for failed-counting).
+    assert res["targeted"] == 5
+    assert res["attempted"] == len(calls)
+    assert res["attempted"] < 5
 
 
 def test_cli_minutes_flag_sets_max_runtime_s_and_does_not_leak_into_limit(

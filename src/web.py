@@ -2496,8 +2496,9 @@ def build_app(password, secret):
         line = (f'<p>{when} ({_h.escape(r.get("source") or "?")}, mode='
                 f'{_h.escape(r.get("mode") or "all")}) — queued '
                 f'{r.get("queued_before", 0)} → attempted '
-                f'{r.get("attempted", 0)}, enriched {r.get("enriched", 0)}, '
-                f'failed {r.get("failed", 0)}, {r.get("remaining_after", 0)} '
+                f'{r.get("attempted", 0)} of {r.get("targeted", r.get("attempted", 0))} '
+                f'targeted, enriched {r.get("enriched", 0)}, failed '
+                f'{r.get("failed", 0)}, {r.get("remaining_after", 0)} '
                 f'remaining.</p>')
         if r.get("error_summary"):
             line += (f'<p class="notice warn">⚠ '

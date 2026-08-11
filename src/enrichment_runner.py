@@ -52,21 +52,27 @@ def drain_enrichment(mode=None, *, limit=DEFAULT_LIMIT,
     started = time.time()
     queued_before = _queued(mode)
     error_summary = None
-    res = {"targeted": 0, "enriched": 0, "filled": 0, "written": 0,
-          "timed_out": 0, "stopped_early": None}
+    res = {"targeted": 0, "attempted": 0, "enriched": 0, "filled": 0,
+          "written": 0, "timed_out": 0, "stopped_early": None}
     try:
         res = enrich.run(mode=mode, limit=limit, max_runtime_s=max_runtime_s,
                          log=log)
     except Exception as exc:  # noqa: BLE001 - a run must never raise on its caller
         error_summary = f"{type(exc).__name__}: {exc}"
     finished = time.time()
+    # "attempted" is res["attempted"] (keywords the loop actually reached),
+    # NOT res["targeted"] (the requested slice size) - a bounded run that
+    # stops early on max_runtime_s/circuit-breaker never gets near the full
+    # slice, and targeted-enriched would misreport everything it never even
+    # tried as "failed".
+    attempted = res.get("attempted", res["targeted"])
     evt = {
         "run_id": run_id, "mode": mode or "all", "source": source,
         "started_at": started, "finished_at": finished,
         "duration_s": round(finished - started, 1),
-        "queued_before": queued_before, "attempted": res["targeted"],
-        "enriched": res["enriched"], "failed": max(
-            0, res["targeted"] - res["enriched"]),
+        "queued_before": queued_before, "targeted": res["targeted"],
+        "attempted": attempted, "enriched": res["enriched"],
+        "failed": max(0, attempted - res["enriched"]),
         "timed_out": res.get("timed_out", 0),
         "remaining_after": _queued(mode),
         "error_summary": error_summary or res.get("stopped_early"),
