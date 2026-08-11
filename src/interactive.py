@@ -1572,6 +1572,43 @@ def _mode_for(kw, mode=None):
     return "embroidery" if matches_mode(k, "embroidery") else "pod"
 
 
+# Hand-researched, evidence-checked tag sets for specific sprint keywords whose
+# physical product is already locked. Bypasses the live cascade below (which
+# would otherwise re-derive tags from generic market data with no way to know
+# the chosen supplier's real material/features) but still runs through the
+# same add() trademark/length/dedup checks. Keyed by lowercased keyword.
+# mens carry on bag -> Printify Duffel Bag #372 (100% polyester Oxford canvas,
+# dye-sublimation print on front+both sides confirmed via catalog API 2026-08-11).
+_VERIFIED_TAGS = {
+    "mens carry on bag": [
+        ("mens carry on bag", "keyword", "your keyword - always tag 1", None),
+        ("father's day gift", "related", "live YTrends related keyword", None),
+        ("graduation gift men", "related", "live YTrends related keyword", None),
+        ("carry on flight bag", "related", "live YTrends related keyword", None),
+        ("gym duffel bag", "related",
+         "live YTrends related keyword; matches Duffel #372's own copy "
+         "(\"gym, a day-trip\")", None),
+        ("carry on bag", "related", "live YTrends related keyword", None),
+        ("travel bag", "related", "live YTrends related keyword", None),
+        ("mens canvas bag", "related",
+         "live YTrends related keyword; matches Duffel #372's real material "
+         "(100% polyester Oxford canvas)", None),
+        ("groomsmen duffel bag", "related",
+         "live YTrends autocomplete signal, cleaned up; correct audience and "
+         "form factor for Duffel #372 (the removed 'groomsmen suit bag' had "
+         "the wrong form factor)", None),
+        ("duffel bag for men", "master",
+         "sibling niche in your ranked master (WATCH)", None),
+        ("mens carry bag", "fill", "buyer-intent fill from your keyword (no data claim)", None),
+        ("mens carry gift", "fill", "buyer-intent fill from your keyword (no data claim)", None),
+        ("custom duffel bag", "fill",
+         "buyer-intent fill; personalization confirmed feasible via Duffel "
+         "#372's real dye-sublimation print areas (front + both sides, "
+         "catalog API)", None),
+    ],
+}
+
+
 def tags_with_sources(kw, limit=13, mode=None):
     """V35.4: the 13-tag cascade WITH provenance - every tag says where it came
     from and why, so the seller can judge it instead of trusting a bare chip.
@@ -1604,6 +1641,12 @@ def tags_with_sources(kw, limit=13, mode=None):
         if r2 != "HIGH":
             seen.add(c)
             out.append({"tag": c, "source": source, "why": why, "count": count})
+
+    verified = _VERIFIED_TAGS.get((kw or "").strip().lower())
+    if verified:
+        for tag, source, why, count in verified:
+            add(tag, source, why, count)
+        return out[:limit]
 
     from src.etsy_proof import _PROOF_GENERIC, _PROOF_PRODUCT
     _MODS = {"funny", "cute", "cool", "best", "vintage", "retro",
