@@ -1,4 +1,5 @@
 """Keyword Lab: long-tail-only emission, sane subjects, adjacent-buyer expansion."""
+import csv as _csv
 import json
 from pathlib import Path
 
@@ -122,3 +123,35 @@ def test_save_candidates_writes_blanks_not_fabricated_zeros(tmp_path,
         Path("keyword_data.csv").open(encoding="utf-8-sig"))))
     assert row["etsy_listings"] == ""     # blank, NOT "0.0"
     assert row["seller_count"] == ""
+
+
+# ---------------------------------------------------------------------------
+# save_candidates is scoped to NEW keywords only: its own dedup guard skips
+# anything already in the master before enrich ever runs. That is correct for
+# its real callers (Keyword Lab, winner->Inbox push) but means it can never be
+# used to top up an EXISTING under-scored row - src/enrich.py is the path for
+# that (see test_enrich.py). Documented here as a regression guard so a future
+# change cannot silently route the needs-enrichment queue through this
+# function again and reintroduce the (0, 0) no-op it once was.
+# ---------------------------------------------------------------------------
+def test_save_candidates_is_a_noop_on_a_keyword_already_in_master(tmp_path,
+                                                                   monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    with Path("keyword_data.csv").open("w", newline="", encoding="utf-8") as fh:
+        w = _csv.writer(fh)
+        w.writerow(["keyword", "etsy_listings", "seller_count", "views_24h",
+                    "avg_price", "avg_revenue", "conversion_rate", "momentum",
+                    "tm_risk", "source", "collected_at"])
+        w.writerow(["bare test keyword", "", "", "", "", "", "", "", "",
+                    "mcp:search", "2026-08-01"])
+    before = Path("keyword_data.csv").read_text(encoding="utf-8")
+
+    def _always_ok(d, _mode=None):
+        d["listing_count"] = 42
+        d["avg_price"] = 19.99
+        return True
+    monkeypatch.setattr("src.shortlister_integration._enrich_row", _always_ok)
+    added, enriched = kl.save_candidates(["bare test keyword"], enrich=True,
+                                         limit=1)
+    assert (added, enriched) == (0, 0)
+    assert Path("keyword_data.csv").read_text(encoding="utf-8") == before

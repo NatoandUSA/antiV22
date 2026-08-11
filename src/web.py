@@ -2330,8 +2330,8 @@ def build_app(password, secret):
                         f'<input type="hidden" name="_csrf" value="{_csrf()}">'
                         f'<input type="hidden" name="mode" value="{m or ""}">'
                         '<button class="pullbtn primary" type="submit">'
-                        f'\U0001F50C Enrich {min(_ne, 12)} of {_ne:,} unscored '
-                        'keywords via MCP → re-rank</button> '
+                        f'\U0001F50C Enrich up to {min(_ne, 60)} of {_ne:,} '
+                        'unscored keywords via MCP → re-rank</button> '
                         '<span style="font-size:.78rem;'
                         'color:var(--ink-soft)">fills the missing market data '
                         'that leaves a keyword unscored · capture-lane leads '
@@ -2463,28 +2463,46 @@ def build_app(password, secret):
         _check_csrf()
         m = request.form.get("mode")
         mode = m if m in ("pod", "embroidery") else None
-        from src import opportunity_inbox as oi
-        from src import keyword_lab as kl
-        leads = oi.lead_keywords(mode, limit=12)
-        if not leads:
-            return redirect(f"/inbox{'?mode=' + m if mode else ''}")
+        from src import enrichment_runner as er
         try:
-            added, enriched = kl.save_candidates(
-                leads, mode, enrich=True, limit=12, source="lane-enrich")
-            activity.log("enrich_leads", module="opportunity_inbox",
-                         action=f"enriched {enriched}/{added} lane leads")
-            try:
-                from src import import_ledger as _il
-                _u = current_user()
-                _il.record(user=(_u or {}).get("display_name")
-                           or (_u or {}).get("email"),
-                           channel="lane-enrich", view="needs-enrichment queue",
-                           rows=len(leads), kw_new=added)
-            except Exception:  # noqa: BLE001
-                pass
+            evt = er.drain_enrichment(mode, source="lane-enrich")
+            if evt["attempted"]:
+                activity.log(
+                    "enrich_leads", module="opportunity_inbox",
+                    action=f"enriched {evt['enriched']}/{evt['attempted']} "
+                           f"lane leads, {evt['remaining_after']} remaining")
+                try:
+                    from src import import_ledger as _il
+                    _u = current_user()
+                    _il.record(user=(_u or {}).get("display_name")
+                               or (_u or {}).get("email"),
+                               channel="lane-enrich",
+                               view="needs-enrichment queue",
+                               rows=evt["attempted"], kw_updated=evt["enriched"])
+                except Exception:  # noqa: BLE001
+                    pass
         except Exception as exc:  # noqa: BLE001
             return _tool_error("Enrich leads", exc)
         return redirect(f"/inbox{'?mode=' + m if mode else ''}")
+
+    def _last_enrichment_run_html(_h):
+        from src import enrichment_runner as er
+        r = er.last_run()
+        if not r:
+            return '<p class="empty">No enrichment run yet.</p>'
+        import datetime as _dt
+        when = _dt.datetime.fromtimestamp(r["finished_at"]).strftime(
+            "%Y-%m-%d %H:%M")
+        line = (f'<p>{when} ({_h.escape(r.get("source") or "?")}, mode='
+                f'{_h.escape(r.get("mode") or "all")}) — queued '
+                f'{r.get("queued_before", 0)} → attempted '
+                f'{r.get("attempted", 0)}, enriched {r.get("enriched", 0)}, '
+                f'failed {r.get("failed", 0)}, {r.get("remaining_after", 0)} '
+                f'remaining.</p>')
+        if r.get("error_summary"):
+            line += (f'<p class="notice warn">⚠ '
+                     f'{_h.escape(str(r["error_summary"]))}</p>')
+        return line
 
     @app.route("/status")
     @login_required
@@ -2524,7 +2542,9 @@ def build_app(password, secret):
             f'selling · \U0001F680 {c.get("build", 0)} build · '
             f'\U0001F5C4 {c.get("archived", 0)} archived (stale WATCH) · '
             f'\U0001F50C {c.get("needs_enrichment", 0)} need enrichment.</p>'
-            '<h2>Last file import</h2>'
+            '<h2>Last enrichment run</h2>'
+            + _last_enrichment_run_html(_h)
+            + '<h2>Last file import</h2>'
             + (f'<p>{li.get("rows", 0)} rows from {li.get("files", 0)} file(s) '
                f'→ lanes: {_h.escape(str(li.get("lanes", {})))}</p>'
                if li else '<p class="empty">No file imports yet.</p>')

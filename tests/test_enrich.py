@@ -9,6 +9,7 @@ them. A 14-keyword random sample enriched 14/14 and moved 2 to CONFIRM_FIRST and
 promotions.
 """
 import csv
+import time
 from pathlib import Path
 
 from src import enrich
@@ -162,3 +163,95 @@ def test_the_guard_still_stops_enrich_when_the_mcp_is_down(monkeypatch):
     monkeypatch.setattr("src.ytrends_mcp.available", lambda: (False, "no token"))
     with pytest.raises(SystemExit):
         main._live_api_guard("enrich")
+
+
+# ---------------------------------------------------------------------------
+# Timeout + bounded runtime: run() used to call _enrich_row with no timeout at
+# all (a hang there was the same 2min+ failure save_candidates was patched
+# against) and no way to bound total wall-clock time - both needed once this
+# can be triggered from a web request or an unattended scheduler, not just a
+# Ctrl-C-able manual PC session.
+# ---------------------------------------------------------------------------
+def test_a_hung_call_times_out_without_blocking_the_run(tmp_path, monkeypatch):
+    _master(tmp_path, [{"keyword": "hangs forever", "source": "mcp:search"}])
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(enrich, "unscored", lambda _m=None: ["hangs forever"])
+
+    def _hang(d, _mode=None):
+        time.sleep(2)
+        return True
+    monkeypatch.setattr("src.shortlister_integration._enrich_row", _hang)
+    t0 = time.time()
+    res = enrich.run(pause=0, timeout_s=0.2, log=lambda *_a: None)
+    elapsed = time.time() - t0
+    assert elapsed < 1.5, f"run() waited on the hung call: {elapsed:.2f}s"
+    assert res["timed_out"] == 1
+    assert res["enriched"] == 0
+
+
+def test_stops_after_two_consecutive_failures(tmp_path, monkeypatch):
+    _master(tmp_path, [{"keyword": f"kw {i}", "source": "mcp:search"}
+                       for i in range(3)])
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(enrich, "unscored",
+                        lambda _m=None: [f"kw {i}" for i in range(3)])
+    calls = []
+
+    def _dead(d, _mode=None):
+        calls.append(d["tag"])
+        raise RuntimeError("MCP unreachable")
+    monkeypatch.setattr("src.shortlister_integration._enrich_row", _dead)
+    res = enrich.run(pause=0, log=lambda *_a: None)
+    assert len(calls) == 2, calls          # breaker opens after the 2nd failure
+    assert "2 consecutive failures" in res["stopped_early"]
+
+
+def test_max_runtime_s_stops_before_the_whole_backlog(tmp_path, monkeypatch):
+    _master(tmp_path, [{"keyword": f"kw {i}", "source": "mcp:search"}
+                       for i in range(5)])
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(enrich, "unscored",
+                        lambda _m=None: [f"kw {i}" for i in range(5)])
+    calls = []
+
+    def _slow(d, _mode=None):
+        calls.append(d["tag"])
+        time.sleep(0.3)
+        return True
+    monkeypatch.setattr("src.shortlister_integration._enrich_row", _slow)
+    res = enrich.run(pause=0, max_runtime_s=0.5, log=lambda *_a: None)
+    assert len(calls) < 5, "should have stopped before the whole backlog"
+    assert res["stopped_early"] == "max_runtime_s reached"
+
+
+def test_cli_minutes_flag_sets_max_runtime_s_and_does_not_leak_into_limit(
+        monkeypatch):
+    """--minutes 10 must become max_runtime_s=600, and its value ("10") must
+    not also be parsed as a positional limit on the next loop iteration."""
+    import main
+    from src import opportunity_inbox as oi
+    monkeypatch.setattr(oi, "build_inbox",
+                        lambda *a, **k: {"counts": {"needs_enrichment": 0}})
+    seen = {}
+
+    def _fake_run(**k):
+        seen.update(k)
+        return {"targeted": 0, "enriched": 0, "filled": 0, "written": 0,
+               "timed_out": 0, "stopped_early": None}
+    monkeypatch.setattr("src.enrich.run", _fake_run)
+    main.cmd_enrich("enrich", ["--minutes", "10", "pod"])
+    assert seen["max_runtime_s"] == 600
+    assert seen["limit"] is None
+    assert seen["mode"] == "pod"
+
+
+def test_no_bound_behaves_exactly_as_before(tmp_path, monkeypatch):
+    """max_runtime_s=None (the default) must not change the historical
+    unbounded-manual-run behaviour."""
+    _master(tmp_path, [{"keyword": "kw", "source": "mcp:search"}])
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(enrich, "unscored", lambda _m=None: ["kw"])
+    monkeypatch.setattr("src.shortlister_integration._enrich_row", _rich)
+    res = enrich.run(pause=0, log=lambda *_a: None)
+    assert res["stopped_early"] is None
+    assert res["enriched"] == 1

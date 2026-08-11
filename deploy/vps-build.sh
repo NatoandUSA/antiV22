@@ -12,4 +12,9 @@ echo "=== vps-build start: $(date) ==="
 "$PY" main.py daily pod          || echo "daily pod failed"
 "$PY" main.py daily embroidery   || echo "daily embroidery failed"
 "$PY" main.py autopull           || echo "autopull failed (continuing)"
+# Bounded enrichment drain (added 2026-08-11): tops up market data for
+# keywords the engine could not score (~33% of the active set, measured).
+# --minutes caps it so a slow/dead MCP can never extend the daily cron
+# indefinitely; the backlog drains gradually across days instead.
+"$PY" main.py enrich --minutes 15 || echo "enrich failed (continuing)"
 echo "=== vps-build done:  $(date) ==="

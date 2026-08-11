@@ -336,22 +336,40 @@ def cmd_enrich(cmd, args):
 
     Harvest's two biggest sources add a name (mcp:search) or a listing count
     (mcp:ranking) and no demand fields, so those rows can never be scored. This
-    tops them up from the live MCP. Runs on the PC — the VPS IP is blocked from
-    YTrends, same as harvest; `merge_master` carries the result to the server.
+    tops them up from the live MCP (~11-17s/keyword measured); `merge_master`
+    carries the result to the server if run on a different machine than the
+    web app. Verified 2026-08-11 to run fine directly on the VPS too (the
+    "VPS IP is blocked" note was stale — see src/enrich.py's docstring).
 
-      py main.py enrich              -> the whole backlog (~11.6s per keyword)
+      py main.py enrich              -> the whole backlog
       py main.py enrich 50           -> the first 50 only
       py main.py enrich 50 embroidery
+      py main.py enrich --minutes 10 -> bounded run for a cron job (any mode/
+                                        limit combo above still applies)
     """
-    from src import enrich
+    from src import enrichment_runner as er
     limit = None
     mode = None
-    for a in args:
-        if str(a).isdigit():
+    max_runtime_s = None
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if str(a) == "--minutes" and i + 1 < len(args):
+            try:
+                max_runtime_s = float(args[i + 1]) * 60
+            except ValueError:
+                pass
+            i += 1                          # consume the value too
+        elif str(a).isdigit():
             limit = int(a)
         elif str(a).lower() in ("pod", "embroidery"):
             mode = str(a).lower()
-    enrich.run(limit=limit, mode=mode)
+        i += 1
+    # Routed through enrichment_runner (not enrich.run directly) so a CLI/cron
+    # run lands in the same ledger the web button and Pipeline Health read -
+    # one code path, one place to see "did today's enrichment actually run".
+    er.drain_enrichment(mode, limit=limit, max_runtime_s=max_runtime_s,
+                        source="cli", log=print)
 
 
 def cmd_longtail(cmd, args):
