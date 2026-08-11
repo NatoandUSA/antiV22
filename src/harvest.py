@@ -345,9 +345,13 @@ def _is_provenance(src):
 def merge_master(other_path, path="keyword_data.csv"):
     """Union another machine's keyword master into this one. Never deletes.
 
-    The PC harvests (the VPS IP is blocked from YTrends) and the VPS collects
-    what the team adds through the web UI — Keyword Lab, long-tail pulls,
-    extension imports. deploy/push-to-vps.ps1 used to scp the PC's file straight
+    The PC harvests and the VPS collects what the team adds through the web UI
+    — Keyword Lab, long-tail pulls, extension imports. (This docstring used to
+    say the VPS IP is blocked from YTrends; verified 2026-08-11 that a direct
+    MCP call from the VPS itself succeeds — see src/enrich.py's docstring. The
+    PC/VPS harvest split may now be a workflow choice rather than a hard
+    requirement, but that is a separate decision from this sync's own job.)
+    deploy/push-to-vps.ps1 used to scp the PC's file straight
     over the server's, so every keyword added ON the VPS was destroyed on the
     next data sync — the same deletion bug as merge_existing(), across the
     machine boundary.
@@ -685,4 +689,9 @@ def run_harvest(argv=None):
         print(f"\nWrote {s['wrote_data']} keywords to keyword_data.csv — this is "
               "what fuels the reports.")
         print("Next `daily pod` / `daily embroidery` will research them all.")
+        try:
+            from src import rank_snapshot as rsnap
+            rsnap.snapshot(source="harvest")
+        except Exception:  # noqa: BLE001 - a snapshot failure can't break harvest
+            pass
     return s

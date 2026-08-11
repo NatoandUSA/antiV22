@@ -78,6 +78,11 @@ def drain_enrichment(mode=None, *, limit=DEFAULT_LIMIT,
         "error_summary": error_summary or res.get("stopped_early"),
     }
     _append(evt)
+    try:
+        from src import rank_snapshot as rsnap
+        rsnap.snapshot(source=source)
+    except Exception:  # noqa: BLE001 - a snapshot failure can't break enrichment
+        pass
     return evt
 
 

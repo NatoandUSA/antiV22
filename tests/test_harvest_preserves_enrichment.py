@@ -11,9 +11,14 @@ MECHANISM
 `harvest()` folds the master into the live-pull store with `merge_existing()`,
 then `write_keyword_data()` rewrites the file wholesale with "w".
 `merge_existing` only carried keywords the pull did NOT return; for a keyword the
-pull DID return it kept the fresh row and copied nothing but `source`. The VPS IP
-is blocked from YTrends, so its pulls come back thin — and every thin row
-overwrote a rich one.
+pull DID return it kept the fresh row and copied nothing but `source`. This
+specific cron pull came back thin (the working theory at the time was the VPS
+IP being blocked from YTrends; verified 2026-08-11 that a direct MCP call from
+the VPS itself succeeds now, so a blanket IP block is not the current
+explanation — see src/enrich.py's docstring) — and every thin row overwrote a
+rich one. The invariant this test guards (never let a thinner pull blank a
+field a fuller one already measured) holds regardless of why a given pull
+comes back thin.
 
 There is a guard for a TOTAL outage (`if append and not store`) but none for a
 PARTIAL one, which is the case that actually happens.

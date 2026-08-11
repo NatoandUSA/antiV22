@@ -61,6 +61,38 @@ def test_home_is_clean(client):
         assert card in body
 
 
+def test_home_shows_the_renamed_proven_markets_block_with_a_freshness_strip(
+        client):
+    """Renamed from 'Today's opportunities' (implied newly-discovered) to
+    'Top current proven markets' (what it actually is: the live top ranking)
+    plus honest freshness timestamps for harvest/enrichment/proof/rank
+    snapshot/report-generated - no per-keyword timestamp is fabricated."""
+    body = client.get("/").get_data(as_text=True)
+    assert "Top current proven markets" in body
+    assert "Today's opportunities" not in body
+    for marker in ("harvest", "enrichment", "proof", "rank snapshot",
+                   "report generated"):
+        assert marker in body
+    assert "new today" in body
+
+
+def test_home_shows_a_real_promoted_lane_when_one_exists(client, monkeypatch):
+    from src import rank_snapshot as rsnap
+    monkeypatch.setattr(rsnap, "promoted_since", lambda since, mode=None: [
+        {"keyword": "nurse funny shirt", "old_action": "WATCH",
+         "new_action": "CONFIRM_FIRST"}])
+    body = client.get("/").get_data(as_text=True)
+    assert "1 promoted today" in body
+    assert "nurse funny shirt" in body
+
+
+def test_home_shows_no_promoted_lane_when_there_is_none(client, monkeypatch):
+    from src import rank_snapshot as rsnap
+    monkeypatch.setattr(rsnap, "promoted_since", lambda since, mode=None: [])
+    body = client.get("/").get_data(as_text=True)
+    assert "promoted today" not in body
+
+
 @pytest.mark.parametrize("route", [
     "/cheatsheet", "/how-to-use", "/workflow", "/suppliers", "/feedback", "/profit", "/grade",
     "/alerts", "/launchpad", "/trackers", "/research", "/shops", "/listings",

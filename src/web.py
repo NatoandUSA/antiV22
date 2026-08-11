@@ -608,15 +608,17 @@ def build_app(password, secret):
             from urllib.parse import quote_plus as _uq
             from src import opportunity_inbox as _oi
             from src import freshness as _fr
+            _active_mode = active if active in ("pod", "embroidery") else None
             # limit=100000 costs nothing extra: build_inbox always computes the
             # full ranked set internally and slices afterward - a real limit here
             # would just hide rows freshness needs to scan for "new today".
-            _idata = _oi.build_inbox(active if active in ("pod", "embroidery") else None,
-                                     limit=100000)
+            _idata = _oi.build_inbox(_active_mode, limit=100000)
             _ic = _idata["counts"]
             _new_today = sum(
                 1 for v in _fr.labels_for([r["keyword"] for r in _idata["rows"]]).values()
                 if v in (_fr.NEW, "today"))
+            _fresh_strip = _freshness_strip_html(_h_esc, _active_mode)
+            _promoted_note = _promoted_today_html(_h_esc, _uq, _active_mode)
             _qcss = (
                 '<style>'
                 '.oppq{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:2px 0 10px}'
@@ -650,8 +652,9 @@ def build_app(password, secret):
                     f'<span class="om">{_h_esc(_r.get("fit_label") or "")}</span>'
                     f'<span class="oa">{_act_label.get(_r["action"], _r["action"])}</span></a>')
             _oppq = (
-                _qcss + '<h2 class="grouph">🎯 Top current opportunities — act on these</h2>'
-                '<div class="oppq">'
+                _qcss + '<h2 class="grouph">🎯 Top current proven markets — act on these</h2>'
+                + _fresh_strip
+                + '<div class="oppq">'
                 f'<a class="qc go" href="/inbox?mode={active}"><div class="qn">{_ic["build"]}</div>'
                 '<div class="ql">🚀 Build now</div></a>'
                 f'<a class="qc" href="/pattern-miner?mode={active}"><div class="qn">{_ic["confirm"]}</div>'
@@ -666,7 +669,8 @@ def build_app(password, secret):
                 f'<a href="/inbox?mode={active}">Opportunity Inbox</a> — '
                 f'{_ic["total"]} keywords ranked through the risk gate → market '
                 f'signal → final action · <b>{_new_today} new today</b> '
-                '(first seen in your data today).</p>')
+                '(first seen in your data today).</p>'
+                + _promoted_note)
         except (SystemExit, Exception):  # noqa: BLE001 - never break the home
             _oppq = ""
 
@@ -2484,6 +2488,67 @@ def build_app(password, secret):
         except Exception as exc:  # noqa: BLE001
             return _tool_error("Enrich leads", exc)
         return redirect(f"/inbox{'?mode=' + m if mode else ''}")
+
+    def _freshness_strip_html(_h, mode):
+        """Honest timestamp domains for the home widget - each stat below is
+        computed live on every render, but WHEN the underlying data last
+        actually changed is a real, stored fact for exactly these four
+        things. Never fabricates a per-keyword refresh time."""
+        import datetime as _dt
+        from src import pipeline_status as ps
+        from src import enrichment_runner as er
+        from src import rank_snapshot as rsnap
+
+        def _fmt(ts):
+            return (_dt.datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M")
+                    if ts else "never")
+        try:
+            s = ps.snapshot(mode)
+            master_age = s["age"].get("master") or "never"
+            proof_age = s["age"].get("proof") or "never"
+        except Exception:  # noqa: BLE001
+            master_age = proof_age = "unknown"
+        try:
+            er_last = er.last_run(mode)
+        except Exception:  # noqa: BLE001
+            er_last = None
+        try:
+            snap_at = rsnap.last_snapshot_at()
+        except Exception:  # noqa: BLE001
+            snap_at = None
+        parts = [
+            f"harvest {master_age}",
+            f"enrichment {_fmt(er_last['finished_at']) if er_last else 'never'}",
+            f"proof {proof_age}",
+            f"rank snapshot {_fmt(snap_at)}",
+            f"report generated {_dt.datetime.now().strftime('%Y-%m-%d %H:%M')}",
+        ]
+        return ('<p class="note" style="margin:2px 0 8px;font-size:11.5px">'
+                + " · ".join(_h(p) for p in parts) + "</p>")
+
+    def _promoted_today_html(_h, _uq, mode):
+        """A real PROMOTED lane: keywords whose action genuinely climbed
+        (e.g. WATCH -> CONFIRM_FIRST) since the last rank snapshot, today.
+        Empty (renders nothing) until a snapshot has actually run twice in
+        one day with a real change - never invented from a single reading."""
+        import datetime as _dt
+        from src import rank_snapshot as rsnap
+        today = _dt.date.today()
+        since = _dt.datetime(today.year, today.month, today.day).timestamp()
+        try:
+            events = rsnap.promoted_since(since, mode=mode)
+        except Exception:  # noqa: BLE001
+            events = []
+        if not events:
+            return ""
+        shown = events[:5]
+        names = ", ".join(
+            f'<a href="/inbox?q={_uq(e["keyword"])}">{_h(e["keyword"])}</a>'
+            for e in shown)
+        more = f" (+{len(events) - 5} more)" if len(events) > 5 else ""
+        return (f'<p class="note" style="margin:0 0 4px">\U0001F4C8 '
+                f'<b>{len(events)} promoted today</b> — {names}{more}, from '
+                'real rank-snapshot deltas after harvest/enrichment.</p>')
 
     def _last_enrichment_run_html(_h):
         from src import enrichment_runner as er

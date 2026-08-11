@@ -30,9 +30,12 @@ STEPS = [
         "route": "/trending", "owner": RESEARCHER,
         "need": "Live YTrends index. Harvest itself runs on the PC: `py main.py harvest`",
         # /trending BROWSES the live index; it cannot harvest. Harvest is
-        # `py main.py harvest` on the PC because the VPS IP is blocked from
-        # YTrends. Labelling this "Harvest keywords" promised an action the
-        # page does not perform.
+        # `py main.py harvest`, run on the PC. (Historically because the VPS
+        # IP was blocked from YTrends; verified 2026-08-11 that a direct MCP
+        # call from the VPS itself succeeds, so that specific reason is
+        # stale — see src/enrich.py's docstring. Whether to move harvest to
+        # the VPS is a separate decision, not made here.) Labelling this
+        # "Harvest keywords" promised an action the page does not perform.
         "action": ("Browse trending keywords", "/trending"),
         "output": "keyword_data.csv — the master every later step ranks",
         "why": "Raw keyword supply. Nothing downstream can rank what was never pulled.",
