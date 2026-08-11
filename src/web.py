@@ -607,9 +607,16 @@ def build_app(password, secret):
         try:
             from urllib.parse import quote_plus as _uq
             from src import opportunity_inbox as _oi
+            from src import freshness as _fr
+            # limit=100000 costs nothing extra: build_inbox always computes the
+            # full ranked set internally and slices afterward - a real limit here
+            # would just hide rows freshness needs to scan for "new today".
             _idata = _oi.build_inbox(active if active in ("pod", "embroidery") else None,
-                                     limit=6)
+                                     limit=100000)
             _ic = _idata["counts"]
+            _new_today = sum(
+                1 for v in _fr.labels_for([r["keyword"] for r in _idata["rows"]]).values()
+                if v in (_fr.NEW, "today"))
             _qcss = (
                 '<style>'
                 '.oppq{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:2px 0 10px}'
@@ -643,7 +650,7 @@ def build_app(password, secret):
                     f'<span class="om">{_h_esc(_r.get("fit_label") or "")}</span>'
                     f'<span class="oa">{_act_label.get(_r["action"], _r["action"])}</span></a>')
             _oppq = (
-                _qcss + '<h2 class="grouph">🎯 Today\'s opportunities — act on these</h2>'
+                _qcss + '<h2 class="grouph">🎯 Top current opportunities — act on these</h2>'
                 '<div class="oppq">'
                 f'<a class="qc go" href="/inbox?mode={active}"><div class="qn">{_ic["build"]}</div>'
                 '<div class="ql">🚀 Build now</div></a>'
@@ -658,7 +665,8 @@ def build_app(password, secret):
                 + f'<p class="note" style="margin:0 0 4px">Straight from the '
                 f'<a href="/inbox?mode={active}">Opportunity Inbox</a> — '
                 f'{_ic["total"]} keywords ranked through the risk gate → market '
-                'signal → final action.</p>')
+                f'signal → final action · <b>{_new_today} new today</b> '
+                '(first seen in your data today).</p>')
         except (SystemExit, Exception):  # noqa: BLE001 - never break the home
             _oppq = ""
 
