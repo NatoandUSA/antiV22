@@ -1,5 +1,6 @@
 """SQLite storage: research history, discovered keywords, and API cache."""
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 
 DB_PATH = Path("data/agent.db")
@@ -18,7 +19,7 @@ def get_conn():
     conn.execute(
         """CREATE TABLE IF NOT EXISTS discovered_keywords (
             id INTEGER PRIMARY KEY,
-            captured_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            captured_at TEXT DEFAULT (datetime('now', 'localtime')),
             source TEXT,
             tag TEXT,
             listing_count INTEGER,
@@ -43,13 +44,26 @@ def get_conn():
 
 
 def save_discovered(rows):
+    """rows are (source, tag, listing_count, avg_price, avg_revenue, conversion,
+    momentum, competition_level, action, opportunity) tuples.
+
+    captured_at is stamped explicitly with local time rather than relying on
+    the table's default. SQLite's CURRENT_TIMESTAMP is UTC, but the harvest
+    cron fires at 06:00 local (Asia/Ho_Chi_Minh, UTC+7) - inside the window
+    that maps to the PREVIOUS UTC calendar day. That silently aged every
+    day's freshly harvested keyword by one full day in freshness.py, which
+    reads this column's date part directly against date.today() (local).
+    Existing rows already on disk keep their old UTC stamps - only new
+    writes are corrected; there is nothing to safely rewrite retroactively.
+    """
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     conn = get_conn()
     conn.executemany(
         "INSERT INTO discovered_keywords "
-        "(source, tag, listing_count, avg_price, avg_revenue, conversion, "
-        " momentum, competition_level, action, opportunity) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        rows,
+        "(captured_at, source, tag, listing_count, avg_price, avg_revenue, "
+        " conversion, momentum, competition_level, action, opportunity) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [(now,) + tuple(r) for r in rows],
     )
     conn.commit()
     conn.close()
