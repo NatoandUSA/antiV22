@@ -2319,6 +2319,7 @@ def build_app(password, secret):
         raw = (request.args.get("q") or "").strip()[:80]
         q = "".join(c for c in raw if c.isalnum() or c in " '&-.").strip()
         show_all = request.args.get("show") == "all"
+        changed_only = request.args.get("exec") == "changed"
         bar = (_stage_nav("rank", q, m or "")
                + _stage_kwbar("/inbox", q, "\U0001F3C6 Rank / focus keyword",
                               mode=m or "")
@@ -2350,7 +2351,8 @@ def build_app(password, secret):
         try:
             return _render_tool("Opportunity Inbox",
                                 interactive.inbox(mode, q,
-                                                  show_archived=show_all),
+                                                  show_archived=show_all,
+                                                  changed_only=changed_only),
                                 switch=bar)
         except (SystemExit, Exception) as exc:  # noqa: BLE001
             return _tool_error("Opportunity Inbox", exc)

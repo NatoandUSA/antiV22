@@ -2060,6 +2060,32 @@ _MKT_ICON = {"GO": "\U0001F7E2", "CONDITIONAL": "\U0001F535",
 _ACTION_ICON = {"BUILD_NOW": "\U0001F680", "CONFIRM_FIRST": "\U0001F50D",
                 "REVIEW": "\U0001F6A9", "WATCH": "\U0001F7E1", "SKIP": "⛔",
                 "BLOCKED": "\U0001F6AB"}
+_EXEC_ICON = {"BUILD_NOW": "\U0001F680", "CONFIRM_FIRST": "\U0001F50D",
+              "MINE_NICHE": "⛏", "REVIEW_ACTIONABILITY": "\U0001F6A9"}
+
+
+def _exec_overlay_for(r, mode):
+    """Patch 4 Stage 2 (shadow mode): a proposed execution_action alongside the
+    engine's own final action, only for BUILD_NOW/CONFIRM_FIRST rows -- the only
+    slice this was audited/tested against. Never mutates r; never re-sorts;
+    the engine's action/route/CTA stay the ones driving Launch Kit routing."""
+    if r.get("action") not in ("BUILD_NOW", "CONFIRM_FIRST"):
+        return None
+    from src.execution_action import derive_execution_action
+    return derive_execution_action(r, mode)
+
+
+def _exec_cell(r, exec_result):
+    if exec_result is None:
+        return "—"
+    ea = exec_result["execution_action"]
+    if ea == r["action"]:
+        return "✓ same"
+    icon = _EXEC_ICON.get(ea, "")
+    label = ea.replace("_", " ").title()
+    why = (exec_result.get("reason_codes") or [""])[0]
+    why_txt = f" _{why.replace('_', ' ').lower()}_" if why else ""
+    return f"→ {icon} {label}{why_txt}"
 
 
 def _inbox_do(r):
@@ -2122,7 +2148,7 @@ def _inbox_age(keyword):
         return ""
 
 
-def _inbox_row(i, r):
+def _inbox_row(i, r, exec_result=None):
     """One ranked table row (shared by the FOCUS table and the full list)."""
     kw = _clean(r["keyword"])
     a_icon = _ACTION_ICON.get(r["action"], "")
@@ -2189,12 +2215,13 @@ def _inbox_row(i, r):
     comp = int(r["comp"]) if r["comp"] is not None else "—"
     conv = f"{r['conv']*100:.1f}%" if r["conv"] is not None else "—"
     mom = int(r["momentum"]) if r["momentum"] is not None else "—"
+    exec_cell = _exec_cell(r, exec_result)
     return (f"| {i} | {kw} | {_inbox_age(r['keyword'])} | {proof_cell} | {fit} "
-            f"| {action} | {mkt} | {comp} | {conv} | {mom} | {_inbox_do(r)} |")
+            f"| {action} | {exec_cell} | {mkt} | {comp} | {conv} | {mom} | {_inbox_do(r)} |")
 
 
-_INBOX_HDR = ["| # | Keyword | Added | Etsy proof | Product-fit | Final action | Market | Comp. | Conv. | Mom. | Do |",
-              "|---|---|---|---|---|---|---|---|---|---|---|"]
+_INBOX_HDR = ["| # | Keyword | Added | Etsy proof | Product-fit | Final action | Execution (shadow, Patch 4) | Market | Comp. | Conv. | Mom. | Do |",
+              "|---|---|---|---|---|---|---|---|---|---|---|---|"]
 
 
 # ---------------------------------------------------------------------------
@@ -2329,7 +2356,7 @@ def rerank(mode=None, q=""):
     return "\n".join(L)
 
 
-def inbox(mode=None, q="", show_archived=False):
+def inbox(mode=None, q="", show_archived=False, changed_only=False):
     """Opportunity Inbox — your real keyword data through the LAYERED ranking engine.
 
     Each keyword passes a risk / product-fit GATE, then the composite Market-Signal
@@ -2337,7 +2364,12 @@ def inbox(mode=None, q="", show_archived=False):
     Skip / Blocked). The market score is real market data + our chosen weights (an
     explainable model, not the whole decision) — the gate keeps broad seeds, themes
     without a product, shop names, and policy/trademark terms out of 'Build'.
-    Pass q to FOCUS: the rows related to that keyword rank first."""
+    Pass q to FOCUS: the rows related to that keyword rank first.
+
+    changed_only (Patch 4 Stage 2, shadow mode): show only BUILD_NOW/CONFIRM_FIRST
+    rows where the specificity overlay proposes a DIFFERENT execution_action than
+    the engine's final action. Display/filter only — never re-sorts, never edits
+    engine_final_action, never changes the Do/route CTA."""
     from src import opportunity_inbox as oi
     q = (q or "").strip()
     data = oi.build_inbox(mode, q=q or None, show_archived=show_archived)
@@ -2349,6 +2381,37 @@ def inbox(mode=None, q="", show_archived=False):
         L += ["> **No keyword data yet.** Feed keywords from the YTrends MCP "
               "(auto) or drop a YTrends keyword CSV on the home page, then reload."]
         return "\n".join(L)
+    exec_map = {id(r): _exec_overlay_for(r, mode) for r in rows}
+    changed_n = sum(1 for r in rows
+                    if (exec_map.get(id(r)) or {}).get("execution_action")
+                    not in (None, r["action"]))
+    from urllib.parse import urlencode
+    _base = {}
+    if mode:
+        _base["mode"] = mode
+    if q:
+        _base["q"] = q
+    if show_archived:
+        _base["show"] = "all"
+    _toggle_params = dict(_base)
+    if not changed_only:
+        _toggle_params["exec"] = "changed"
+    toggle_href = "/inbox" + ("?" + urlencode(_toggle_params) if _toggle_params else "")
+    toggle_label = "Show all rows" if changed_only else "Show changed-only"
+    L += [f"_⚒ **Patch 4 (shadow mode):** a proposed **Execution** column "
+          f"sits beside Final action — {changed_n} of {c['build'] + c['confirm']} "
+          "build/confirm rows would change (mostly broad-parent terms proposed "
+          "for **Mine Niche**). Nothing is re-sorted or auto-changed; Final "
+          "action and every route/CTA below are still the engine's own. "
+          f"[{toggle_label}]({toggle_href})._", ""]
+    if changed_only:
+        rows = [r for r in rows
+                if (exec_map.get(id(r)) or {}).get("execution_action")
+                not in (None, r["action"])]
+        if not rows:
+            L += ["> No build/confirm rows currently disagree with the "
+                  "specificity overlay — nothing to show for changed-only.", ""]
+            return "\n".join(L)
     proof_line = ""
     if data.get("has_proof"):
         proof_line = (f"\U0001F3C6 **{c.get('proven', 0)}** proven · "
@@ -2440,7 +2503,8 @@ def inbox(mode=None, q="", show_archived=False):
         if fr:
             L += list(_INBOX_HDR)
             for i, r in enumerate(fr, 1):
-                L.append(_inbox_row(i, r))
+                L.append(_inbox_row(i, r, exec_map.get(id(r))
+                                     or _exec_overlay_for(r, mode)))
             L += ["", f"**Next step for this niche:** "
                   f"[\U0001F52C Mine the winning pattern](/pattern-miner?q={uq}) · "
                   f"[\U0001F4A1 Generate new keywords](/keyword-lab?q={uq}) · "
@@ -2459,7 +2523,7 @@ def inbox(mode=None, q="", show_archived=False):
               ""]
     L += list(_INBOX_HDR)
     for i, r in enumerate(rows, 1):
-        L.append(_inbox_row(i, r))
+        L.append(_inbox_row(i, r, exec_map.get(id(r))))
     top = next((r for r in rows if r["action"] in ("BUILD_NOW", "CONFIRM_FIRST")),
                None)
     if top:
