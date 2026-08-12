@@ -1970,6 +1970,12 @@ def build_app(password, secret):
         except (SystemExit, Exception) as exc:  # noqa: BLE001
             return _tool_error(title, exc)
 
+    @app.route("/mine-niche")
+    @login_required
+    def mine_niche():
+        return _kw_mode_tool(lambda iv, q, m: iv.mine_niche(q, m),
+                             "Mine Niche")
+
     @app.route("/photo-brief")
     @login_required
     def photo_brief():

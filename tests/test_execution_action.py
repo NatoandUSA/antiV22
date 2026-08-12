@@ -1,10 +1,21 @@
 """Patch 4 Stage 2 -- execution_action overlay tests (offline, no API/DB)."""
+from src import execution_action as ea
 from src.execution_action import derive_execution_action, _phrase_present, _tokens
 
 
 def _run(keyword, action, proof=None, mode="pod"):
     return derive_execution_action({"keyword": keyword, "action": action,
                                      "proof": proof}, mode)
+
+
+def _row(kw, action, proof=None):
+    return {"keyword": kw, "action": action, "proof": proof}
+
+
+def _fake_build_inbox(rows):
+    def _build_inbox(mode=None, limit=100000, show_archived=False):
+        return {"rows": rows}
+    return _build_inbox
 
 
 # --- tokenization regressions (the substring bug caught in the Phase B audit) ---
@@ -135,3 +146,48 @@ def test_row_is_not_mutated():
     before = dict(row)
     derive_execution_action(row, "pod")
     assert row == before
+
+
+# --- find_children: real children only, never fabricated -------------------
+
+def test_finds_a_real_specific_child_sharing_both_parent_tokens(monkeypatch):
+    pool = [
+        _row("corporate gift bag", "CONFIRM_FIRST"),
+        _row("bridal gift bags", "CONFIRM_FIRST"),      # real child: occasion signal
+        _row("birthday gift bag", "WATCH"),              # real child even if only WATCH
+        _row("random other keyword", "CONFIRM_FIRST"),   # unrelated -- must not appear
+    ]
+    monkeypatch.setattr(ea.oi, "build_inbox", _fake_build_inbox(pool))
+    children, needs_research = ea.find_children("corporate gift bag", "pod")
+    assert needs_research is False
+    kws = {c["keyword"] for c in children}
+    assert kws == {"bridal gift bags", "birthday gift bag"}
+    assert all(c["execution"]["specificity_class"] == "SPECIFIC_ACTIONABLE"
+               for c in children)
+
+
+def test_no_real_child_reports_needs_research_not_a_fabricated_one(monkeypatch):
+    pool = [_row("preppy pouch", "CONFIRM_FIRST"),
+            _row("unrelated keyword entirely", "CONFIRM_FIRST")]
+    monkeypatch.setattr(ea.oi, "build_inbox", _fake_build_inbox(pool))
+    children, needs_research = ea.find_children("preppy pouch", "pod")
+    assert children == []
+    assert needs_research is True
+
+
+def test_parent_keyword_itself_is_excluded_from_its_own_children(monkeypatch):
+    pool = [_row("bridal gift bags", "CONFIRM_FIRST")]
+    monkeypatch.setattr(ea.oi, "build_inbox", _fake_build_inbox(pool))
+    children, _ = ea.find_children("bridal gift bags", "pod")
+    assert children == []
+
+
+def test_blocked_and_skipped_candidates_are_never_suggested_as_children(monkeypatch):
+    pool = [
+        _row("corporate gift bag", "CONFIRM_FIRST"),
+        _row("bridal gift bag trademark", "BLOCKED"),
+        _row("bridal gift bag shop handle", "SKIP"),
+    ]
+    monkeypatch.setattr(ea.oi, "build_inbox", _fake_build_inbox(pool))
+    children, _ = ea.find_children("corporate gift bag", "pod")
+    assert children == []

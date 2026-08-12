@@ -2075,7 +2075,7 @@ def _exec_overlay_for(r, mode):
     return derive_execution_action(r, mode)
 
 
-def _exec_cell(r, exec_result):
+def _exec_cell(r, exec_result, mode=None):
     if exec_result is None:
         return "—"
     ea = exec_result["execution_action"]
@@ -2085,6 +2085,9 @@ def _exec_cell(r, exec_result):
     label = ea.replace("_", " ").title()
     why = (exec_result.get("reason_codes") or [""])[0]
     why_txt = f" _{why.replace('_', ' ').lower()}_" if why else ""
+    if ea == "MINE_NICHE":
+        href = f"/mine-niche?q={_uq(r['keyword'])}" + (f"&mode={mode}" if mode else "")
+        return f"→ [{icon} {label}]({href}){why_txt}"
     return f"→ {icon} {label}{why_txt}"
 
 
@@ -2148,7 +2151,7 @@ def _inbox_age(keyword):
         return ""
 
 
-def _inbox_row(i, r, exec_result=None):
+def _inbox_row(i, r, exec_result=None, mode=None):
     """One ranked table row (shared by the FOCUS table and the full list)."""
     kw = _clean(r["keyword"])
     a_icon = _ACTION_ICON.get(r["action"], "")
@@ -2215,7 +2218,7 @@ def _inbox_row(i, r, exec_result=None):
     comp = int(r["comp"]) if r["comp"] is not None else "—"
     conv = f"{r['conv']*100:.1f}%" if r["conv"] is not None else "—"
     mom = int(r["momentum"]) if r["momentum"] is not None else "—"
-    exec_cell = _exec_cell(r, exec_result)
+    exec_cell = _exec_cell(r, exec_result, mode)
     return (f"| {i} | {kw} | {_inbox_age(r['keyword'])} | {proof_cell} | {fit} "
             f"| {action} | {exec_cell} | {mkt} | {comp} | {conv} | {mom} | {_inbox_do(r)} |")
 
@@ -2504,7 +2507,7 @@ def inbox(mode=None, q="", show_archived=False, changed_only=False):
             L += list(_INBOX_HDR)
             for i, r in enumerate(fr, 1):
                 L.append(_inbox_row(i, r, exec_map.get(id(r))
-                                     or _exec_overlay_for(r, mode)))
+                                     or _exec_overlay_for(r, mode), mode))
             L += ["", f"**Next step for this niche:** "
                   f"[\U0001F52C Mine the winning pattern](/pattern-miner?q={uq}) · "
                   f"[\U0001F4A1 Generate new keywords](/keyword-lab?q={uq}) · "
@@ -2523,7 +2526,7 @@ def inbox(mode=None, q="", show_archived=False, changed_only=False):
               ""]
     L += list(_INBOX_HDR)
     for i, r in enumerate(rows, 1):
-        L.append(_inbox_row(i, r, exec_map.get(id(r))))
+        L.append(_inbox_row(i, r, exec_map.get(id(r)), mode))
     top = next((r for r in rows if r["action"] in ("BUILD_NOW", "CONFIRM_FIRST")),
                None)
     if top:
@@ -2564,6 +2567,42 @@ def inbox(mode=None, q="", show_archived=False, changed_only=False):
           "territory; expand to a 3–5 word buyer-intent angle first (only real "
           "Etsy sales proof overrides this). Trademark / policy / broad-seed "
           "terms are gated before scoring; human review still required._"]
+    return "\n".join(L)
+
+
+def mine_niche(keyword, mode=None):
+    """Patch 4 Stage 2 — Mine Niche: real child-niche candidates for a
+    BROAD_PARENT keyword, found in your OWN already-ranked data
+    (execution_action.find_children). Never invents a keyword — when
+    nothing real exists yet it points to Pattern Miner / Keyword Lab,
+    the tools that actually generate new candidates."""
+    from src.execution_action import find_children
+    kw = (keyword or "").strip()
+    uq = _uq(kw)
+    L = [f"# ⛏ Mine Niche: {_clean(kw)}", ""]
+    L += ["_Broad parent term — no strong buyer angle (profession, occasion, "
+          "use-case, or a validated signal combination) detected. Searching "
+          "your own ranked keyword data for a real child niche first, "
+          "instead of building on the broad term as-is._", ""]
+    children, needs_research = find_children(kw, mode, limit=8)
+    if children:
+        L += [f"## {len(children)} real child niche(s) already in your data", ""]
+        L += list(_INBOX_HDR)
+        for i, r in enumerate(children, 1):
+            L.append(_inbox_row(i, r, r["execution"], mode))
+        L += ["", "_Each of these already carries a real buyer angle your own "
+              "ranked data picked up — pick one to confirm or build, rather "
+              "than the broad parent term above._", ""]
+    else:
+        L += ["## No real child niche in your data yet — NEEDS_NICHE_RESEARCH", ""]
+        L += [f"> Nothing in your ranked keywords narrows **{_clean(kw)}** to a "
+              "real buyer angle yet. Don't force one — go find it:", ""]
+        L += [f"**▶ [Run the Pattern Miner](/pattern-miner?q={uq})** — see what "
+              "angle the winning competitors actually use.", "",
+              f"**▶ [Generate candidates in Keyword Lab](/keyword-lab?q={uq})** "
+              "— expand this seed into real long-tail phrases, then add the "
+              "good ones to the Inbox.", ""]
+    L += [f"[← Back to Inbox](/inbox{'?mode=' + mode if mode else ''})"]
     return "\n".join(L)
 
 

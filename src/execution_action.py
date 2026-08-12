@@ -34,6 +34,7 @@ BLOCKED/SKIP -> untouched, never computed on, never upgraded.
 import re
 
 from src import execution_action_vocab as vocab
+from src import opportunity_inbox as oi
 from src import product_fit as pf
 
 BUILD_NOW, CONFIRM_FIRST, REVIEW_ACTIONABILITY, MINE_NICHE = (
@@ -207,3 +208,34 @@ def derive_execution_action(row, mode=None):
         "reason_codes": reason_codes,
         "signals": sig,
     }
+
+
+def find_children(keyword, mode=None, limit=8):
+    """Real candidate 'child' niches for a BROAD_PARENT keyword, found by
+    searching the already-ranked master data -- never fabricated.
+
+    A candidate must: share tokens with the parent (via
+    opportunity_inbox.focus_rows, the same search the Inbox's own Focus
+    view uses), not be the parent itself, not be hard-gated
+    (BLOCKED/SKIP), and itself resolve to SPECIFIC_ACTIONABLE under this
+    module -- i.e. it carries a real buyer angle the parent lacks.
+
+    Returns (children, needs_research). children is up to `limit` row
+    dicts (engine-rank order) each carrying an added 'execution' key (this
+    function's own derive_execution_action output). needs_research is True
+    when no real child exists yet -- the caller should route to Pattern
+    Miner / Keyword Lab, never invent a keyword here."""
+    kwl = (keyword or "").strip().lower()
+    pool = oi.build_inbox(mode, limit=100000, show_archived=True)["rows"]
+    children = []
+    for r in oi.focus_rows(pool, keyword):
+        if r["keyword"].strip().lower() == kwl:
+            continue
+        if r.get("action") in ("BLOCKED", "SKIP"):
+            continue
+        out = derive_execution_action(r, mode)
+        if out["specificity_class"] == "SPECIFIC_ACTIONABLE":
+            children.append({**r, "execution": out})
+        if len(children) >= limit:
+            break
+    return children, (len(children) == 0)
