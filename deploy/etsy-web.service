@@ -12,7 +12,7 @@ User=etsy
 WorkingDirectory=/home/etsy/etsy-agent
 # The app reads secrets from .env (via python-dotenv) in WorkingDirectory,
 # so WEB_PASSWORD / YTRENDS_API_TOKEN / etc. must live there. Binds 127.0.0.1:8000.
-ExecStart=/home/etsy/etsy-agent/.venv/bin/python main.py web
+ExecStart=/home/etsy/etsy-agent/.venv/bin/gunicorn -w 1 --threads 8 --bind 127.0.0.1:8000 wsgi:app
 Restart=always
 RestartSec=5
 # Light hardening
