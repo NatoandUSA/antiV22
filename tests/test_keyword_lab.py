@@ -85,9 +85,9 @@ def test_the_fixture_never_writes_into_the_real_capture_dir(seeded_captures):
 def test_trademarked_seed_not_suggested_as_buildable():
     # V37.4 safety regression: a trademarked seed must not yield build-ready
     # infringing long-tails. All HIGH-trademark candidates are screened out.
-    g = kl.generate("disney princess shirt")
+    g = kl.generate("nike shirt")
     assert g.get("tm_dropped", 0) > 0
-    assert all("disney" not in c["keyword"] for c in g["candidates"])
+    assert all("nike" not in c["keyword"] for c in g["candidates"])
 
 
 def test_mode_aware_material_and_keyword_product():
