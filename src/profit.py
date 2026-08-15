@@ -50,7 +50,7 @@ def compute(price, product_cost, shipping_cost=0.0, offsite_ad=False,
                 "net_profit": round(net, 2),
                 "margin": round(net / price, 4) if price else 0.0}
     txn = TRANSACTION_RATE * (price + sc)
-    pay = PAYMENT_RATE * price + PAYMENT_FIXED
+    pay = PAYMENT_RATE * (price + sc) + PAYMENT_FIXED
     # Etsy charges offsite ads on the full order (item + shipping), not item only.
     offsite = OFFSITE_ADS_RATE * (price + sc) if offsite_ad else 0.0
     # Currency conversion applies to the whole payout (item + shipping).

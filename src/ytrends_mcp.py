@@ -121,6 +121,11 @@ def _parse(resp):
         return None
 
 
+class YTrendsApiError(RuntimeError):
+    """Exception raised when the YTrends MCP / API service is unreachable, unauthorized, or rate-limited."""
+    pass
+
+
 def _post(method, params, notify=False):
     """One JSON-RPC POST with 1 req/s politeness + backoff on 429/5xx."""
     body = {"jsonrpc": "2.0", "method": method, "params": params}
@@ -130,31 +135,29 @@ def _post(method, params, notify=False):
     _throttle_slot()
 
     resp = None
-    # (connect, read) timeout + 2 tries: an unreachable MCP fails a call in
-    # ~12s instead of freezing a page for minutes (audited: 4 tries x 45s +
-    # exponential backoff stacked to 3.5 min PER CALL on pages that make many).
-    for attempt in range(2):
+    max_attempts = 3
+    for attempt in range(max_attempts):
         try:
             resp = requests.post(MCP_URL, headers=_headers(), json=body,
                                  timeout=(4, 15))
         except requests.RequestException as exc:
-            if attempt == 1:
-                raise SystemExit(
-                    f"YTrends MCP network error after 2 tries: {exc}\n"
+            if attempt == max_attempts - 1:
+                raise YTrendsApiError(
+                    f"YTrends MCP network error after {max_attempts} tries: {exc}\n"
                     f"Is {MCP_URL} reachable from this machine?")
             time.sleep(2)
             continue
-        if resp.status_code in (429,) or resp.status_code >= 500:
-            if attempt == 3:
-                raise SystemExit(
-                    f"YTrends MCP returned {resp.status_code} after 4 tries. "
+        if resp is not None and (resp.status_code == 429 or resp.status_code >= 500):
+            if attempt == max_attempts - 1:
+                raise YTrendsApiError(
+                    f"YTrends MCP returned {resp.status_code} after {max_attempts} tries. "
                     "Wait a bit and rerun.")
-            time.sleep(2 ** attempt * 6)
+            time.sleep(2 ** attempt * 2)
             continue
         break
 
-    if resp.status_code in (401, 403):
-        raise SystemExit(
+    if resp is not None and resp.status_code in (401, 403):
+        raise YTrendsApiError(
             f"YTrends MCP refused the request (HTTP {resp.status_code}). "
             "If a token is required now, add YTRENDS_API_TOKEN to .env "
             "(get it from your trends.ytuong.ai account).")
@@ -189,8 +192,8 @@ def _init_session_locked():
 
     missing = REQUIRED_TOOLS - _tool_names
     if missing:
-        raise SystemExit(CHANGED_HELP.format(missing=sorted(missing),
-                                             url=MCP_URL))
+        raise YTrendsApiError(CHANGED_HELP.format(missing=sorted(missing),
+                                                   url=MCP_URL))
 
 
 def _reset_session():
@@ -286,7 +289,7 @@ def available():
     try:
         _ensure_session()
         return True, f"YTrends MCP OK ({len(_tool_names)} tools)"
-    except SystemExit as exc:
+    except (YTrendsApiError, SystemExit) as exc:
         return False, str(exc).strip().splitlines()[0]
     except Exception as exc:  # noqa: BLE001 - never let this break a report
         return False, f"YTrends MCP unavailable: {exc}"

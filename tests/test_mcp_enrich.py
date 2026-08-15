@@ -6,6 +6,8 @@ competition_level='low' + total_listings=0, which the scorer would read as a
 maximum opportunity signal on a best-case market = a false GO on a keyword with
 no listings at all. Both payloads below are real shapes captured from the server.
 """
+import pytest
+
 from src import mcp_enrich as me
 from src import opportunity_score as osc
 
@@ -91,3 +93,43 @@ def test_very_high_competition_maps_and_is_not_read_as_favourable():
     # _competition normalises the form on read; a 45k-listing keyword must not
     # score as a healthy, open market
     assert osc._competition(d) < 20
+
+
+def test_ytrends_mcp_raises_ytrends_api_error_on_network_failure(monkeypatch):
+    """YT-MCP-RETRY-01 & Contradiction-1: network exhaustion raises YTrendsApiError, not SystemExit."""
+    from src import ytrends_mcp as ym
+    calls = []
+
+    def _mock_post(*args, **kwargs):
+        calls.append(args)
+        raise ym.requests.RequestException("simulated network timeout")
+
+    monkeypatch.setattr(ym.requests, "post", _mock_post)
+    monkeypatch.setattr(ym.time, "sleep", lambda s: None)
+
+    with pytest.raises(ym.YTrendsApiError, match="network error after 3 tries"):
+        ym._post("tools/list", {})
+
+    assert len(calls) == 3, "retry loop must execute exactly 3 attempts before raising"
+
+
+def test_ytrends_mcp_raises_ytrends_api_error_on_5xx_exhaustion(monkeypatch):
+    """YT-MCP-RETRY-01: 5xx/429 exhaustion completes all retries and raises YTrendsApiError."""
+    from src import ytrends_mcp as ym
+    calls = []
+
+    class MockResp:
+        status_code = 500
+        content = b"{}"
+
+    def _mock_post(*args, **kwargs):
+        calls.append(args)
+        return MockResp()
+
+    monkeypatch.setattr(ym.requests, "post", _mock_post)
+    monkeypatch.setattr(ym.time, "sleep", lambda s: None)
+
+    with pytest.raises(ym.YTrendsApiError, match="returned 500 after 3 tries"):
+        ym._post("tools/list", {})
+
+    assert len(calls) == 3, "5xx retry loop must execute 3 attempts before raising"

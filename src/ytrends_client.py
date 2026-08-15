@@ -14,6 +14,7 @@ import requests
 from dotenv import load_dotenv
 
 from src.db import cache_get, cache_put
+from src.ytrends_mcp import YTrendsApiError
 
 load_dotenv()
 
@@ -62,37 +63,39 @@ def _get(path, params):
     resp = None
     # (connect, read) timeout + 2 tries: fail fast when the API is unreachable
     # so web pages degrade to honest-nulls instead of freezing for minutes.
-    for attempt in range(2):
+    max_attempts = 3
+    for attempt in range(max_attempts):
         try:
             resp = requests.get(f"{BASE_URL}{path}", params=params,
                                 headers=HEADERS, timeout=(4, 15))
         except requests.RequestException as exc:
-            if attempt == 1:
-                raise SystemExit(f"YTrends network error after 2 tries: {exc}")
-            print("  network error; retry in 3s...")
-            time.sleep(3)
+            if attempt == max_attempts - 1:
+                raise YTrendsApiError(f"YTrends network error after {max_attempts} tries: {exc}")
+            print("  network error; retry in 2s...")
+            time.sleep(2)
             continue
-        if resp.status_code == 429 or resp.status_code >= 500:
-            if attempt == 3:
-                raise SystemExit(
-                    f"YTrends returned {resp.status_code} after 4 tries. "
+        if resp is not None and (resp.status_code == 429 or resp.status_code >= 500):
+            if attempt == max_attempts - 1:
+                raise YTrendsApiError(
+                    f"YTrends returned {resp.status_code} after {max_attempts} tries. "
                     "Wait a while and rerun; your daily quota may be hit.")
-            wait = 2 ** attempt * 10
+            wait = 2 ** attempt * 2
             print(f"  HTTP {resp.status_code}; backing off {wait}s...")
             time.sleep(wait)
             continue
         break
     _last_call = time.time()
 
-    used = resp.headers.get("X-Daily-Used")
-    limit = resp.headers.get("X-Daily-Limit")
+    used = resp.headers.get("X-Daily-Used") if resp is not None else None
+    limit = resp.headers.get("X-Daily-Limit") if resp is not None else None
     if used and limit and limit.isdigit() and int(limit) > 0:
         if int(used) > int(limit) * 0.8:
             print(f"  WARNING: {used}/{limit} of today's YTrends quota used.")
 
-    if resp.status_code == 401:
-        raise SystemExit(AUTH_HELP)
-    resp.raise_for_status()
+    if resp is not None and resp.status_code in (401, 403):
+        raise YTrendsApiError(AUTH_HELP)
+    if resp is not None:
+        resp.raise_for_status()
     data = resp.json()
     cache_put(key, today, json.dumps(data))
     return data

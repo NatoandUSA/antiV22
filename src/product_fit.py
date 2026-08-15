@@ -102,6 +102,24 @@ def _looks_like_shop(kw):
     return False
 
 
+def _is_digital(kw, words):
+    """Phrase-aware digital classification.
+
+    Multi-word digital signs (e.g. 'cut file', 'clip art') match only as full
+    phrases. Single-word digital signs (e.g. 'svg', 'cricut', 'printable')
+    match as tokens. This prevents physical apparel like 'leopard print shirt' or
+    'flower print tote' from being falsely flagged as DIGITAL_FIT.
+    """
+    padded = f" {kw.strip().lower()} "
+    for sign in DIGITAL_SIGNS:
+        if " " in sign:
+            if f" {sign} " in padded or kw.strip().lower() == sign:
+                return True
+        elif sign in words:
+            return True
+    return False
+
+
 def classify(keyword, mode=None):
     """Return {status, launchable, product_type, reason} for one keyword."""
     kw = (keyword or "").strip().lower()
@@ -132,7 +150,7 @@ def classify(keyword, mode=None):
                 "product_type": "", "reason": "looks like a shop/brand name, not a product"}
 
     # 4. digital-only (not our physical POD/embroidery business)
-    if words & {w for s in DIGITAL_SIGNS for w in s.split()}:
+    if _is_digital(kw, words):
         return {"status": DIGITAL_FIT, "launchable": False, "product_type": "digital",
                 "reason": "digital/printable — not a supplier-made physical product"}
 

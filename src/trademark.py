@@ -115,6 +115,21 @@ def _has_signal(signal, spaced_text, text_nospace):
     return len(sig_nospace) > 4 and sig_nospace in text_nospace
 
 
+def _concatenated_match(brand_nospace, raw, t_nospace):
+    """Concatenated match for brands written without spaces (e.g. starwars, nflshirt, nikesweatshirt)."""
+    if brand_nospace not in t_nospace:
+        return False
+    if len(brand_nospace) > 4:
+        return True
+    if raw == brand_nospace or t_nospace.startswith(brand_nospace) or t_nospace.endswith(brand_nospace):
+        return True
+    for p in PRODUCT_WORDS:
+        pn = p.replace(" ", "").replace("-", "")
+        if pn and (brand_nospace + pn in t_nospace or pn + brand_nospace in t_nospace):
+            return True
+    return False
+
+
 def check(tag):
     """Return (risk, reason). risk in {'HIGH', 'CAUTION', 'OK'}."""
     raw = tag.strip().lower()
@@ -125,11 +140,10 @@ def check(tag):
 
     # 1. Always-HIGH brands. Whole-word match, exact match, OR concatenated match
     #    for multi-word brands written without spaces (BUG-4: normalise BOTH the
-    #    brand and the text, so "star wars" catches "starwars").
+    #    brand and the text, so "star wars" catches "starwars", "nike" catches "nikesweatshirt").
     for brand in ALWAYS_HIGH:
         brand_nospace = brand.replace(" ", "")
-        if (f" {brand} " in t or raw == brand
-                or (len(brand_nospace) > 7 and brand_nospace in t_nospace)):
+        if f" {brand} " in t or raw == brand or _concatenated_match(brand_nospace, raw, t_nospace):
             return "HIGH", f"known brand/franchise: '{brand}'"
 
     # 2. Context-required ambiguous words (BUG-2 + BUG-3). HIGH only with a brand

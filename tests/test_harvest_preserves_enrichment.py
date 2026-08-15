@@ -271,3 +271,36 @@ def test_a_harvest_merge_never_reduces_the_positive_views_count(tmp_path):
                 pass
         return n
     assert positive(rows) == 5, "a positive views row was lost by the round-trip"
+
+
+def test_write_keyword_data_atomic_replacement(tmp_path):
+    """C-1 regression: write_keyword_data writes to a .tmp file and replaces atomically."""
+    target = tmp_path / "keyword_data.csv"
+    _master(tmp_path, [dict(_rich("test atomic kw"))])
+    store = _thin("test atomic kw")
+    H.write_keyword_data({"test atomic kw": store}, path=str(target))
+    assert target.exists()
+    assert not (tmp_path / "keyword_data.csv.tmp").exists()
+    with target.open(encoding="utf-8-sig") as f:
+        rows = list(csv.DictReader(f))
+    assert len(rows) == 1
+    assert rows[0]["keyword"] == "test atomic kw"
+
+
+def test_write_keyword_data_failure_injection_preserves_original(tmp_path, monkeypatch):
+    """C-1 failure injection: an exception during row writing leaves original target intact."""
+    target = tmp_path / "keyword_data.csv"
+    _master(tmp_path, [dict(_rich("original kw"))])
+    store = _thin("new kw")
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("simulated write error")
+
+    monkeypatch.setattr(csv.DictWriter, "writerow", _boom)
+    with pytest.raises(RuntimeError, match="simulated write error"):
+        H.write_keyword_data({"new kw": store}, path=str(target))
+
+    with target.open(encoding="utf-8-sig") as f:
+        rows = list(csv.DictReader(f))
+    assert len(rows) == 1
+    assert rows[0]["keyword"] == "original kw"

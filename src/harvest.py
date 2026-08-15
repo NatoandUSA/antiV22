@@ -14,6 +14,7 @@ Run:  py main.py harvest        (append to keywords.csv)
       py main.py harvest --dry  (audit only, write nothing)
 """
 import csv
+import os
 import re
 from pathlib import Path
 
@@ -516,7 +517,9 @@ def write_keyword_data(store, path="keyword_data.csv"):
         return int(n) if float(n).is_integer() else round(n, 2)
 
     rows = sorted(store.values(), key=lambda r: r["score"], reverse=True)
-    with open(path, "w", newline="", encoding="utf-8") as f:
+    target = Path(path)
+    tmp_path = target.with_suffix(target.suffix + ".tmp")
+    with open(tmp_path, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=KDATA_FIELDS)
         w.writeheader()
         for r in rows:
@@ -551,6 +554,7 @@ def write_keyword_data(store, path="keyword_data.csv"):
                            else "mcp:" + (r["source"] or "")),
                 "collected_at": first_seen.get(r["tag"].strip().lower()) or today,
             })
+    os.replace(tmp_path, target)
     return len(rows)
 
 

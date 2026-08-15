@@ -21,6 +21,7 @@ def test_profit_currency_fee_on_item_plus_shipping():
     f = profit.compute(20, 5, 4)
     assert f["currency_fee"] == 0.60          # 2.5% of (20 + 4)
     assert f["transaction_fee"] == 1.56       # 6.5% of (20 + 4)
+    assert f["payment_fee"] == 0.97           # 3% of (20 + 4) + $0.25
 
 
 def test_profit_offsite_on_item_plus_shipping():
@@ -124,3 +125,7 @@ def test_tm_check_descriptive_ok_slogan_caution_brand_high():
     assert tm("personalized dog name shirt")[0] == "OK"
     assert tm("make them chase you")[0] == "CAUTION"   # real slogan (pronoun)
     assert tm("taylor swift shirt")[0] == "HIGH"       # known brand
+    assert tm("nikesweatshirt")[0] == "HIGH"           # short brand concatenated
+    assert tm("nflshirt")[0] == "HIGH"                 # 3-letter brand concatenated
+    assert tm("yetitumbler")[0] == "HIGH"              # short brand + product
+    assert tm("craftdads")[0] == "OK"                  # no false positive on fda substring

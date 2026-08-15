@@ -403,7 +403,7 @@ FROZEN = {"ranking_engine", "opportunity_score", "product_fit", "etsy_proof",
 # on the Linux VPS just because the PC checked out CRLF.
 FROZEN_BASELINE = {
     "opportunity_score": "082c23e17d918620a5e852b3fc0a6cd9d64687bffc5dece3f922a4bda2f8c8e2",
-    "product_fit": "bfc1a8e8d38b0613208eeeaaab111ba3c8dde03d4639e36bbda80c4857e2115a",
+    "product_fit": "9edf355c0c13233fc135c5a16188348837f3dae2374095cf2d17803835748a9e",
     "ranking_engine": "9d31f33eeb153adccd1b27e460f770cdfccebf2c47d2e5e616a3ac4e3b326ef8",
     "etsy_proof": "88bdb31fb1664ba324274191b8f621d3e9e3bbf2993b657cd38934ac23fe976e",
     "opportunity_inbox": "54e63405dd505a09f9ec26b89ddcd8b20e383e558b2ce324a2f75135284d419b",

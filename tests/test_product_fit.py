@@ -23,8 +23,13 @@ def test_trademark_brand_hidden():
 
 
 def test_digital_only_hidden():
-    c = classify("svg bundle")
-    assert c["status"] == "DIGITAL_FIT" and not c["launchable"]
+    for k in ("svg bundle", "clip art", "cut file", "digital print"):
+        c = classify(k)
+        assert c["status"] == "DIGITAL_FIT" and not c["launchable"]
+    # Negative fixtures: physical apparel/goods with 'print' or 'file' must remain launchable physical items
+    for k in ("leopard print shirt", "flower print tote bag", "nail file"):
+        c = classify(k)
+        assert c["status"] != "DIGITAL_FIT", f"physical item '{k}' misclassified as DIGITAL_FIT"
 
 
 def test_broad_seed_hidden():
