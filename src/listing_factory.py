@@ -78,16 +78,8 @@ def build_listing(keyword):
                 break
         if len(tags) == 13:
             break
-    # pad with sub-phrases of the keyword if API gave too few usable tags
-    if len(tags) < 13 and len(kw_words) > 1:
-        for w in kw_words:
-            for extra in (w, f"custom {w}", f"{w} gift"):
-                if len(extra) <= 20 and extra not in tags:
-                    tags.append(extra)
-                if len(tags) == 13:
-                    break
-            if len(tags) == 13:
-                break
+    # Never invent tags. Fewer than 13 evidence-supported tags is a real gap --
+    # surfaced in the pack/console output, not papered over with made-up phrases.
 
     # title: keyword first + up to 2 complementary phrases (NOT a comma chain) so
     # it stays buyer-readable and clears the validators: <=140 chars, <=15 words,
@@ -112,19 +104,28 @@ def build_listing(keyword):
                 wc[w] += 1
     title = ", ".join(parts)
 
-    # price: niche average of winners (or suggestions) with margin check
+    # price: niche average of winners, or real cost-plus-margin if no competitor
+    # price evidence exists. Never assume a price with no supporting evidence.
     prices = [w.get("price_usd") for w in winners if w.get("price_usd")]
     avg_price = sum(prices) / len(prices) if prices else None
     cluster = cluster_of(keyword)
     costs = load_costs()
-    price = round((avg_price or 20) * 1.15, 2)
-    margin = margin_at(price, cluster, costs)
-    if margin is not None and margin < 6 and cluster in costs:
+
+    def _cost_plus_price():
         base, ship = costs[cluster][0], costs[cluster][1]
         fixed = base + ship + PAYMENT_FEE_FLAT + LISTING_FEE
         pct = TRANSACTION_FEE + PAYMENT_FEE_PCT + ADS_RESERVE
-        price = round((fixed + 6) / (1 - pct), 2)
-        margin = 6.0
+        return round((fixed + 6) / (1 - pct), 2)
+
+    if avg_price:
+        price = round(avg_price * 1.15, 2)
+        margin = margin_at(price, cluster, costs)
+        if margin is not None and margin < 6 and cluster in costs:
+            price, margin = _cost_plus_price(), 6.0
+    elif cluster in costs:
+        price, margin = _cost_plus_price(), 6.0
+    else:
+        price, margin = None, None
     supplier = costs.get(cluster, (0, 0, None))[2] if cluster else None
 
     intents = intents_of(keyword)
@@ -156,8 +157,13 @@ def write_pack(p):
 
     L += ["## 1. Noi dung dan vao Etsy (giu tieng Anh)", ""]
     L += ["**TITLE (dan vao o Title):**", "```", p["title"], "```", ""]
-    L += ["**TAGS (dan tung tag, du 13):**", "```",
+    tag_note = "du 13" if len(p["tags"]) == 13 else f"chi co {len(p['tags'])}/13"
+    L += [f"**TAGS (dan tung tag, {tag_note}):**", "```",
           ", ".join(p["tags"]), "```", ""]
+    if len(p["tags"]) < 13:
+        L += [f"> **OWNER CHECK:** thieu {13 - len(p['tags'])} tag co bang "
+              f"chung. Chay: py main.py expand \"{p['keyword']}\" de tim tag "
+              "that, khong tu bia them.", ""]
 
     # Quality gate: same validators as the main pipeline -- this pack path is no
     # longer ungated. Surfaces any title/tag issue to fix before publishing.
@@ -184,6 +190,14 @@ def write_pack(p):
                  "2. Type the name/text in the Personalization box",
                  "3. Double-check spelling - we print exactly what you enter!",
                  ""]
+    desc += [f"PERFECT FOR: {p['occ']}", "",
+             "Questions? We usually reply within a few hours."]
+    L += ["**DESCRIPTION (dan vao o Description):**",
+          "```"] + desc + ["```", ""]
+
+    # Supplier-specific DETAILS (material/size/shipping) stay a separate,
+    # clearly-labeled block: the stable copy above is never blocked on them,
+    # and unverified facts never get merged into the pasteable block itself.
     sup_row = None
     try:
         from src.supplier_pull import best_record_for
@@ -194,35 +208,37 @@ def write_pack(p):
     sizes = (sup_row[0].get("available_sizes") if sup_row else "") or ""
     proc = (sup_row[0].get("processing_time") if sup_row else "") or ""
     if material and sizes and proc:
-        desc += ["DETAILS",
-                 f"- Material: {material}",
-                 f"- Size: {sizes}",
-                 "- Made to order with care",
-                 "",
-                 f"PERFECT FOR: {p['occ']}",
-                 "",
-                 f"SHIPPING: Processing {proc} + carrier shipping. "
-                 "Need it by a date? Message us first!",
-                 "",
-                 "Questions? We usually reply within a few hours."]
-        L += ["**DESCRIPTION (dan vao o Description):**",
-              "```"] + desc + ["```", ""]
+        L += ["**THEM VAO CUOI DESCRIPTION (da co bang chung supplier):**",
+              "```",
+              "DETAILS",
+              f"- Material: {material}",
+              f"- Size: {sizes}",
+              "- Made to order with care",
+              "",
+              f"SHIPPING: Processing {proc} + carrier shipping. "
+              "Need it by a date? Message us first!",
+              "```", ""]
     else:
         missing = [n for n, v in (("material", material), ("size", sizes),
                                   ("processing time", proc)) if not v]
-        L += ["**DESCRIPTION: LISTING COPY BLOCKED - supplier details "
-              "missing**",
-              f"Missing evidence: {', '.join(missing)}.",
-              "Khong tao noi dung cho khach khi con thieu bang chung "
-              "supplier. Chay: py main.py supplier pod/embroidery "
-              f"\"{p['keyword']}\" va dien supplier_products.csv, roi chay "
-              "lai lenh nay.",
-              "(Internal note only - never paste this block into Etsy.)", ""]
+        L += ["**OWNER CHECK - them DETAILS vao cuoi Description truoc khi "
+              "dang:**",
+              f"Con thieu bang chung: {', '.join(missing)}.",
+              "Khong tu bia material/size/shipping. Chay: py main.py "
+              "supplier pod/embroidery "
+              f"\"{p['keyword']}\" va dien supplier_products.csv, roi them "
+              "doan DETAILS vao cuoi Description.", ""]
 
     marg = f" (ban giu lai ~${p['margin']:.2f})" if p["margin"] is not None else ""
     sup = f" | Supplier re nhat: {p['supplier']}" if p["supplier"] else ""
     niche = f" | Gia trung binh doi thu: ${p['avg_price']:.2f}" if p["avg_price"] else ""
-    L += [f"**GIA BAN: ${p['price']}**{marg}{sup}{niche}", ""]
+    if p["price"] is not None:
+        L += [f"**GIA BAN: ${p['price']}**{marg}{sup}{niche}", ""]
+    else:
+        L += ["**GIA BAN: DATA UNAVAILABLE - OWNER CHECK** (chua co gia doi "
+              "thu lan chi phi supplier de tinh gia). Chay: py main.py "
+              f"supplier pod/embroidery \"{p['keyword']}\" de co chi phi "
+              "that, hoac tu dien gia thu cong.", ""]
 
     if p["winners"]:
         L += ["## 2. Doi thu manh nhat (tham khao, KHONG copy)", ""]
@@ -291,5 +307,6 @@ def run_listing(keyword):
     if len(p['tags']) < 13:
         print(f"  LUU Y: chi tim duoc {len(p['tags'])}/13 tag lien quan. "
               f"Chay: py main.py expand \"{p['keyword']}\" de tu chon them.")
-    print(f"  Tags: {len(p['tags'])}/13  |  Gia: ${p['price']}"
+    price_s = f"${p['price']}" if p['price'] is not None else "DATA UNAVAILABLE"
+    print(f"  Tags: {len(p['tags'])}/13  |  Gia: {price_s}"
           + (f"  |  Lai ~${p['margin']:.2f}" if p['margin'] is not None else ""))
