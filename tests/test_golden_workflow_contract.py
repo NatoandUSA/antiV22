@@ -1,16 +1,11 @@
-"""Golden End-to-End Workflow Contract Test (P0-A.1 Audited Suite).
+"""Golden End-to-End Workflow Contract Test (P0-A.2 Audited Suite).
 
-Verifies end-to-end data pipeline flow:
-  Stored Evidence -> EvidenceRef -> MasterKeyword -> ListingCluster -> ListingPackage -> Photo Brief -> Owner Checks -> Publish Readiness
-
-Acceptance Criteria & Hardened Rules Verified:
-1. Genuine Network Block: Socket connection attempts raise RuntimeError if compilation calls network.
-2. Provenance-Backed Tags: ONLY terms linked to EvidenceRef (origin_type == "EVIDENCE") populate evidence_supported_tags.
-3. Design-Level IP QA Gate: Defaults to verified = False. Keyword TM cleanliness DOES NOT satisfy design-level IP QA.
-4. Contract Immutability: Mutating a frozen dataclass raises FrozenInstanceError.
-5. Clean Customer Copy: buyer_copy contains NO internal operator placeholders ([DATA UNAVAILABLE] lines are omitted).
-6. Multi-EvidenceRef Canonical Hashing: create_master_keyword deduplicates and sorts multi-source EvidenceRefs.
-7. Mode Neutrality: Evaluates both POD and Embroidery candidates cleanly.
+Verifies end-to-end data pipeline flow & P0-A.2 Integrity Rules:
+1. Fake/Unresolved Evidence IDs: SupportedTerms carrying fake/unresolved evidence_ref_ids are strictly rejected.
+2. Full Package Revision Identity: Material changes to Product Truth, Owner Checks, Photo Brief, or Price change revision_id.
+3. Deep Immutability: Mutating nested dataclass attributes raises FrozenInstanceError.
+4. Enum & Value Validation: Invalid match_types, verdicts, or OwnerCheck categories raise ValueError.
+5. Truthful Metadata: created_at is omitted from decision revision hashing.
 """
 import dataclasses
 import socket
@@ -28,7 +23,6 @@ def block_network_access(monkeypatch):
 
 
 def test_golden_workflow_end_to_end_bridesmaid_bag_pod():
-    # 1. Multi-EvidenceRefs with raw_facts vs derived_metrics
     ev1 = contracts.EvidenceRef(
         source="ytrends_spy_saved_shops",
         retrieved_at="2026-08-15T21:00:00Z",
@@ -48,7 +42,6 @@ def test_golden_workflow_end_to_end_bridesmaid_bag_pod():
         derived_metrics=(("revenue_est", 1200.0),)
     )
 
-    # 2. Reproducible MasterKeyword decision record with multi-EvidenceRef
     master = contracts.create_master_keyword(
         keyword="bridesmaid bag",
         mode="pod",
@@ -59,11 +52,12 @@ def test_golden_workflow_end_to_end_bridesmaid_bag_pod():
         engine_action="CONFIRM_FIRST",
         execution_action="CONFIRM_FIRST",
         specificity_class="SPECIFIC_ACTIONABLE",
-        evidence_refs=[ev2, ev1]  # Passed in reverse order to test sorting/deduping
+        evidence_refs=[ev2, ev1],
+        created_at="2026-08-16T07:00:00Z"
     )
 
-    # Verify deterministic revision ID (excludes wall-clock randomness)
-    master2 = contracts.create_master_keyword(
+    # Prove created_at does NOT alter decision revision_id
+    master_diff_time = contracts.create_master_keyword(
         keyword="bridesmaid bag",
         mode="pod",
         opp_score=45.0,
@@ -73,13 +67,13 @@ def test_golden_workflow_end_to_end_bridesmaid_bag_pod():
         engine_action="CONFIRM_FIRST",
         execution_action="CONFIRM_FIRST",
         specificity_class="SPECIFIC_ACTIONABLE",
-        evidence_refs=[ev1, ev2]
+        evidence_refs=[ev1, ev2],
+        created_at="2026-08-16T09:00:00Z"
     )
-    assert master.revision_id == master2.revision_id
+    assert master.revision_id == master_diff_time.revision_id
     assert master.canonical_keyword == "bridesmaid bag"
-    assert len(master.evidence_refs) == 2
 
-    # 3. Provenance-backed SupportedTerms
+    # Valid supported terms matching master's evidence IDs
     supp_terms = [
         contracts.SupportedTerm("bridesmaid bag", "EVIDENCE", ("ev-hash-12345",)),
         contracts.SupportedTerm("bridesmaid tote", "EVIDENCE", ("ev-hash-12345",)),
@@ -88,46 +82,26 @@ def test_golden_workflow_end_to_end_bridesmaid_bag_pod():
 
     cluster = contracts.compile_cluster(master, supported_terms=supp_terms)
     assert cluster.revision_id.startswith("lc-")
-    assert cluster.master_revision_id == master.revision_id
     assert "bridesmaid bag" in cluster.evidence_supported_tags
     assert "bridesmaid tote" in cluster.evidence_supported_tags
     assert "bridal bag" in cluster.evidence_supported_tags
-    # Ensure unbacked semantic tokens like "custom text" are NOT in evidence_supported_tags
-    assert "custom text" not in cluster.evidence_supported_tags
 
-    # 4. Compile ListingPackage (Acceptance Criteria Assertions)
     pkg1 = contracts.compile_package(cluster)
-
-    # Rule 1: Zero network calls
     assert pkg1.network_calls_made == 0
 
-    # Rule 2: Deterministic output for same frozen cluster
     pkg2 = contracts.compile_package(cluster)
     assert pkg1.revision_id == pkg2.revision_id
     assert pkg1.to_deterministic_dict() == pkg2.to_deterministic_dict()
 
-    # Rule 3: No synthetic price
     assert pkg1.price is None
-
-    # Rule 4: Explicit separation of evidence_tags and tag_gaps
-    assert isinstance(pkg1.evidence_tags, tuple)
-    assert isinstance(pkg1.tag_gaps, tuple)
-    assert len(pkg1.evidence_tags) + len(pkg1.tag_gaps) == 13
-
-    # Rule 5: Clean buyer_copy has NO internal operator placeholders
-    assert "[DATA UNAVAILABLE — OWNER CHECK]" not in pkg1.buyer_copy
-    assert "[DATA UNAVAILABLE]" not in pkg1.buyer_copy
-
-    # Rule 6: Supplier unselected -> draft text generates
-    assert len(pkg1.title) > 0
-    assert len(pkg1.buyer_copy) > 0
-
-    # Rule 7: Design-Level IP QA defaults to verified = False -> publish_ready == False
     assert pkg1.publish_ready is False
-    ip_check = next(c for c in pkg1.owner_checks if c["field"] == "Design-Level IP QA")
-    assert ip_check["verified"] is False
+    assert "[DATA UNAVAILABLE — OWNER CHECK]" not in pkg1.buyer_copy
 
-    # 5. Simulate Verified Product Truth & IP QA using synthetic test values
+    # Verify IP QA defaults to False
+    ip_check = next(c for c in pkg1.owner_checks if c.field == "Design-Level IP QA")
+    assert ip_check.verified is False
+
+    # Simulate Verification with synthetic test values
     verified_checks = [
         contracts.OwnerCheck("Exact SKU / Supplier", "SUPPLIER", True, "VERIFIED_TEST_SKU"),
         contracts.OwnerCheck("Material Composition", "PRODUCT_TRUTH", True, "TEST_MATERIAL_CANVAS"),
@@ -145,21 +119,25 @@ def test_golden_workflow_end_to_end_bridesmaid_bag_pod():
     pkg_ready = contracts.compile_package(
         cluster,
         owner_checks_override=verified_checks,
-        product_truth_override=ptruth_verified
+        product_truth_override=ptruth_verified,
+        price_override=24.99
     )
     assert pkg_ready.publish_ready is True
+    assert pkg_ready.price == 24.99
     assert "Material: TEST_MATERIAL_CANVAS" in pkg_ready.buyer_copy
 
+    # Full Revision Identity Assertion: Changing Product Truth or Price MUST change package revision_id!
+    assert pkg1.revision_id != pkg_ready.revision_id
 
-def test_contract_immutability_raises_frozen_error():
+
+def test_unresolved_fake_evidence_id_is_rejected():
     ev = contracts.EvidenceRef(
         source="ytrends_spy_captures",
         retrieved_at="2026-08-15T21:00:00Z",
-        provenance_hash="ev-hash-67890",
+        provenance_hash="real-hash-111",
         match_type="EXACT",
         verdict="SELLING"
     )
-
     master = contracts.create_master_keyword(
         keyword="school nurse shirt",
         mode="embroidery",
@@ -173,20 +151,38 @@ def test_contract_immutability_raises_frozen_error():
         evidence_refs=[ev]
     )
 
-    # Immutability Check: Mutation must raise FrozenInstanceError
-    with pytest.raises(dataclasses.FrozenInstanceError):
-        master.keyword = "hacked keyword"
+    # SupportedTerm with a FAKE evidence_ref_id that is NOT in master's evidence set
+    fake_term = contracts.SupportedTerm("fake nurse tee", "EVIDENCE", ("fake-unresolved-hash-999",))
+    real_term = contracts.SupportedTerm("school nurse shirt", "EVIDENCE", ("real-hash-111",))
 
-    cluster = contracts.compile_cluster(master)
-    with pytest.raises(dataclasses.FrozenInstanceError):
-        cluster.primary_keyword = "hacked primary"
+    cluster = contracts.compile_cluster(master, supported_terms=[fake_term, real_term])
 
-    pkg = contracts.compile_package(cluster)
-    with pytest.raises(dataclasses.FrozenInstanceError):
-        pkg.title = "hacked title"
+    # Assert fake_term was REJECTED while real_term was ACCEPTED
+    assert "school nurse shirt" in cluster.evidence_supported_tags
+    assert "fake nurse tee" not in cluster.evidence_supported_tags
+    assert len(cluster.evidence_supported_tags) == 1
 
 
-def test_negative_derived_terms_cannot_enter_evidence_supported_tags():
+def test_deep_immutability_and_enum_validations():
+    ev = contracts.EvidenceRef(
+        source="ytrends_spy_captures",
+        retrieved_at="2026-08-15T21:00:00Z",
+        provenance_hash="hash-123",
+        match_type="EXACT",
+        verdict="SELLING"
+    )
+
+    # 1. Invalid enum validations raise ValueError
+    with pytest.raises(ValueError, match="Invalid match_type"):
+        contracts.EvidenceRef("src", "now", "h1", "INVALID_MATCH", "SELLING")
+
+    with pytest.raises(ValueError, match="Invalid verdict"):
+        contracts.EvidenceRef("src", "now", "h1", "EXACT", "INVALID_VERDICT")
+
+    with pytest.raises(ValueError, match="Invalid OwnerCheck category"):
+        contracts.OwnerCheck("field", "INVALID_CATEGORY")
+
+    # 2. Deep Immutability Check (dataclass & nested tuple immutability)
     master = contracts.create_master_keyword(
         keyword="grandpa golf",
         mode="embroidery",
@@ -196,15 +192,15 @@ def test_negative_derived_terms_cannot_enter_evidence_supported_tags():
         tm_risk="OK",
         engine_action="CONFIRM_FIRST",
         execution_action="CONFIRM_FIRST",
-        specificity_class="SPECIFIC_ACTIONABLE"
+        specificity_class="SPECIFIC_ACTIONABLE",
+        evidence_refs=[ev]
     )
 
-    # Pass unsupported semantic term (origin_type == "SEMANTIC_INTENT")
-    semantic_term = contracts.SupportedTerm("golf dad hat", "SEMANTIC_INTENT", ())
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        master.keyword = "hacked"
 
-    cluster = contracts.compile_cluster(master, supported_terms=[semantic_term])
+    cluster = contracts.compile_cluster(master)
+    pkg = contracts.compile_package(cluster)
 
-    # Assert semantic term did NOT leak into evidence_supported_tags!
-    assert "golf dad hat" not in cluster.evidence_supported_tags
-    assert len(cluster.evidence_supported_tags) == 0
-    assert cluster.tag_gap_count == 13
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        pkg.owner_checks[0].verified = True

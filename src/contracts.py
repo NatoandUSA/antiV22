@@ -1,20 +1,18 @@
-"""22Etsy Core Data Contracts (P0-A.1 Contract Semantics Hardening).
+"""22Etsy Core Data Contracts (P0-A.2 Contract Integrity & Deep Immutability).
 
 Defines the immutable, versioned data contracts that pass between execution layers:
   RAW Evidence -> EvidenceRef -> MasterKeyword -> ListingCluster -> ListingPackage
 
-P0-A.1 Hardening Rules:
-1. Provenance-Backed Tags: ONLY terms linked to EvidenceRef provenance IDs can populate evidence_supported_tags.
-   Semantic intent labels (buyer roles, product nouns) are stored separately and CANNOT masquerade as evidence tags.
-2. Design-Level IP QA Gate: Default verified = False. Keyword-level TM cleanliness DOES NOT satisfy design-level IP clearance.
-3. Revision Immutability: All dataclasses use @dataclass(frozen=True) and tuple/mapping structures.
-4. Clean Customer Copy: Customer buyer_copy omits unverified physical claim lines entirely (no internal [DATA UNAVAILABLE] placeholders in customer text).
-5. Multi-EvidenceRef Canonical Hashing: create_master_keyword accepts multiple EvidenceRefs, deduplicates/sorts them, and hashes canonical JSON.
+P0-A.2 Integrity Rules:
+1. Strict Provenance Validation: SupportedTerm evidence_ref_ids MUST resolve to a valid provenance_hash in master.evidence_refs. Fake/unresolved IDs are rejected.
+2. Full Revision Identity: ListingPackage revision hash includes ALL content & state fields (product_truth_slots, photo_brief, price, owner_checks).
+3. Deep Immutability: All nested dataclasses (EvidenceRef, OwnerCheck) remain frozen dataclasses in tuples, preventing dictionary mutations.
+4. Value Validations: Enforces valid match_types, verdicts, and OwnerCheck categories.
+5. Truthful Metadata: Excludes volatile/fake created_at timestamps from contract decision identity.
 """
 import hashlib
 import json
 from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional, Tuple, Sequence
 
 TAG_LIMIT = 13
@@ -26,6 +24,10 @@ VALID_TM_RISKS = {"OK", "CAUTION", "HIGH"}
 VALID_ENGINE_ACTIONS = {"BUILD_NOW", "CONFIRM_FIRST", "REVIEW", "WATCH", "SKIP", "BLOCKED"}
 VALID_EXEC_ACTIONS = {"BUILD_NOW", "CONFIRM_FIRST", "MINE_NICHE"}
 VALID_SPECIFICITY_CLASSES = {"SPECIFIC_ACTIONABLE", "BROAD_PARENT"}
+
+VALID_MATCH_TYPES = {"EXACT", "GROUP"}
+VALID_VERDICTS = {"SELLING", "STRONG_SELLER", "PROVEN_WINNER", "LISTED"}
+VALID_CHECK_CATEGORIES = {"PRODUCT_TRUTH", "SUPPLIER", "IP_QA"}
 
 
 @dataclass(frozen=True)
@@ -50,6 +52,12 @@ class EvidenceRef:
     verdict: str                      # SELLING / STRONG_SELLER / PROVEN_WINNER / LISTED
     raw_facts: Tuple[Tuple[str, Any], ...] = ()         # Sorted immutable tuple of (key, value)
     derived_metrics: Tuple[Tuple[str, Any], ...] = ()   # Sorted immutable tuple of (key, value)
+
+    def __post_init__(self):
+        if self.match_type not in VALID_MATCH_TYPES:
+            raise ValueError(f"Invalid match_type: {self.match_type}")
+        if self.verdict not in VALID_VERDICTS:
+            raise ValueError(f"Invalid verdict: {self.verdict}")
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -76,11 +84,13 @@ class MasterKeyword:
     engine_action: str                 # BUILD_NOW / CONFIRM_FIRST / REVIEW / WATCH
     execution_action: str              # BUILD_NOW / CONFIRM_FIRST / MINE_NICHE
     specificity_class: str             # SPECIFIC_ACTIONABLE / BROAD_PARENT
-    evidence_refs: Tuple[Dict[str, Any], ...] = ()
+    evidence_refs: Tuple[EvidenceRef, ...] = ()
     created_at: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
+        d = asdict(self)
+        d["evidence_refs"] = [e.to_dict() for e in self.evidence_refs]
+        return d
 
 
 @dataclass(frozen=True)
@@ -108,6 +118,10 @@ class OwnerCheck:
     verified: bool = False
     note: str = ""
 
+    def __post_init__(self):
+        if self.category not in VALID_CHECK_CATEGORIES:
+            raise ValueError(f"Invalid OwnerCheck category: {self.category}")
+
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
 
@@ -123,7 +137,7 @@ class ListingPackage:
     product_truth_slots: Tuple[Tuple[str, Any], ...]
     photo_brief: str
     price: Optional[float]
-    owner_checks: Tuple[Dict[str, Any], ...]
+    owner_checks: Tuple[OwnerCheck, ...]
     network_calls_made: int = 0
 
     @property
@@ -131,12 +145,13 @@ class ListingPackage:
         """Derived property: publish_ready is True ONLY when all Owner Checks are verified."""
         if not self.owner_checks:
             return False
-        return all(bool(c.get("verified", False)) for c in self.owner_checks)
+        return all(c.verified for c in self.owner_checks)
 
     def to_deterministic_dict(self) -> Dict[str, Any]:
         """Returns a canonical dictionary representation excluding volatile properties."""
         d = asdict(self)
         d["publish_ready"] = self.publish_ready
+        d["owner_checks"] = [c.to_dict() for c in self.owner_checks]
         return d
 
 
@@ -150,10 +165,10 @@ def create_master_keyword(
     engine_action: str,
     execution_action: str,
     specificity_class: str,
-    evidence_refs: Optional[Sequence[EvidenceRef]] = None
+    evidence_refs: Optional[Sequence[EvidenceRef]] = None,
+    created_at: str = ""
 ) -> MasterKeyword:
-    """Create a 100% deterministic MasterKeyword decision record from canonical multi-EvidenceRef JSON."""
-    # Enum & Type Validations
+    """Create a 100% deterministic MasterKeyword decision record from canonical multi-EvidenceRef data."""
     if mode not in VALID_MODES:
         raise ValueError(f"Invalid mode: {mode}")
     if market_verdict not in VALID_MARKET_VERDICTS:
@@ -168,13 +183,13 @@ def create_master_keyword(
         raise ValueError(f"Invalid specificity_class: {specificity_class}")
 
     # Deduplicate & Sort EvidenceRefs by provenance_hash
-    ev_dict_map = {}
+    ev_map: Dict[str, EvidenceRef] = {}
     if evidence_refs:
         for ev in evidence_refs:
-            ev_dict_map[ev.provenance_hash] = ev.to_dict()
-    
-    sorted_ev_hashes = sorted(ev_dict_map.keys())
-    sorted_ev_dicts = [ev_dict_map[h] for h in sorted_ev_hashes]
+            ev_map[ev.provenance_hash] = ev
+
+    sorted_ev_hashes = sorted(ev_map.keys())
+    sorted_ev_refs = tuple(ev_map[h] for h in sorted_ev_hashes)
 
     # Canonical Hash Data Payload (Sorted Keys)
     hash_payload = {
@@ -205,8 +220,8 @@ def create_master_keyword(
         engine_action=engine_action,
         execution_action=execution_action,
         specificity_class=specificity_class,
-        evidence_refs=tuple(sorted_ev_dicts),
-        created_at="2026-08-16T00:00:00Z"  # Canonical static testable date for revision determinism
+        evidence_refs=sorted_ev_refs,
+        created_at=created_at
     )
 
 
@@ -217,9 +232,9 @@ def compile_cluster(
     """Compile a deterministic ListingCluster revision from a MasterKeyword record.
     
     Mode-neutral compiler for POD & Embroidery.
-    STRICT PROVENANCE RULE: ONLY terms with origin_type == "EVIDENCE" & non-empty evidence_ref_ids
-    can populate evidence_supported_tags.
-    Semantic intent labels stay strictly in separate semantic fields.
+    STRICT PROVENANCE RULE: ONLY terms with origin_type == "EVIDENCE" whose evidence_ref_ids ALL
+    resolve to provenance_hashes present in master.evidence_refs can populate evidence_supported_tags.
+    Unresolved/fake provenance IDs are strictly rejected.
     """
     kw = master.keyword.lower().strip()
     words = kw.split()
@@ -230,7 +245,6 @@ def compile_cluster(
     personalization = ["custom text"]
     style_modifiers = []
 
-    # Dynamic intent extraction (Semantic intent labels)
     for w in words:
         if w in ("bag", "tote", "pouch", "tshirt", "shirt", "crewneck", "sweatshirt", "hoodie", "hat", "cap", "mug"):
             product_nouns.append(w)
@@ -241,22 +255,25 @@ def compile_cluster(
         elif w in ("custom", "personalized", "monogram", "name"):
             personalization.append(w)
 
-    # STRICT PROVENANCE FILTERING FOR EVIDENCE TAGS
+    # Allowed evidence ID set from master
+    valid_evidence_ids = {e.provenance_hash for e in master.evidence_refs}
+
     evidence_tags = []
     seen = set()
 
     if supported_terms:
         for st in supported_terms:
             if st.origin_type == "EVIDENCE" and st.evidence_ref_ids:
-                t_clean = st.term.lower().strip()
-                if t_clean and t_clean not in seen and len(t_clean) <= MAX_TAG_LEN:
-                    seen.add(t_clean)
-                    evidence_tags.append(t_clean)
+                # STRICT PROVENANCE RESOLUTION: ALL evidence_ref_ids must resolve to master's evidence set
+                if all(ref_id in valid_evidence_ids for ref_id in st.evidence_ref_ids):
+                    t_clean = st.term.lower().strip()
+                    if t_clean and t_clean not in seen and len(t_clean) <= MAX_TAG_LEN:
+                        seen.add(t_clean)
+                        evidence_tags.append(t_clean)
 
     supported = tuple(evidence_tags[:TAG_LIMIT])
     tag_gap_count = max(0, TAG_LIMIT - len(supported))
 
-    # Deterministic cluster revision ID
     cluster_payload = {
         "master_revision_id": master.revision_id,
         "primary_keyword": kw,
@@ -284,12 +301,13 @@ def compile_cluster(
 def compile_package(
     cluster: ListingCluster,
     owner_checks_override: Optional[Sequence[OwnerCheck]] = None,
-    product_truth_override: Optional[Dict[str, Any]] = None
+    product_truth_override: Optional[Dict[str, Any]] = None,
+    price_override: Optional[float] = None
 ) -> ListingPackage:
     """Compile a deterministic ListingPackage from a frozen ListingCluster revision.
     
     Zero network calls. No synthetic prices. Explicit TAG_GAP tracking.
-    Customer-facing buyer_copy contains NO internal placeholders ([DATA UNAVAILABLE] lines are omitted).
+    Full Revision Identity: revision hash includes ALL content & state fields (product_truth_slots, photo_brief, price, owner_checks).
     Design-Level IP QA defaults to verified = False.
     """
     kw_cap = cluster.primary_keyword.title()
@@ -304,11 +322,9 @@ def compile_package(
     
     title = ", ".join(title_parts)
 
-    # Evidence Tags & explicit TAG_GAP separation
     evidence_tags = tuple(cluster.evidence_supported_tags)
     tag_gaps = tuple(f"TAG_GAP_{i+1}" for i in range(cluster.tag_gap_count))
 
-    # Product Truth Slots (Internal Data Structure)
     ptruth = product_truth_override or {}
     truth_slots = (
         ("material", ptruth.get("material", "UNVERIFIED")),
@@ -317,16 +333,14 @@ def compile_package(
         ("shipping", ptruth.get("shipping", "UNVERIFIED")),
     )
 
-    # Customer-Facing Buyer Copy (CLEAN: Omit physical claim lines until verified)
     buyer_copy_lines = [
         f"Personalized {kw_cap} — custom designed for {cluster.buyer_roles[0] if cluster.buyer_roles else 'special occasions'}.",
         "",
         "PERSONALIZATION INSTRUCTIONS",
         "• Enter the exact name, date, or text for customization.",
-        "• Double-check spelling before submitting your order.",
+        "• Double-check spelling before placing your order.",
     ]
     
-    # Only render physical claims in buyer_copy if verified in product_truth_override
     if ptruth.get("material") and ptruth["material"] != "UNVERIFIED":
         buyer_copy_lines.append(f"• Material: {ptruth['material']}")
     if ptruth.get("dimensions") and ptruth["dimensions"] != "UNVERIFIED":
@@ -334,7 +348,6 @@ def compile_package(
 
     buyer_copy = "\n".join(buyer_copy_lines)
 
-    # Truth-Aware Photo Brief
     photo_lines = [
         f"1. Main Hero Image: {kw_cap} in real use context.",
         "2. Product Angle: Clean front shot of primary design.",
@@ -347,7 +360,6 @@ def compile_package(
     ]
     photo_brief = "\n".join(photo_lines)
 
-    # Owner Checks (HARDENED: Design-Level IP QA defaults to verified = False!)
     if owner_checks_override:
         checks = tuple(owner_checks_override)
     else:
@@ -360,15 +372,17 @@ def compile_package(
             OwnerCheck("Design-Level IP QA", "IP_QA", False, "Artwork and design-level IP clearance required"),
         )
 
-    checks_dicts = tuple(c.to_dict() for c in checks)
-
-    # Package revision hash is deterministic
+    # FULL REVISION IDENTITY: Include all content, truth_slots, price, and owner check states in the hash payload
     pkg_payload = {
         "cluster_revision_id": cluster.revision_id,
         "title": title,
         "evidence_tags": list(evidence_tags),
         "tag_gap_count": cluster.tag_gap_count,
-        "buyer_copy": buyer_copy
+        "buyer_copy": buyer_copy,
+        "photo_brief": photo_brief,
+        "product_truth_slots": list(truth_slots),
+        "price": price_override,
+        "owner_checks": [c.to_dict() for c in checks]
     }
     pkg_json = json.dumps(pkg_payload, sort_keys=True, separators=(',', ':'))
     pkg_rev = f"lp-{hashlib.sha256(pkg_json.encode('utf-8')).hexdigest()[:12]}"
@@ -382,7 +396,7 @@ def compile_package(
         buyer_copy=buyer_copy,
         product_truth_slots=truth_slots,
         photo_brief=photo_brief,
-        price=None,  # Price is None until evidence/supplier sets it
-        owner_checks=checks_dicts,
+        price=price_override,
+        owner_checks=checks,
         network_calls_made=0
     )
