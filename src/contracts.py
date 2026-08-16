@@ -1,83 +1,87 @@
-"""22Etsy Core Data Contracts (P0-A.5 Final Root Cause Closure).
+"""22Etsy Core Data Contracts (P0-A.6 Final Contract Closure).
 
-Defines the immutable, versioned data contracts that pass between execution layers:
+Defines immutable, versioned contracts across:
   RAW Evidence -> EvidenceRef -> MasterKeyword -> ListingCluster -> ListingPackage
 
-P0-A.5 Final Root Cause Closure Rules:
-1. Dynamic Runtime Fit Status Alignment: Imports/shares valid statuses directly from src.product_fit.
-2. Value-Bound Product Truth Verification: Uses ProductTruthFact(field, value, verified, provenance_ref). buyer_copy & publish_ready require EXACT verified fact binding.
-3. Content Identity vs Freshness Separation: Evidence content_hash excludes retrieved_at so unchanged evidence updates do not churn Master revisions.
-4. Tag-Level Provenance Preservation: ListingCluster stores supported_terms tuple carrying exact evidence_ref_ids.
-5. Neutral Offer Semantics & Conditional Gift Photo Slot: Non-personalized items omit 'Custom'/'Personalized' claims; Gift photo slot requires gift intent.
-6. Constructor-Level Deep Freezing: All dataclass __post_init__ methods recursively freeze nested structures.
+P0-A.6 closure rules:
+1. Product Truth is exact-value bound: verified facts require provenance and OwnerCheck subject_ref binds to the exact fact revision.
+2. Publish price is seller-owned: only verified OWNER_SET PriceFact can satisfy publish readiness.
+3. Evidence content identity is stable across observations; same-content refreshes dedupe to the latest observation without revision churn.
+4. Tag provenance survives the cluster boundary with evidence ref + source-path bindings.
+5. Offer semantics stay neutral unless personalization/gift intent is explicitly present.
+6. Product-fit vocabulary comes from product_fit.PRODUCT_FIT_STATUSES as the canonical runtime source.
 """
 import hashlib
 import json
-from dataclasses import dataclass, field, asdict
-from typing import List, Dict, Any, Optional, Tuple, Sequence, Set
+from dataclasses import dataclass, asdict
+from typing import Dict, Any, Optional, Tuple, Sequence
 
 from src import product_fit
 
-COMPILER_VERSION = "p0-a.5"
+COMPILER_VERSION = "p0-a.6"
 TAG_LIMIT = 13
 MAX_TAG_LEN = 20
 
-# Dynamic alignment with src.product_fit vocabulary + runtime extensions
 VALID_MODES = {"pod", "embroidery"}
 VALID_MARKET_VERDICTS = {"GO", "CONDITIONAL", "WATCH", "SKIP"}
 VALID_TM_RISKS = {"OK", "CAUTION", "HIGH"}
 VALID_ENGINE_ACTIONS = {"BUILD_NOW", "CONFIRM_FIRST", "REVIEW", "WATCH", "SKIP", "BLOCKED"}
 VALID_EXEC_ACTIONS = {"BUILD_NOW", "CONFIRM_FIRST", "MINE_NICHE", "REVIEW_ACTIONABILITY", "BLOCKED", "SKIP", "WATCH"}
 VALID_SPECIFICITY_CLASSES = {"SPECIFIC_ACTIONABLE", "BROAD_PARENT", "AMBIGUOUS_REVIEW", "NOT_APPLICABLE", "NONE"}
-
-# Combine product_fit constants dynamically with base contract fallbacks
-VALID_FIT_STATUSES = {
-    product_fit.POD_FIT, product_fit.EMBROIDERY_FIT, product_fit.JEWELRY_FIT, product_fit.ACRYLIC_FIT,
-    product_fit.DIGITAL_FIT, product_fit.SHOP_NAME_LIKELY, product_fit.POLICY_RISK, product_fit.TRADEMARK_RISK,
-    product_fit.BROAD_SEED_ONLY, product_fit.NON_PRODUCT, product_fit.NEEDS_REVIEW, product_fit.THEME_FIT_READY,
-    product_fit.THEME_FIT_NEEDS_PRODUCT, product_fit.AMBIGUOUS_PHRASE, product_fit.LOW_BUYER_INTENT,
-    "NO_FIT", "BLOCKED", "NONE"
-}
+CONTRACT_ONLY_FIT_STATUSES = {"NO_FIT", "BLOCKED", "NONE"}
+VALID_FIT_STATUSES = set(product_fit.PRODUCT_FIT_STATUSES) | CONTRACT_ONLY_FIT_STATUSES
 
 VALID_MATCH_TYPES = {"EXACT", "GROUP"}
 VALID_VERDICTS = {"SELLING", "STRONG_SELLER", "PROVEN_WINNER", "LISTED"}
 VALID_CHECK_CATEGORIES = {"PRODUCT_TRUTH", "SUPPLIER", "IP_QA"}
-
 VALID_PRICE_PROVENANCES = {"EXACT_LISTING", "MODELED", "OWNER_SET", "UNVERIFIED"}
+VALID_PRODUCT_TRUTH_FIELDS = {"material", "dimensions", "colors", "shipping"}
 
 BASE_REQUIRED_OWNER_CHECK_FIELDS = {
     "Exact SKU / Supplier",
     "Material Composition",
     "Dimensions & Sizing",
     "Available Color Palette",
-    "Design-Level IP QA"
+    "Shipping / Processing",
+    "Design-Level IP QA",
 }
 
-GIFT_SIGNALS = {
-    "wedding", "bachelorette", "birthday", "christmas", "gift", "gifts",
-    "bridesmaid", "grandpa", "papa", "mom", "dad", "teacher", "nurse", "bride"
+TRUTH_CHECK_TO_FIELD = {
+    "Material Composition": "material",
+    "Dimensions & Sizing": "dimensions",
+    "Available Color Palette": "colors",
+    "Shipping / Processing": "shipping",
 }
+
+GIFT_OCCASIONS = {"wedding", "bachelorette", "birthday", "christmas"}
 
 
 def _deep_freeze(val: Any) -> Any:
-    """Recursively freeze dicts, lists, and sets into immutable tuples."""
     if isinstance(val, dict):
         return tuple(sorted((k, _deep_freeze(v)) for k, v in val.items()))
-    elif isinstance(val, (list, set, tuple)):
+    if isinstance(val, (list, set, tuple)):
         return tuple(_deep_freeze(v) for v in val)
     return val
+
+
+def _canonical_json(payload: Dict[str, Any]) -> str:
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"))
 
 
 @dataclass(frozen=True)
 class PriceFact:
     value: Optional[float]
     currency: str = "USD"
-    provenance_type: str = "UNVERIFIED"  # EXACT_LISTING / MODELED / OWNER_SET / UNVERIFIED
+    provenance_type: str = "UNVERIFIED"
     verified: bool = False
 
     def __post_init__(self):
+        currency = (self.currency or "").strip().upper()
+        object.__setattr__(self, "currency", currency)
         if self.provenance_type not in VALID_PRICE_PROVENANCES:
             raise ValueError(f"Invalid price provenance_type: {self.provenance_type}")
+        if not currency:
+            raise ValueError("PriceFact currency cannot be empty")
         if self.provenance_type == "UNVERIFIED" and self.verified:
             raise ValueError("UNVERIFIED price provenance cannot have verified=True!")
         if self.value is None and self.verified:
@@ -85,40 +89,79 @@ class PriceFact:
         if self.value is not None and self.value <= 0:
             raise ValueError("Price value must be positive")
 
+    @property
+    def publish_eligible(self) -> bool:
+        return bool(
+            self.verified
+            and self.provenance_type == "OWNER_SET"
+            and self.value is not None
+            and self.value > 0
+            and self.currency
+        )
+
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
 
 
 @dataclass(frozen=True)
 class ProductTruthFact:
-    field: str                        # material / dimensions / colors / shipping
-    value: str                        # e.g., "100% Cotton Canvas"
+    field: str
+    value: str
     verified: bool = False
     provenance_ref: str = ""
 
     def __post_init__(self):
-        if not self.field:
-            raise ValueError("ProductTruthFact field cannot be empty")
-        if not self.value:
+        field = (self.field or "").strip().lower()
+        value = (self.value or "").strip()
+        provenance_ref = (self.provenance_ref or "").strip()
+        object.__setattr__(self, "field", field)
+        object.__setattr__(self, "value", value)
+        object.__setattr__(self, "provenance_ref", provenance_ref)
+        if field not in VALID_PRODUCT_TRUTH_FIELDS:
+            raise ValueError(f"Invalid ProductTruthFact field: {field}")
+        if not value:
             raise ValueError("ProductTruthFact value cannot be empty")
+        if self.verified and not provenance_ref:
+            raise ValueError("Verified ProductTruthFact requires provenance_ref")
+        if self.verified and value == "UNVERIFIED":
+            raise ValueError("UNVERIFIED ProductTruthFact cannot have verified=True")
+
+    @property
+    def revision_id(self) -> str:
+        payload = {
+            "field": self.field,
+            "value": self.value,
+            "provenance_ref": self.provenance_ref,
+        }
+        return f"pt-{hashlib.sha256(_canonical_json(payload).encode('utf-8')).hexdigest()[:12]}"
 
     def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
+        d = asdict(self)
+        d["revision_id"] = self.revision_id
+        return d
 
 
 @dataclass(frozen=True)
 class SupportedTerm:
     term: str
-    origin_type: str                   # "EVIDENCE" or "SEMANTIC_INTENT"
+    origin_type: str
     evidence_ref_ids: Tuple[str, ...] = ()
+    source_paths: Tuple[str, ...] = ()
 
     def __post_init__(self):
         if self.origin_type not in ("EVIDENCE", "SEMANTIC_INTENT"):
             raise ValueError(f"Invalid origin_type: {self.origin_type}")
-        if self.origin_type == "EVIDENCE" and not self.evidence_ref_ids:
-            raise ValueError("EVIDENCE supported term must carry at least one evidence_ref_id provenance!")
-        object.__setattr__(self, "term", self.term.lower().strip())
+        term = (self.term or "").lower().strip()
+        object.__setattr__(self, "term", term)
         object.__setattr__(self, "evidence_ref_ids", _deep_freeze(self.evidence_ref_ids))
+        object.__setattr__(self, "source_paths", _deep_freeze(self.source_paths))
+        if self.origin_type == "EVIDENCE":
+            if not self.evidence_ref_ids:
+                raise ValueError("EVIDENCE supported term requires evidence_ref_ids")
+            if not self.source_paths or len(self.source_paths) != len(self.evidence_ref_ids):
+                raise ValueError("EVIDENCE supported term requires one source_path per evidence_ref_id")
+            if any(not str(p).strip() for p in self.source_paths):
+                raise ValueError("EVIDENCE source_paths cannot be empty")
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -129,53 +172,71 @@ class EvidenceRef:
     source: str
     retrieved_at: str
     provenance_hash: str
-    match_type: str                   # EXACT / GROUP
-    verdict: str                      # SELLING / STRONG_SELLER / PROVEN_WINNER / LISTED
-    raw_facts: Tuple[Tuple[str, Any], ...] = ()         # Deeply frozen tuple of (key, value)
-    derived_metrics: Tuple[Tuple[str, Any], ...] = ()   # Deeply frozen tuple of (key, value)
-    supported_terms_contained: Tuple[str, ...] = ()     # Explicit terms present in this evidence
+    match_type: str
+    verdict: str
+    raw_facts: Tuple[Tuple[str, Any], ...] = ()
+    derived_metrics: Tuple[Tuple[str, Any], ...] = ()
+    supported_terms_contained: Tuple[str, ...] = ()
+    term_source_paths: Tuple[Tuple[str, str], ...] = ()
 
     def __post_init__(self):
         if self.match_type not in VALID_MATCH_TYPES:
             raise ValueError(f"Invalid match_type: {self.match_type}")
         if self.verdict not in VALID_VERDICTS:
             raise ValueError(f"Invalid verdict: {self.verdict}")
-            
         object.__setattr__(self, "raw_facts", _deep_freeze(self.raw_facts))
         object.__setattr__(self, "derived_metrics", _deep_freeze(self.derived_metrics))
-        object.__setattr__(
-            self,
-            "supported_terms_contained",
-            tuple(sorted(t.lower().strip() for t in self.supported_terms_contained))
-        )
+        normalized_sources = tuple(sorted(
+            ((str(term).lower().strip(), str(path).strip()) for term, path in self.term_source_paths),
+            key=lambda x: (x[0], x[1]),
+        ))
+        if any(not term or not path for term, path in normalized_sources):
+            raise ValueError("EvidenceRef term_source_paths require non-empty term and path")
+        object.__setattr__(self, "term_source_paths", normalized_sources)
+        source_terms = {term for term, _ in normalized_sources}
+        legacy_terms = {str(t).lower().strip() for t in self.supported_terms_contained if str(t).strip()}
+        object.__setattr__(self, "supported_terms_contained", tuple(sorted(source_terms | legacy_terms)))
 
         computed = self.compute_content_hash()
         if self.provenance_hash and self.provenance_hash != computed:
-            raise ValueError(f"Supplied provenance_hash '{self.provenance_hash}' does not match computed content_hash '{computed}'!")
+            raise ValueError(
+                f"Supplied provenance_hash '{self.provenance_hash}' does not match computed content_hash '{computed}'!"
+            )
         object.__setattr__(self, "provenance_hash", computed)
 
     def compute_content_hash(self) -> str:
-        """Compute stable content_hash EXCLUDING observation time retrieved_at.
-        
-        Prevents Master revision churn on periodic refreshes if raw facts are unchanged.
-        """
         payload = {
             "source": self.source,
             "match_type": self.match_type,
             "verdict": self.verdict,
             "raw_facts": self.raw_facts,
             "derived_metrics": self.derived_metrics,
-            "supported_terms": self.supported_terms_contained
+            "supported_terms": self.supported_terms_contained,
+            "term_source_paths": self.term_source_paths,
         }
-        raw_json = json.dumps(payload, sort_keys=True, separators=(',', ':'))
-        return f"ev-{hashlib.sha256(raw_json.encode('utf-8')).hexdigest()[:12]}"
+        return f"ev-{hashlib.sha256(_canonical_json(payload).encode('utf-8')).hexdigest()[:12]}"
 
     @property
     def observation_id(self) -> str:
-        """Observation ID includes retrieved_at for snapshot freshness tracking."""
-        obs_payload = {"content_hash": self.provenance_hash, "retrieved_at": self.retrieved_at}
-        obs_json = json.dumps(obs_payload, sort_keys=True, separators=(',', ':'))
-        return f"obs-{hashlib.sha256(obs_json.encode('utf-8')).hexdigest()[:12]}"
+        payload = {"content_hash": self.provenance_hash, "retrieved_at": self.retrieved_at}
+        return f"obs-{hashlib.sha256(_canonical_json(payload).encode('utf-8')).hexdigest()[:12]}"
+
+    def source_paths_for_term(self, term: str) -> Tuple[str, ...]:
+        t = (term or "").lower().strip()
+        return tuple(path for candidate, path in self.term_source_paths if candidate == t)
+
+    def same_content(self, other: "EvidenceRef") -> bool:
+        return bool(
+            isinstance(other, EvidenceRef)
+            and self.provenance_hash == other.provenance_hash
+            and self.source == other.source
+            and self.match_type == other.match_type
+            and self.verdict == other.verdict
+            and self.raw_facts == other.raw_facts
+            and self.derived_metrics == other.derived_metrics
+            and self.supported_terms_contained == other.supported_terms_contained
+            and self.term_source_paths == other.term_source_paths
+        )
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -187,7 +248,8 @@ class EvidenceRef:
             "verdict": self.verdict,
             "raw_facts": dict(self.raw_facts),
             "derived_metrics": dict(self.derived_metrics),
-            "supported_terms_contained": list(self.supported_terms_contained)
+            "supported_terms_contained": list(self.supported_terms_contained),
+            "term_source_paths": [list(x) for x in self.term_source_paths],
         }
 
 
@@ -199,13 +261,13 @@ def make_evidence_ref(
     raw_facts: Optional[Dict[str, Any]] = None,
     derived_metrics: Optional[Dict[str, Any]] = None,
     supported_terms_contained: Optional[Sequence[str]] = None,
-    provenance_hash: str = ""
+    term_source_paths: Optional[Sequence[Tuple[str, str]]] = None,
+    provenance_hash: str = "",
 ) -> EvidenceRef:
-    """Helper constructor for EvidenceRef."""
     frozen_raw = _deep_freeze(raw_facts or {})
     frozen_derived = _deep_freeze(derived_metrics or {})
-    terms = tuple(sorted(t.lower().strip() for t in (supported_terms_contained or [])))
-    
+    terms = tuple(sorted(t.lower().strip() for t in (supported_terms_contained or []) if t.strip()))
+    sources = tuple(term_source_paths or ())
     dummy_ref = EvidenceRef(
         source=source,
         retrieved_at=retrieved_at,
@@ -214,19 +276,19 @@ def make_evidence_ref(
         verdict=verdict,
         raw_facts=frozen_raw,
         derived_metrics=frozen_derived,
-        supported_terms_contained=terms
+        supported_terms_contained=terms,
+        term_source_paths=sources,
     )
-    computed_hash = dummy_ref.compute_content_hash()
-    
     return EvidenceRef(
         source=source,
         retrieved_at=retrieved_at,
-        provenance_hash=provenance_hash or computed_hash,
+        provenance_hash=provenance_hash or dummy_ref.provenance_hash,
         match_type=match_type,
         verdict=verdict,
         raw_facts=frozen_raw,
         derived_metrics=frozen_derived,
-        supported_terms_contained=terms
+        supported_terms_contained=terms,
+        term_source_paths=sources,
     )
 
 
@@ -235,14 +297,14 @@ class MasterKeyword:
     revision_id: str
     keyword: str
     canonical_keyword: str
-    mode: str                          # pod / embroidery
+    mode: str
     opportunity_score: float
-    market_verdict: str                # GO / CONDITIONAL / WATCH / SKIP
-    product_fit_status: str            # POD_FIT / EMBROIDERY_FIT / THEME_FIT_NEEDS_PRODUCT / NO_FIT / BLOCKED / NONE
-    trademark_risk: str                # OK / CAUTION / HIGH
-    engine_action: str                 # BUILD_NOW / CONFIRM_FIRST / REVIEW / WATCH / SKIP / BLOCKED
-    execution_action: str              # BUILD_NOW / CONFIRM_FIRST / MINE_NICHE / REVIEW_ACTIONABILITY / BLOCKED / SKIP / WATCH
-    specificity_class: str             # SPECIFIC_ACTIONABLE / BROAD_PARENT / AMBIGUOUS_REVIEW / NOT_APPLICABLE / NONE
+    market_verdict: str
+    product_fit_status: str
+    trademark_risk: str
+    engine_action: str
+    execution_action: str
+    specificity_class: str
     evidence_refs: Tuple[EvidenceRef, ...] = ()
     created_at: str = ""
 
@@ -280,12 +342,10 @@ class ListingCluster:
 
     @property
     def evidence_supported_tags(self) -> Tuple[str, ...]:
-        """Derived property: plain tag strings carrying evidence provenance."""
-        tags = []
-        for st in self.supported_terms:
-            if st.origin_type == "EVIDENCE" and st.evidence_ref_ids:
-                tags.append(st.term)
-        return tuple(tags)
+        return tuple(
+            st.term for st in self.supported_terms
+            if st.origin_type == "EVIDENCE" and st.evidence_ref_ids and st.source_paths
+        )
 
     def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)
@@ -297,9 +357,10 @@ class ListingCluster:
 @dataclass(frozen=True)
 class OwnerCheck:
     field: str
-    category: str      # PRODUCT_TRUTH / SUPPLIER / IP_QA
+    category: str
     verified: bool = False
     note: str = ""
+    subject_ref: str = ""
 
     def __post_init__(self):
         if self.category not in VALID_CHECK_CATEGORIES:
@@ -328,39 +389,37 @@ class ListingPackage:
         object.__setattr__(self, "tag_gaps", _deep_freeze(self.tag_gaps))
         object.__setattr__(self, "product_truth_facts", _deep_freeze(self.product_truth_facts))
         object.__setattr__(self, "owner_checks", _deep_freeze(self.owner_checks))
+        fields = [f.field for f in self.product_truth_facts]
+        if len(fields) != len(set(fields)):
+            raise ValueError("Duplicate ProductTruthFact fields are not allowed")
 
     @property
     def publish_ready(self) -> bool:
-        """Derived property: publish_ready is True ONLY IF:
-        1. All required Owner Checks (context-aware) are present & verified.
-        2. PriceFact has a valid verified non-null positive price.
-        3. ProductTruthFact for 'shipping' exists AND is verified.
-        """
-        if not self.owner_checks:
-            return False
-        
-        # 1. Price Verification
-        if not self.price_fact or not self.price_fact.verified or self.price_fact.value is None or self.price_fact.value <= 0:
+        if not self.owner_checks or not self.price_fact.publish_eligible:
             return False
 
-        # 2. Verified Shipping ProductTruthFact
-        shipping_fact = next((f for f in self.product_truth_facts if f.field == "shipping"), None)
-        if not shipping_fact or not shipping_fact.verified or shipping_fact.value == "UNVERIFIED":
-            return False
-
-        # 3. Context-Aware Required Checks
-        check_map = {c.field: c.verified for c in self.owner_checks}
+        check_map = {c.field: c for c in self.owner_checks}
         if len(self.owner_checks) != len(check_map):
             return False
-            
+
+        truth_map = {f.field: f for f in self.product_truth_facts}
+        for check_field, truth_field in TRUTH_CHECK_TO_FIELD.items():
+            check = check_map.get(check_field)
+            fact = truth_map.get(truth_field)
+            if not check or not fact:
+                return False
+            if not check.verified or not fact.verified:
+                return False
+            if check.subject_ref != fact.revision_id:
+                return False
+
         required_fields = set(BASE_REQUIRED_OWNER_CHECK_FIELDS)
         if "PERSONALIZATION INSTRUCTIONS" in self.buyer_copy:
             required_fields.add("Personalization Limits")
-
-        for req_field in required_fields:
-            if req_field not in check_map or not check_map[req_field]:
+        for field in required_fields:
+            check = check_map.get(field)
+            if not check or not check.verified:
                 return False
-                
         return True
 
     def to_deterministic_dict(self) -> Dict[str, Any]:
@@ -383,11 +442,9 @@ def create_master_keyword(
     execution_action: str,
     specificity_class: str,
     evidence_refs: Optional[Sequence[EvidenceRef]] = None,
-    created_at: str = ""
+    created_at: str = "",
 ) -> MasterKeyword:
-    """Create a 100% deterministic MasterKeyword decision record with collision detection."""
     spec_cls = specificity_class if specificity_class is not None else "NONE"
-    
     if mode not in VALID_MODES:
         raise ValueError(f"Invalid mode: {mode}")
     if market_verdict not in VALID_MARKET_VERDICTS:
@@ -403,18 +460,21 @@ def create_master_keyword(
     if spec_cls not in VALID_SPECIFICITY_CLASSES:
         raise ValueError(f"Invalid specificity_class: {spec_cls}")
 
-    # Deduplicate & Sort EvidenceRefs by content_hash (provenance_hash)
     ev_map: Dict[str, EvidenceRef] = {}
     if evidence_refs:
         for ev in evidence_refs:
             h = ev.provenance_hash
-            if h in ev_map and ev_map[h] != ev:
-                raise ValueError(f"EvidenceRef hash collision detected! Same hash '{h}' supplied for conflicting evidence content.")
-            ev_map[h] = ev
+            if h not in ev_map:
+                ev_map[h] = ev
+                continue
+            existing = ev_map[h]
+            if not existing.same_content(ev):
+                raise ValueError(f"EvidenceRef hash collision detected for conflicting content: {h}")
+            if (ev.retrieved_at or "") > (existing.retrieved_at or ""):
+                ev_map[h] = ev
 
     sorted_ev_hashes = sorted(ev_map.keys())
     sorted_ev_refs = tuple(ev_map[h] for h in sorted_ev_hashes)
-
     hash_payload = {
         "keyword": keyword.lower().strip(),
         "mode": mode,
@@ -425,12 +485,9 @@ def create_master_keyword(
         "engine_action": engine_action,
         "execution_action": execution_action,
         "specificity_class": spec_cls,
-        "evidence_hashes": sorted_ev_hashes
+        "evidence_hashes": sorted_ev_hashes,
     }
-    
-    hash_json = json.dumps(hash_payload, sort_keys=True, separators=(',', ':'))
-    rev_id = f"mk-{hashlib.sha256(hash_json.encode('utf-8')).hexdigest()[:12]}"
-
+    rev_id = f"mk-{hashlib.sha256(_canonical_json(hash_payload).encode('utf-8')).hexdigest()[:12]}"
     return MasterKeyword(
         revision_id=rev_id,
         keyword=keyword,
@@ -444,18 +501,16 @@ def create_master_keyword(
         execution_action=execution_action,
         specificity_class=spec_cls,
         evidence_refs=sorted_ev_refs,
-        created_at=created_at
+        created_at=created_at,
     )
 
 
 def compile_cluster(
     master: MasterKeyword,
-    supported_terms: Optional[Sequence[SupportedTerm]] = None
+    supported_terms: Optional[Sequence[SupportedTerm]] = None,
 ) -> ListingCluster:
-    """Compile a deterministic ListingCluster revision from a MasterKeyword record."""
     kw = master.keyword.lower().strip()
     words = kw.split()
-
     product_nouns = []
     buyer_roles = []
     occasions = []
@@ -473,26 +528,33 @@ def compile_cluster(
             personalization.append(w)
 
     valid_ev_map = {e.provenance_hash: e for e in master.evidence_refs}
-
     cluster_terms = []
     seen = set()
-
     if supported_terms:
         for st in supported_terms:
-            if st.origin_type == "EVIDENCE" and st.evidence_ref_ids:
-                t_clean = st.term.lower().strip()
-                # Filter to EXACT evidence refs that contain t_clean
-                verified_refs = tuple(
-                    ref_id for ref_id in st.evidence_ref_ids
-                    if ref_id in valid_ev_map and t_clean in valid_ev_map[ref_id].supported_terms_contained
-                )
-                if verified_refs and t_clean not in seen and len(t_clean) <= MAX_TAG_LEN:
-                    seen.add(t_clean)
-                    cluster_terms.append(SupportedTerm(t_clean, "EVIDENCE", verified_refs))
+            if st.origin_type != "EVIDENCE":
+                continue
+            verified_ids = []
+            verified_paths = []
+            for ref_id, requested_path in zip(st.evidence_ref_ids, st.source_paths):
+                ev = valid_ev_map.get(ref_id)
+                if not ev:
+                    continue
+                allowed_paths = ev.source_paths_for_term(st.term)
+                if requested_path in allowed_paths:
+                    verified_ids.append(ref_id)
+                    verified_paths.append(requested_path)
+            if verified_ids and st.term not in seen and len(st.term) <= MAX_TAG_LEN:
+                seen.add(st.term)
+                cluster_terms.append(SupportedTerm(
+                    st.term,
+                    "EVIDENCE",
+                    tuple(verified_ids),
+                    tuple(verified_paths),
+                ))
 
     supported_tuple = tuple(cluster_terms[:TAG_LIMIT])
     tag_gap_count = max(0, TAG_LIMIT - len(supported_tuple))
-
     cluster_payload = {
         "compiler_version": COMPILER_VERSION,
         "master_revision_id": master.revision_id,
@@ -504,11 +566,9 @@ def compile_cluster(
         "personalization_angles": sorted(personalization),
         "style_modifiers": sorted(style_modifiers),
         "supported_terms": [st.to_dict() for st in supported_tuple],
-        "tag_gap_count": tag_gap_count
+        "tag_gap_count": tag_gap_count,
     }
-    cluster_json = json.dumps(cluster_payload, sort_keys=True, separators=(',', ':'))
-    cluster_rev = f"lc-{hashlib.sha256(cluster_json.encode('utf-8')).hexdigest()[:12]}"
-
+    cluster_rev = f"lc-{hashlib.sha256(_canonical_json(cluster_payload).encode('utf-8')).hexdigest()[:12]}"
     return ListingCluster(
         revision_id=cluster_rev,
         master_revision_id=master.revision_id,
@@ -521,7 +581,7 @@ def compile_cluster(
         style_modifiers=tuple(style_modifiers),
         supported_terms=supported_tuple,
         tag_gap_count=tag_gap_count,
-        compiler_version=COMPILER_VERSION
+        compiler_version=COMPILER_VERSION,
     )
 
 
@@ -529,30 +589,25 @@ def compile_package(
     cluster: ListingCluster,
     owner_checks_override: Optional[Sequence[OwnerCheck]] = None,
     product_truth_facts_override: Optional[Sequence[ProductTruthFact]] = None,
-    price_fact_override: Optional[PriceFact] = None
+    price_fact_override: Optional[PriceFact] = None,
 ) -> ListingPackage:
-    """Compile a deterministic ListingPackage from a frozen ListingCluster revision.
-    
-    Zero network calls.
-    VALUE-BOUND PRODUCT TRUTH: Physical copy renders in buyer_copy ONLY IF exact ProductTruthFact is verified.
-    NEUTRAL OFFER COPY & CONDITIONAL GIFT PHOTO SLOT: Non-personalized items omit 'Custom'/'Personalized' claims.
-    """
     kw_cap = cluster.primary_keyword.title()
-    roles = [r.title() for r in cluster.buyer_roles if r.lower() != cluster.primary_keyword.lower()]
-    prods = [p.title() for p in cluster.product_nouns]
-    
-    title_parts = [kw_cap]
-    if roles:
-        title_parts.append(roles[0] + " Gift")
-    if prods:
-        title_parts.append(prods[0])
-    
-    title = ", ".join(title_parts)
-
+    title = kw_cap
     evidence_tags = tuple(cluster.evidence_supported_tags)
-    tag_gaps = tuple(f"TAG_GAP_{i+1}" for i in range(cluster.tag_gap_count))
+    tag_gaps = tuple(f"TAG_GAP_{i + 1}" for i in range(cluster.tag_gap_count))
 
-    # Default Owner Checks
+    if product_truth_facts_override:
+        truth_facts = tuple(product_truth_facts_override)
+    else:
+        truth_facts = tuple(
+            ProductTruthFact(field, "UNVERIFIED", False, "")
+            for field in ("material", "dimensions", "colors", "shipping")
+        )
+    truth_fields = [f.field for f in truth_facts]
+    if len(truth_fields) != len(set(truth_fields)):
+        raise ValueError("Duplicate ProductTruthFact fields are not allowed")
+    truth_map = {f.field: f for f in truth_facts}
+
     if owner_checks_override:
         checks = tuple(owner_checks_override)
     else:
@@ -561,27 +616,17 @@ def compile_package(
             OwnerCheck("Material Composition", "PRODUCT_TRUTH", False, "Material unverified"),
             OwnerCheck("Dimensions & Sizing", "PRODUCT_TRUTH", False, "Dimensions unverified"),
             OwnerCheck("Available Color Palette", "PRODUCT_TRUTH", False, "Colors unverified"),
+            OwnerCheck("Shipping / Processing", "PRODUCT_TRUTH", False, "Shipping unverified"),
             OwnerCheck("Design-Level IP QA", "IP_QA", False, "Artwork and design-level IP clearance required"),
         ]
         if cluster.personalization_angles:
             check_list.append(OwnerCheck("Personalization Limits", "PRODUCT_TRUTH", False, "Character count limits unverified"))
-            
         checks = tuple(check_list)
 
-    # Product Truth Facts
-    if product_truth_facts_override:
-        truth_facts = tuple(product_truth_facts_override)
-    else:
-        truth_facts = (
-            ProductTruthFact("material", "UNVERIFIED", False),
-            ProductTruthFact("dimensions", "UNVERIFIED", False),
-            ProductTruthFact("colors", "UNVERIFIED", False),
-            ProductTruthFact("shipping", "UNVERIFIED", False),
-        )
+    check_map = {c.field: c for c in checks}
+    if len(checks) != len(check_map):
+        raise ValueError("Duplicate OwnerCheck fields are not allowed")
 
-    truth_map = {f.field: f for f in truth_facts}
-
-    # NEUTRAL LEAD SENTENCE & CONDITIONAL INSTRUCTIONS
     if cluster.personalization_angles:
         buyer_copy_lines = [
             f"Personalized {kw_cap} — custom designed for {cluster.buyer_roles[0] if cluster.buyer_roles else 'special occasions'}.",
@@ -591,27 +636,31 @@ def compile_package(
             "• Double-check spelling before submitting your order.",
         ]
     else:
-        buyer_copy_lines = [
-            f"{kw_cap} — designed for {cluster.buyer_roles[0] if cluster.buyer_roles else 'special occasions'}.",
-        ]
+        buyer_copy_lines = [f"{kw_cap}."]
 
-    # VALUE-BOUND PHYSICAL CLAIMS RENDERING: Render ONLY IF ProductTruthFact exists AND verified == True
-    mat_fact = truth_map.get("material")
-    if mat_fact and mat_fact.verified and mat_fact.value != "UNVERIFIED":
+    def _verified_bound_fact(truth_field: str, check_field: str) -> Optional[ProductTruthFact]:
+        fact = truth_map.get(truth_field)
+        check = check_map.get(check_field)
+        if not fact or not check:
+            return None
+        if not fact.verified or not check.verified:
+            return None
+        if not fact.provenance_ref or check.subject_ref != fact.revision_id:
+            return None
+        return fact
+
+    mat_fact = _verified_bound_fact("material", "Material Composition")
+    if mat_fact:
         buyer_copy_lines.append(f"• Material: {mat_fact.value}")
-
-    dim_fact = truth_map.get("dimensions")
-    if dim_fact and dim_fact.verified and dim_fact.value != "UNVERIFIED":
+    dim_fact = _verified_bound_fact("dimensions", "Dimensions & Sizing")
+    if dim_fact:
         buyer_copy_lines.append(f"• Dimensions: {dim_fact.value}")
-
     buyer_copy = "\n".join(buyer_copy_lines)
 
-    # CONDITIONAL PHOTO BRIEF (GIFT SLOT CONDITIONAL ON GIFT INTENT)
-    has_gift_intent = any(
-        w.lower() in GIFT_SIGNALS
-        for list_terms in (cluster.buyer_roles, cluster.occasions, cluster.product_nouns, [cluster.primary_keyword])
-        for w in list_terms
-    )
+    keyword_tokens = set(cluster.primary_keyword.lower().split())
+    has_explicit_gift = bool(keyword_tokens & {"gift", "gifts"})
+    has_gift_occasion = bool(set(cluster.occasions) & GIFT_OCCASIONS)
+    has_gift_intent = has_explicit_gift or has_gift_occasion
 
     photo_lines = [
         f"1. Main Hero Image: {kw_cap} in real use context.",
@@ -620,24 +669,19 @@ def compile_package(
     ]
     if cluster.personalization_angles:
         photo_lines.append("4. Personalization Explainer: Clear visual showing custom text placement.")
-        
     photo_lines.extend([
         "5. Size & Dimension Graphic: [RENDER ONLY AFTER PRODUCT TRUTH VERIFIED]",
         "6. Color Palette Grid: [RENDER ONLY AFTER PRODUCT TRUTH VERIFIED]",
     ])
     if has_gift_intent:
         photo_lines.append("7. Gift Context: Package / presentation visual.")
-
     if cluster.personalization_angles:
         photo_lines.append("8. Ordering Process Infographic: Step 1 Select Options -> Step 2 Add Personalization -> Step 3 Checkout.")
     else:
         photo_lines.append("8. Ordering Process Infographic: Step 1 Select Options -> Step 2 Checkout.")
-
     photo_brief = "\n".join(photo_lines)
 
-    price_fact = price_fact_override or PriceFact(value=None, currency="USD", provenance_type="UNVERIFIED", verified=False)
-
-    # Full Revision Identity: Include all content, truth_facts, price_fact, and owner checks
+    price_fact = price_fact_override or PriceFact(None, "USD", "UNVERIFIED", False)
     pkg_payload = {
         "cluster_revision_id": cluster.revision_id,
         "title": title,
@@ -647,11 +691,9 @@ def compile_package(
         "photo_brief": photo_brief,
         "product_truth_facts": [f.to_dict() for f in truth_facts],
         "price_fact": price_fact.to_dict(),
-        "owner_checks": [c.to_dict() for c in checks]
+        "owner_checks": [c.to_dict() for c in checks],
     }
-    pkg_json = json.dumps(pkg_payload, sort_keys=True, separators=(',', ':'))
-    pkg_rev = f"lp-{hashlib.sha256(pkg_json.encode('utf-8')).hexdigest()[:12]}"
-
+    pkg_rev = f"lp-{hashlib.sha256(_canonical_json(pkg_payload).encode('utf-8')).hexdigest()[:12]}"
     return ListingPackage(
         revision_id=pkg_rev,
         cluster_revision_id=cluster.revision_id,
@@ -663,5 +705,5 @@ def compile_package(
         photo_brief=photo_brief,
         price_fact=price_fact,
         owner_checks=checks,
-        network_calls_made=0
+        network_calls_made=0,
     )
