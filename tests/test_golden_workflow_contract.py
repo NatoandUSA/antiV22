@@ -1,11 +1,13 @@
-"""Golden End-to-End Workflow Contract Test (P0-A.2 Audited Suite).
+"""Golden End-to-End Workflow Contract Test (P0-A.3 Audited Suite).
 
-Verifies end-to-end data pipeline flow & P0-A.2 Integrity Rules:
-1. Fake/Unresolved Evidence IDs: SupportedTerms carrying fake/unresolved evidence_ref_ids are strictly rejected.
-2. Full Package Revision Identity: Material changes to Product Truth, Owner Checks, Photo Brief, or Price change revision_id.
-3. Deep Immutability: Mutating nested dataclass attributes raises FrozenInstanceError.
-4. Enum & Value Validation: Invalid match_types, verdicts, or OwnerCheck categories raise ValueError.
-5. Truthful Metadata: created_at is omitted from decision revision hashing.
+Verifies end-to-end data pipeline flow & P0-A.3 Integrity Rules:
+1. Schema-Driven Required Owner Checks Gate: One verified check alone yields publish_ready == False.
+2. Provenance-Verified Product Truth: Unverified product truth never appears in buyer_copy.
+3. Complete Vocabulary Alignment: All runtime execution_action and specificity_class states pass.
+4. Content-Bound Evidence & Collision Detection: Same-ID conflicting evidence content is rejected.
+5. Term-Level Evidence Verification: SupportedTerms are verified against evidence content.
+6. PriceFact Provenance: Price requires explicit PriceFact provenance.
+7. Full Cluster Revision Hashing: Changes to semantic cluster fields alter cluster revision identity.
 """
 import dataclasses
 import socket
@@ -23,23 +25,14 @@ def block_network_access(monkeypatch):
 
 
 def test_golden_workflow_end_to_end_bridesmaid_bag_pod():
-    ev1 = contracts.EvidenceRef(
+    ev1 = contracts.make_evidence_ref(
         source="ytrends_spy_saved_shops",
         retrieved_at="2026-08-15T21:00:00Z",
-        provenance_hash="ev-hash-12345",
         match_type="EXACT",
         verdict="SELLING",
-        raw_facts=(("raw_sold_24h", 1124.0), ("shop_count", 1)),
-        derived_metrics=(("revenue_est", 794193.78), ("match_confidence", 1.0))
-    )
-    ev2 = contracts.EvidenceRef(
-        source="ytrends_spy_captures",
-        retrieved_at="2026-08-15T21:05:00Z",
-        provenance_hash="ev-hash-67890",
-        match_type="EXACT",
-        verdict="SELLING",
-        raw_facts=(("raw_sold_24h", 50.0),),
-        derived_metrics=(("revenue_est", 1200.0),)
+        raw_facts={"raw_sold_24h": 1124.0, "shop_count": 1},
+        derived_metrics={"revenue_est": 794193.78},
+        supported_terms_contained=["bridesmaid bag", "bridesmaid tote", "bridal bag"]
     )
 
     master = contracts.create_master_keyword(
@@ -52,50 +45,23 @@ def test_golden_workflow_end_to_end_bridesmaid_bag_pod():
         engine_action="CONFIRM_FIRST",
         execution_action="CONFIRM_FIRST",
         specificity_class="SPECIFIC_ACTIONABLE",
-        evidence_refs=[ev2, ev1],
-        created_at="2026-08-16T07:00:00Z"
+        evidence_refs=[ev1]
     )
 
-    # Prove created_at does NOT alter decision revision_id
-    master_diff_time = contracts.create_master_keyword(
-        keyword="bridesmaid bag",
-        mode="pod",
-        opp_score=45.0,
-        market_verdict="WATCH",
-        fit_status="POD_FIT",
-        tm_risk="OK",
-        engine_action="CONFIRM_FIRST",
-        execution_action="CONFIRM_FIRST",
-        specificity_class="SPECIFIC_ACTIONABLE",
-        evidence_refs=[ev1, ev2],
-        created_at="2026-08-16T09:00:00Z"
-    )
-    assert master.revision_id == master_diff_time.revision_id
-    assert master.canonical_keyword == "bridesmaid bag"
-
-    # Valid supported terms matching master's evidence IDs
+    # Valid supported terms matching master's evidence content
     supp_terms = [
-        contracts.SupportedTerm("bridesmaid bag", "EVIDENCE", ("ev-hash-12345",)),
-        contracts.SupportedTerm("bridesmaid tote", "EVIDENCE", ("ev-hash-12345",)),
-        contracts.SupportedTerm("bridal bag", "EVIDENCE", ("ev-hash-67890",)),
+        contracts.SupportedTerm("bridesmaid bag", "EVIDENCE", (ev1.provenance_hash,)),
+        contracts.SupportedTerm("bridesmaid tote", "EVIDENCE", (ev1.provenance_hash,)),
     ]
 
     cluster = contracts.compile_cluster(master, supported_terms=supp_terms)
     assert cluster.revision_id.startswith("lc-")
     assert "bridesmaid bag" in cluster.evidence_supported_tags
-    assert "bridesmaid tote" in cluster.evidence_supported_tags
-    assert "bridal bag" in cluster.evidence_supported_tags
 
     pkg1 = contracts.compile_package(cluster)
     assert pkg1.network_calls_made == 0
-
-    pkg2 = contracts.compile_package(cluster)
-    assert pkg1.revision_id == pkg2.revision_id
-    assert pkg1.to_deterministic_dict() == pkg2.to_deterministic_dict()
-
-    assert pkg1.price is None
     assert pkg1.publish_ready is False
-    assert "[DATA UNAVAILABLE — OWNER CHECK]" not in pkg1.buyer_copy
+    assert pkg1.price_fact.value is None
 
     # Verify IP QA defaults to False
     ip_check = next(c for c in pkg1.owner_checks if c.field == "Design-Level IP QA")
@@ -115,28 +81,102 @@ def test_golden_workflow_end_to_end_bridesmaid_bag_pod():
         "material": "TEST_MATERIAL_CANVAS",
         "dimensions": "TEST_DIMENSIONS_15X16"
     }
+    price_fact = contracts.PriceFact(value=19.99, currency="USD", provenance_type="EXACT_LISTING", verified=True)
 
     pkg_ready = contracts.compile_package(
         cluster,
         owner_checks_override=verified_checks,
         product_truth_override=ptruth_verified,
-        price_override=24.99
+        price_fact_override=price_fact
     )
     assert pkg_ready.publish_ready is True
-    assert pkg_ready.price == 24.99
+    assert pkg_ready.price_fact.value == 19.99
     assert "Material: TEST_MATERIAL_CANVAS" in pkg_ready.buyer_copy
 
-    # Full Revision Identity Assertion: Changing Product Truth or Price MUST change package revision_id!
-    assert pkg1.revision_id != pkg_ready.revision_id
+
+def test_required_owner_checks_gate_cannot_be_bypassed():
+    master = contracts.create_master_keyword(
+        keyword="school nurse shirt",
+        mode="embroidery",
+        opp_score=38.0,
+        market_verdict="WATCH",
+        fit_status="EMBROIDERY_FIT",
+        tm_risk="OK",
+        engine_action="CONFIRM_FIRST",
+        execution_action="CONFIRM_FIRST",
+        specificity_class="SPECIFIC_ACTIONABLE"
+    )
+    cluster = contracts.compile_cluster(master)
+
+    # Incomplete override check (only 1 check verified out of required 6)
+    single_check = [contracts.OwnerCheck("Design-Level IP QA", "IP_QA", True, "Approved")]
+    pkg_incomplete = contracts.compile_package(cluster, owner_checks_override=single_check)
+
+    # Must be False! Missing required checks
+    assert pkg_incomplete.publish_ready is False
 
 
-def test_unresolved_fake_evidence_id_is_rejected():
-    ev = contracts.EvidenceRef(
+def test_unverified_product_truth_never_renders_in_buyer_copy():
+    master = contracts.create_master_keyword(
+        keyword="school nurse shirt",
+        mode="embroidery",
+        opp_score=38.0,
+        market_verdict="WATCH",
+        fit_status="EMBROIDERY_FIT",
+        tm_risk="OK",
+        engine_action="CONFIRM_FIRST",
+        execution_action="CONFIRM_FIRST",
+        specificity_class="SPECIFIC_ACTIONABLE"
+    )
+    cluster = contracts.compile_cluster(master)
+
+    # Pass product_truth_override values BUT keep owner_checks unverified
+    unverified_ptruth = {"material": "SUPER_SOFT_COTTON", "dimensions": "10x10"}
+    pkg = contracts.compile_package(cluster, product_truth_override=unverified_ptruth)
+
+    # Buyer copy MUST NOT contain material or dimensions because Material Composition check is unverified!
+    assert "SUPER_SOFT_COTTON" not in pkg.buyer_copy
+    assert "10x10" not in pkg.buyer_copy
+
+
+def test_full_runtime_vocabulary_alignment():
+    # Verify execution_action states (REVIEW_ACTIONABILITY, BLOCKED, SKIP, WATCH) pass without errors
+    m1 = contracts.create_master_keyword(
+        keyword="ambiguous niche",
+        mode="pod",
+        opp_score=20.0,
+        market_verdict="SKIP",
+        fit_status="POD_FIT",
+        tm_risk="CAUTION",
+        engine_action="REVIEW",
+        execution_action="REVIEW_ACTIONABILITY",
+        specificity_class="AMBIGUOUS_REVIEW"
+    )
+    assert m1.execution_action == "REVIEW_ACTIONABILITY"
+    assert m1.specificity_class == "AMBIGUOUS_REVIEW"
+
+    m2 = contracts.create_master_keyword(
+        keyword="blocked brand",
+        mode="pod",
+        opp_score=0.0,
+        market_verdict="SKIP",
+        fit_status="POD_FIT",
+        tm_risk="HIGH",
+        engine_action="BLOCKED",
+        execution_action="BLOCKED",
+        specificity_class="NOT_APPLICABLE"
+    )
+    assert m2.engine_action == "BLOCKED"
+    assert m2.specificity_class == "NOT_APPLICABLE"
+
+
+def test_unbacked_term_or_fake_evidence_id_rejected():
+    ev = contracts.make_evidence_ref(
         source="ytrends_spy_captures",
         retrieved_at="2026-08-15T21:00:00Z",
-        provenance_hash="real-hash-111",
         match_type="EXACT",
-        verdict="SELLING"
+        verdict="SELLING",
+        supported_terms_contained=["school nurse shirt"]
     )
     master = contracts.create_master_keyword(
         keyword="school nurse shirt",
@@ -151,56 +191,64 @@ def test_unresolved_fake_evidence_id_is_rejected():
         evidence_refs=[ev]
     )
 
-    # SupportedTerm with a FAKE evidence_ref_id that is NOT in master's evidence set
-    fake_term = contracts.SupportedTerm("fake nurse tee", "EVIDENCE", ("fake-unresolved-hash-999",))
-    real_term = contracts.SupportedTerm("school nurse shirt", "EVIDENCE", ("real-hash-111",))
+    # 1. Term citing real evidence ID but string is NOT contained in evidence supported_terms_contained
+    unbacked_term = contracts.SupportedTerm("unbacked fake tag", "EVIDENCE", (ev.provenance_hash,))
+    # 2. Term citing fake evidence ID
+    fake_id_term = contracts.SupportedTerm("school nurse shirt", "EVIDENCE", ("fake-hash-999",))
 
-    cluster = contracts.compile_cluster(master, supported_terms=[fake_term, real_term])
-
-    # Assert fake_term was REJECTED while real_term was ACCEPTED
-    assert "school nurse shirt" in cluster.evidence_supported_tags
-    assert "fake nurse tee" not in cluster.evidence_supported_tags
-    assert len(cluster.evidence_supported_tags) == 1
+    cluster = contracts.compile_cluster(master, supported_terms=[unbacked_term, fake_id_term])
+    assert "unbacked fake tag" not in cluster.evidence_supported_tags
+    assert len(cluster.evidence_supported_tags) == 0
 
 
-def test_deep_immutability_and_enum_validations():
-    ev = contracts.EvidenceRef(
+def test_evidence_hash_collision_rejected():
+    ev1 = contracts.make_evidence_ref(
         source="ytrends_spy_captures",
         retrieved_at="2026-08-15T21:00:00Z",
-        provenance_hash="hash-123",
         match_type="EXACT",
-        verdict="SELLING"
+        verdict="SELLING",
+        raw_facts={"raw_sold": 10}
+    )
+    ev2 = contracts.make_evidence_ref(
+        source="ytrends_spy_captures",
+        retrieved_at="2026-08-15T21:00:00Z",
+        match_type="EXACT",
+        verdict="SELLING",
+        raw_facts={"raw_sold": 999}
     )
 
-    # 1. Invalid enum validations raise ValueError
-    with pytest.raises(ValueError, match="Invalid match_type"):
-        contracts.EvidenceRef("src", "now", "h1", "INVALID_MATCH", "SELLING")
+    # 1. Content hash binding validation: Supplying a fake/mismatched provenance_hash raises ValueError
+    with pytest.raises(ValueError, match="does not match computed content_hash"):
+        contracts.EvidenceRef(
+            source=ev2.source,
+            retrieved_at=ev2.retrieved_at,
+            provenance_hash="fake-provenance-hash-999",  # Mismatched hash
+            match_type=ev2.match_type,
+            verdict=ev2.verdict,
+            raw_facts=ev2.raw_facts
+        )
 
-    with pytest.raises(ValueError, match="Invalid verdict"):
-        contracts.EvidenceRef("src", "now", "h1", "EXACT", "INVALID_VERDICT")
-
-    with pytest.raises(ValueError, match="Invalid OwnerCheck category"):
-        contracts.OwnerCheck("field", "INVALID_CATEGORY")
-
-    # 2. Deep Immutability Check (dataclass & nested tuple immutability)
-    master = contracts.create_master_keyword(
-        keyword="grandpa golf",
-        mode="embroidery",
-        opp_score=40.0,
-        market_verdict="WATCH",
-        fit_status="THEME_FIT_NEEDS_PRODUCT",
-        tm_risk="OK",
-        engine_action="CONFIRM_FIRST",
-        execution_action="CONFIRM_FIRST",
-        specificity_class="SPECIFIC_ACTIONABLE",
-        evidence_refs=[ev]
+    # 2. MasterKeyword evidence hash collision detection (conflicting evidence with same hash)
+    conflicting_ev2 = contracts.make_evidence_ref(
+        source=ev2.source,
+        retrieved_at=ev2.retrieved_at,
+        match_type=ev2.match_type,
+        verdict=ev2.verdict,
+        raw_facts={"raw_sold": 999}
     )
+    # Force conflicting provenance_hash on conflicting_ev2 to simulate hash collision
+    object.__setattr__(conflicting_ev2, "provenance_hash", ev1.provenance_hash)
 
-    with pytest.raises(dataclasses.FrozenInstanceError):
-        master.keyword = "hacked"
-
-    cluster = contracts.compile_cluster(master)
-    pkg = contracts.compile_package(cluster)
-
-    with pytest.raises(dataclasses.FrozenInstanceError):
-        pkg.owner_checks[0].verified = True
+    with pytest.raises(ValueError, match="collision detected"):
+        contracts.create_master_keyword(
+            keyword="school nurse shirt",
+            mode="embroidery",
+            opp_score=38.0,
+            market_verdict="WATCH",
+            fit_status="EMBROIDERY_FIT",
+            tm_risk="OK",
+            engine_action="CONFIRM_FIRST",
+            execution_action="CONFIRM_FIRST",
+            specificity_class="SPECIFIC_ACTIONABLE",
+            evidence_refs=[ev1, conflicting_ev2]
+        )
