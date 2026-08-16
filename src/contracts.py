@@ -37,22 +37,27 @@ VALID_CHECK_CATEGORIES = {"PRODUCT_TRUTH", "SUPPLIER", "IP_QA"}
 VALID_PRICE_PROVENANCES = {"EXACT_LISTING", "MODELED", "OWNER_SET", "UNVERIFIED"}
 VALID_PRODUCT_TRUTH_FIELDS = {"material", "dimensions", "colors", "shipping"}
 
-BASE_REQUIRED_OWNER_CHECK_FIELDS = {
-    "Exact SKU / Supplier",
-    "Material Composition",
-    "Dimensions & Sizing",
-    "Available Color Palette",
-    "Shipping / Processing",
-    "Design-Level IP QA",
-}
+# Single source of truth for owner-check fields: name, category, default
+# unverified message, and (if any) the product-truth field it binds to.
+# publish_ready and compile_package's default check list both derive from
+# this so the two representations of "what must be verified" can't drift --
+# a field renamed/removed in one place is automatically renamed/removed
+# in the other, instead of failing silently later.
+OWNER_CHECK_SPECS = (
+    ("Exact SKU / Supplier", "SUPPLIER", "Supplier not selected yet", None),
+    ("Material Composition", "PRODUCT_TRUTH", "Material unverified", "material"),
+    ("Dimensions & Sizing", "PRODUCT_TRUTH", "Dimensions unverified", "dimensions"),
+    ("Available Color Palette", "PRODUCT_TRUTH", "Colors unverified", "colors"),
+    ("Shipping / Processing", "PRODUCT_TRUTH", "Shipping unverified", "shipping"),
+    ("Design-Level IP QA", "IP_QA", "Artwork and design-level IP clearance required", None),
+)
+BASE_REQUIRED_OWNER_CHECK_FIELDS = {spec[0] for spec in OWNER_CHECK_SPECS}
+TRUTH_CHECK_TO_FIELD = {spec[0]: spec[3] for spec in OWNER_CHECK_SPECS if spec[3]}
 
-TRUTH_CHECK_TO_FIELD = {
-    "Material Composition": "material",
-    "Dimensions & Sizing": "dimensions",
-    "Available Color Palette": "colors",
-    "Shipping / Processing": "shipping",
-}
-
+# Buyer role alone (bridesmaid, grandpa, ...) is inferred, not explicit --
+# rule #5 requires explicit gift intent, so only occasion words or a literal
+# "gift"/"gifts" token trigger the photo-brief Gift Context slot. See
+# test_bare_buyer_role_alone_does_not_trigger_gift_context.
 GIFT_OCCASIONS = {"wedding", "bachelorette", "birthday", "christmas"}
 
 
@@ -403,23 +408,25 @@ class ListingPackage:
             return False
 
         truth_map = {f.field: f for f in self.product_truth_facts}
-        for check_field, truth_field in TRUTH_CHECK_TO_FIELD.items():
-            check = check_map.get(check_field)
-            fact = truth_map.get(truth_field)
-            if not check or not fact:
-                return False
-            if not check.verified or not fact.verified:
-                return False
-            if check.subject_ref != fact.revision_id:
-                return False
-
         required_fields = set(BASE_REQUIRED_OWNER_CHECK_FIELDS)
         if "PERSONALIZATION INSTRUCTIONS" in self.buyer_copy:
             required_fields.add("Personalization Limits")
-        for field in required_fields:
-            check = check_map.get(field)
+
+        # One loop over the single required-fields source of truth: every
+        # field must be verified, and any field with a truth-fact binding
+        # (per TRUTH_CHECK_TO_FIELD) must also have its exact fact revision
+        # bound. required_fields and TRUTH_CHECK_TO_FIELD both derive from
+        # OWNER_CHECK_SPECS, so a binding check can no longer be silently
+        # skipped by the two sets drifting apart.
+        for check_field in required_fields:
+            check = check_map.get(check_field)
             if not check or not check.verified:
                 return False
+            truth_field = TRUTH_CHECK_TO_FIELD.get(check_field)
+            if truth_field:
+                fact = truth_map.get(truth_field)
+                if not fact or not fact.verified or check.subject_ref != fact.revision_id:
+                    return False
         return True
 
     def to_deterministic_dict(self) -> Dict[str, Any]:
@@ -611,14 +618,8 @@ def compile_package(
     if owner_checks_override:
         checks = tuple(owner_checks_override)
     else:
-        check_list = [
-            OwnerCheck("Exact SKU / Supplier", "SUPPLIER", False, "Supplier not selected yet"),
-            OwnerCheck("Material Composition", "PRODUCT_TRUTH", False, "Material unverified"),
-            OwnerCheck("Dimensions & Sizing", "PRODUCT_TRUTH", False, "Dimensions unverified"),
-            OwnerCheck("Available Color Palette", "PRODUCT_TRUTH", False, "Colors unverified"),
-            OwnerCheck("Shipping / Processing", "PRODUCT_TRUTH", False, "Shipping unverified"),
-            OwnerCheck("Design-Level IP QA", "IP_QA", False, "Artwork and design-level IP clearance required"),
-        ]
+        check_list = [OwnerCheck(name, category, False, msg)
+                      for name, category, msg, _ in OWNER_CHECK_SPECS]
         if cluster.personalization_angles:
             check_list.append(OwnerCheck("Personalization Limits", "PRODUCT_TRUTH", False, "Character count limits unverified"))
         checks = tuple(check_list)
