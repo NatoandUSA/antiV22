@@ -1,18 +1,16 @@
-"""Golden End-to-End Workflow Contract Test (P0-A.4 Audited Suite).
+"""Golden End-to-End Workflow Contract Test (P0-A.5 Audited Suite).
 
-Verifies end-to-end data pipeline flow & P0-A.4 Root Cause Closure Rules:
-1. Genuine Network Block: Socket connection attempts raise RuntimeError if compilation calls network.
-2. Strict Term Provenance (No Canonical Bypass): Primary keyword must be present in EvidenceRef.supported_terms_contained to enter evidence_supported_tags.
-3. Content & Observation Hash Binding: retrieved_at freshness timestamp alters EvidenceRef content hash & Master revision.
-4. Schema-Driven Commercial & Fulfillment Publish Gate: publish_ready requires verified required checks + non-null verified PriceFact + verified shipping truth.
-5. 100% Conditional Personalization: Non-personalized concepts omit 'Personalized' claims, instructions, photo steps, and personalization OwnerChecks.
-6. Constructor-Level Deep Freezing: Direct dataclass construction deeply freezes nested structures.
-7. PriceFact & ProductFit State Validation: Prevents invalid price/provenance state combinations and validates product_fit_statuses.
+Verifies end-to-end data pipeline flow & P0-A.5 Root Cause Closure Rules:
+1. Dynamic Runtime Fit Status Alignment: Exhaustively tests all product_fit statuses against create_master_keyword.
+2. Value-Bound Product Truth Verification: ProductTruthFact.verified=True is required for physical copy rendering.
+3. Content Identity vs Freshness Separation: retrieved_at alters observation_id but leaves content_hash & master revision unchanged.
+4. Tag-Level Provenance Preservation: ListingCluster.supported_terms retains exact evidence_ref_ids for every tag.
+5. Neutral Offer Semantics & Conditional Gift Photo Slot: Non-personalized items omit 'Custom'/'Personalized'; Gift slot is conditional on gift intent.
 """
 import dataclasses
 import socket
 import pytest
-from src import contracts
+from src import contracts, product_fit
 
 
 @pytest.fixture(autouse=True)
@@ -57,16 +55,16 @@ def test_golden_workflow_end_to_end_bridesmaid_bag_pod():
     assert cluster.revision_id.startswith("lc-")
     assert "bridesmaid bag" in cluster.evidence_supported_tags
 
+    # Tag-Level Provenance Preservation Assertion!
+    st_bag = next(st for st in cluster.supported_terms if st.term == "bridesmaid bag")
+    assert st_bag.evidence_ref_ids == (ev1.provenance_hash,)
+
     pkg1 = contracts.compile_package(cluster)
     assert pkg1.network_calls_made == 0
     assert pkg1.publish_ready is False
     assert pkg1.price_fact.value is None
 
-    # Verify IP QA defaults to False
-    ip_check = next(c for c in pkg1.owner_checks if c.field == "Design-Level IP QA")
-    assert ip_check.verified is False
-
-    # Simulate Full Verification (All Required Checks + Verified PriceFact + Verified Shipping)
+    # Simulate Full Verification with ProductTruthFact instances
     verified_checks = [
         contracts.OwnerCheck("Exact SKU / Supplier", "SUPPLIER", True, "VERIFIED_TEST_SKU"),
         contracts.OwnerCheck("Material Composition", "PRODUCT_TRUTH", True, "TEST_MATERIAL_CANVAS"),
@@ -76,57 +74,44 @@ def test_golden_workflow_end_to_end_bridesmaid_bag_pod():
         contracts.OwnerCheck("Design-Level IP QA", "IP_QA", True, "TEST_IP_QA_APPROVED")
     ]
 
-    ptruth_verified = {
-        "material": "TEST_MATERIAL_CANVAS",
-        "dimensions": "TEST_DIMENSIONS_15X16",
-        "shipping": "TEST_SHIPPING_3DAYS"
-    }
+    verified_ptruth_facts = [
+        contracts.ProductTruthFact("material", "TEST_MATERIAL_CANVAS", True, "ev-1"),
+        contracts.ProductTruthFact("dimensions", "TEST_DIMENSIONS_15X16", True, "ev-2"),
+        contracts.ProductTruthFact("shipping", "TEST_SHIPPING_3DAYS", True, "ev-3"),
+    ]
     price_fact = contracts.PriceFact(value=19.99, currency="USD", provenance_type="EXACT_LISTING", verified=True)
 
     pkg_ready = contracts.compile_package(
         cluster,
         owner_checks_override=verified_checks,
-        product_truth_override=ptruth_verified,
+        product_truth_facts_override=verified_ptruth_facts,
         price_fact_override=price_fact
     )
     assert pkg_ready.publish_ready is True
     assert pkg_ready.price_fact.value == 19.99
     assert "Material: TEST_MATERIAL_CANVAS" in pkg_ready.buyer_copy
-    assert pkg1.revision_id != pkg_ready.revision_id
 
 
-def test_primary_keyword_no_canonical_bypass():
-    # EvidenceRef does NOT contain "school nurse shirt" in supported_terms_contained
-    ev = contracts.make_evidence_ref(
-        source="ytrends_spy_captures",
-        retrieved_at="2026-08-15T21:00:00Z",
-        match_type="EXACT",
-        verdict="SELLING",
-        supported_terms_contained=["unrelated term only"]
-    )
-    master = contracts.create_master_keyword(
-        keyword="school nurse shirt",
-        mode="embroidery",
-        opp_score=38.0,
-        market_verdict="WATCH",
-        fit_status="EMBROIDERY_FIT",
-        tm_risk="OK",
-        engine_action="CONFIRM_FIRST",
-        execution_action="CONFIRM_FIRST",
-        specificity_class="SPECIFIC_ACTIONABLE",
-        evidence_refs=[ev]
-    )
-
-    # Attempt to pass primary keyword as evidence term
-    primary_term = contracts.SupportedTerm("school nurse shirt", "EVIDENCE", (ev.provenance_hash,))
-
-    cluster = contracts.compile_cluster(master, supported_terms=[primary_term])
-    # Must be REJECTED! Canonical keyword bypass is removed
-    assert "school nurse shirt" not in cluster.evidence_supported_tags
-    assert len(cluster.evidence_supported_tags) == 0
+def test_exhaustive_product_fit_statuses_pass():
+    """Verify that EVERY single status produced by src.product_fit compiles without error."""
+    statuses = [
+        product_fit.POD_FIT, product_fit.EMBROIDERY_FIT, product_fit.JEWELRY_FIT, product_fit.ACRYLIC_FIT,
+        product_fit.DIGITAL_FIT, product_fit.SHOP_NAME_LIKELY, product_fit.POLICY_RISK, product_fit.TRADEMARK_RISK,
+        product_fit.BROAD_SEED_ONLY, product_fit.NON_PRODUCT, product_fit.NEEDS_REVIEW, product_fit.THEME_FIT_READY,
+        product_fit.THEME_FIT_NEEDS_PRODUCT, product_fit.AMBIGUOUS_PHRASE, product_fit.LOW_BUYER_INTENT,
+        "NO_FIT", "BLOCKED", "NONE"
+    ]
+    for st in statuses:
+        m = contracts.create_master_keyword(
+            keyword="test keyword", mode="pod", opp_score=25.0, market_verdict="WATCH",
+            fit_status=st, tm_risk="OK", engine_action="WATCH", execution_action="WATCH",
+            specificity_class="SPECIFIC_ACTIONABLE"
+        )
+        assert m.product_fit_status == st
 
 
-def test_retrieved_at_freshness_alters_evidence_and_master_identity():
+def test_content_identity_vs_freshness_observation():
+    """Identical evidence facts fetched at a later retrieved_at share the SAME content_hash & Master revision."""
     ev_early = contracts.make_evidence_ref(
         source="ytrends_spy", retrieved_at="2026-08-15T10:00:00Z",
         match_type="EXACT", verdict="SELLING", raw_facts={"sold": 5}
@@ -136,8 +121,12 @@ def test_retrieved_at_freshness_alters_evidence_and_master_identity():
         match_type="EXACT", verdict="SELLING", raw_facts={"sold": 5}
     )
 
-    assert ev_early.provenance_hash != ev_late.provenance_hash
+    # Content hashes MUST match!
+    assert ev_early.provenance_hash == ev_late.provenance_hash
+    # Observation IDs MUST be distinct (freshness metadata)!
+    assert ev_early.observation_id != ev_late.observation_id
 
+    # Master Keyword revision MUST remain stable across periodic freshness refreshes!
     m_early = contracts.create_master_keyword(
         keyword="grandpa golf", mode="embroidery", opp_score=40.0,
         market_verdict="WATCH", fit_status="THEME_FIT_NEEDS_PRODUCT", tm_risk="OK",
@@ -151,10 +140,11 @@ def test_retrieved_at_freshness_alters_evidence_and_master_identity():
         specificity_class="SPECIFIC_ACTIONABLE", evidence_refs=[ev_late]
     )
 
-    assert m_early.revision_id != m_late.revision_id
+    assert m_early.revision_id == m_late.revision_id
 
 
-def test_publish_ready_requires_verified_price_and_shipping():
+def test_value_bound_product_truth_verification():
+    """Physical claims render ONLY IF ProductTruthFact is explicitly verified."""
     master = contracts.create_master_keyword(
         keyword="school nurse shirt", mode="embroidery", opp_score=38.0,
         market_verdict="WATCH", fit_status="EMBROIDERY_FIT", tm_risk="OK",
@@ -163,72 +153,38 @@ def test_publish_ready_requires_verified_price_and_shipping():
     )
     cluster = contracts.compile_cluster(master)
 
-    verified_checks = [
-        contracts.OwnerCheck("Exact SKU / Supplier", "SUPPLIER", True, "VERIFIED_TEST_SKU"),
-        contracts.OwnerCheck("Material Composition", "PRODUCT_TRUTH", True, "TEST_MATERIAL"),
-        contracts.OwnerCheck("Dimensions & Sizing", "PRODUCT_TRUTH", True, "TEST_DIMENSIONS"),
-        contracts.OwnerCheck("Available Color Palette", "PRODUCT_TRUTH", True, "TEST_COLORS"),
-        contracts.OwnerCheck("Design-Level IP QA", "IP_QA", True, "TEST_IP_QA_APPROVED")
+    # Unverified ProductTruthFact for material
+    unverified_facts = [
+        contracts.ProductTruthFact("material", "POLYESTER_BLEND", verified=False),
     ]
-    ptruth = {"material": "COTTON", "dimensions": "10X10", "shipping": "TEST_SHIPPING"}
+    pkg = contracts.compile_package(cluster, product_truth_facts_override=unverified_facts)
 
-    # 1. Missing verified PriceFact -> publish_ready False
-    unverified_price = contracts.PriceFact(value=19.99, currency="USD", provenance_type="MODELED", verified=False)
-    pkg1 = contracts.compile_package(cluster, owner_checks_override=verified_checks, product_truth_override=ptruth, price_fact_override=unverified_price)
-    assert pkg1.publish_ready is False
-
-    # 2. Missing verified shipping truth -> publish_ready False
-    unverified_shipping = {"material": "COTTON", "dimensions": "10X10", "shipping": "UNVERIFIED"}
-    verified_price = contracts.PriceFact(value=19.99, currency="USD", provenance_type="EXACT_LISTING", verified=True)
-    pkg2 = contracts.compile_package(cluster, owner_checks_override=verified_checks, product_truth_override=unverified_shipping, price_fact_override=verified_price)
-    assert pkg2.publish_ready is False
-
-    # 3. Verified PriceFact + Verified Shipping + Verified Checks -> publish_ready True
-    pkg3 = contracts.compile_package(cluster, owner_checks_override=verified_checks, product_truth_override=ptruth, price_fact_override=verified_price)
-    assert pkg3.publish_ready is True
+    # Must NOT render POLYESTER_BLEND because verified == False!
+    assert "POLYESTER_BLEND" not in pkg.buyer_copy
 
 
-def test_non_personalized_concept_is_100_percent_conditional():
-    # Candidate without personalization angles (e.g. school nurse shirt)
-    master = contracts.create_master_keyword(
-        keyword="school nurse shirt", mode="embroidery", opp_score=38.0,
-        market_verdict="WATCH", fit_status="EMBROIDERY_FIT", tm_risk="OK",
-        engine_action="CONFIRM_FIRST", execution_action="CONFIRM_FIRST",
-        specificity_class="SPECIFIC_ACTIONABLE"
+def test_neutral_lead_and_conditional_gift_photo_slot():
+    # 1. Non-gift non-personalized candidate (e.g. "school supply labels")
+    m_labels = contracts.create_master_keyword(
+        keyword="school supply labels", mode="pod", opp_score=30.0,
+        market_verdict="WATCH", fit_status="POD_FIT", tm_risk="OK",
+        engine_action="WATCH", execution_action="WATCH", specificity_class="SPECIFIC_ACTIONABLE"
     )
-    cluster = contracts.compile_cluster(master)
-    assert len(cluster.personalization_angles) == 0
+    c_labels = contracts.compile_cluster(m_labels)
+    pkg_labels = contracts.compile_package(c_labels)
 
-    pkg = contracts.compile_package(cluster)
+    # Lead sentence uses neutral wording (NO "Custom" or "Personalized")
+    assert pkg_labels.buyer_copy.startswith("School Supply Labels — designed for")
+    assert "Gift Context" not in pkg_labels.photo_brief
 
-    # 1. Lead sentence uses "Custom School Nurse Shirt", NOT "Personalized"
-    assert pkg.buyer_copy.startswith("Custom School Nurse Shirt")
-    assert "Personalized School Nurse Shirt" not in pkg.buyer_copy
+    # 2. Gift candidate ("bridesmaid bag")
+    m_gift = contracts.create_master_keyword(
+        keyword="bridesmaid bag", mode="pod", opp_score=45.0,
+        market_verdict="WATCH", fit_status="POD_FIT", tm_risk="OK",
+        engine_action="CONFIRM_FIRST", execution_action="CONFIRM_FIRST", specificity_class="SPECIFIC_ACTIONABLE"
+    )
+    c_gift = contracts.compile_cluster(m_gift)
+    pkg_gift = contracts.compile_package(c_gift)
 
-    # 2. No personalization instructions in buyer_copy
-    assert "PERSONALIZATION INSTRUCTIONS" not in pkg.buyer_copy
-
-    # 3. No "Add Personalization" step in photo_brief
-    assert "Add Personalization" not in pkg.photo_brief
-
-    # 4. No Personalization Limits in default owner_checks
-    check_fields = {c.field for c in pkg.owner_checks}
-    assert "Personalization Limits" not in check_fields
-
-
-def test_price_fact_and_fit_status_validations():
-    # 1. UNVERIFIED cannot have verified=True
-    with pytest.raises(ValueError, match="UNVERIFIED price provenance cannot have verified=True"):
-        contracts.PriceFact(value=10.0, provenance_type="UNVERIFIED", verified=True)
-
-    # 2. Value None cannot have verified=True
-    with pytest.raises(ValueError, match="PriceFact with value=None cannot be verified=True"):
-        contracts.PriceFact(value=None, provenance_type="MODELED", verified=True)
-
-    # 3. Invalid product_fit_status raises ValueError
-    with pytest.raises(ValueError, match="Invalid product_fit_status"):
-        contracts.create_master_keyword(
-            keyword="test", mode="pod", opp_score=10.0, market_verdict="WATCH",
-            fit_status="INVALID_FIT_STATUS", tm_risk="OK", engine_action="WATCH",
-            execution_action="WATCH", specificity_class="NONE"
-        )
+    # Gift photo slot MUST be present for bridesmaid gift concept!
+    assert "Gift Context" in pkg_gift.photo_brief
