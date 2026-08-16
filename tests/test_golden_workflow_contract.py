@@ -181,6 +181,18 @@ def test_neutral_role_does_not_invent_gift_semantics():
     assert "Gift Context" in wedding_pkg.photo_brief
 
 
+def test_bare_buyer_role_alone_does_not_trigger_gift_context():
+    """A role word (bridesmaid, grandpa, ...) is inferred, not explicit --
+    rule #5 requires explicit gift intent (an occasion word, or a literal
+    "gift"/"gifts" token), so a bare role keyword with no occasion word
+    stays neutral. The wedding_bridesmaid case above only proves the
+    occasion path works; this pins down the role-only case, which had no
+    test coverage before this commit."""
+    for kw in ("bridesmaid bag", "grandpa golf shirt"):
+        pkg = contracts.compile_package(contracts.compile_cluster(_master(kw)))
+        assert "Gift Context" not in pkg.photo_brief, kw
+
+
 def test_duplicate_or_invalid_product_truth_facts_are_rejected():
     with pytest.raises(ValueError, match="Invalid ProductTruthFact field"):
         contracts.ProductTruthFact("unknown_field", "X", False, "")
