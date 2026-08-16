@@ -2570,6 +2570,119 @@ def inbox(mode=None, q="", show_archived=False, changed_only=False):
     return "\n".join(L)
 
 
+def start_here(q, mode=None):
+    """Start Here — single front door: one seed phrase in, a ranked,
+    evidence-backed shortlist scoped to it out, with a one-click path to a
+    listing draft. Wraps the existing engine (opportunity_inbox +
+    execution_action + etsy_proof + ytrends_mcp) — adds no new scoring,
+    ranking, or classification logic of its own."""
+    from src import opportunity_inbox as oi
+    from src import execution_action as ea
+    kw = (q or "").strip()
+    risk, reason = tm_check(kw.lower())
+    L = [f"# \U0001F50E {_clean(kw)}", ""]
+    if risk == "HIGH":
+        L += [f"⚠️ **Trademark risk is HIGH** — {reason}. Pick a "
+              "different seed phrase.", ""]
+        return "\n".join(L)
+
+    L += [f"[\U0001F517 Check real Etsy search results for \"{_clean(kw)}\"]"
+          f"(https://www.etsy.com/search?q={_uq(kw)})", ""]
+
+    pool = oi.build_inbox(mode, limit=100000, show_archived=True)["rows"]
+    matches = oi.focus_rows(pool, kw)[:40]
+    scored = [{**r, "execution": ea.derive_execution_action(r, mode)}
+              for r in matches]
+
+    def _rank_key(r):
+        broad = 0 if r["execution"].get("specificity_class") == \
+            "SPECIFIC_ACTIONABLE" else 1
+        return (broad, r.get("priority", 9), -(r.get("score") or 0))
+    scored.sort(key=_rank_key)
+
+    if scored:
+        L += [f"## {len(scored)} keyword(s) already in your data", "",
+              "| Keyword | Evidence | Flag | Action | |",
+              "|---|---|---|---|---|"]
+        L += [_simple_row(r) for r in scored]
+        L.append("")
+    else:
+        L += ["## Nothing in your data yet for this seed", ""]
+
+    children, needs_research = ea.find_children(kw, mode, limit=8)
+    if needs_research and not scored:
+        L += ["## Needs niche research first", "",
+              f"Nothing narrows **{_clean(kw)}** to a real buyer angle yet. "
+              "Don't guess — go get real data:", "",
+              "1. Capture the Etsy search results above with the browser "
+              "extension (Send to agent).",
+              f"2. **[Run the Pattern Miner](/pattern-miner?q={_uq(kw)})** "
+              "— see what the winners actually do.",
+              f"3. **[Generate real long-tails in Keyword Lab]"
+              f"(/keyword-lab?q={_uq(kw)})** from that pattern.", ""]
+
+    try:
+        from src import ytrends_mcp as _mcp
+        rk = _mcp.research_keyword(kw)
+        related = (rk.get("related_keywords") if isinstance(rk, dict)
+                   else None) or []
+    except Exception:  # noqa: BLE001 - MCP down is not a page-breaking error
+        related = []
+    seen = {r["keyword"].strip().lower() for r in scored}
+    fresh, fseen = [], set()
+    for cand in related:
+        t = (cand.get("tag") or cand.get("keyword") or "").strip().lower()
+        if t and t not in seen and t not in fseen and t != kw.lower():
+            fresh.append(t)
+            fseen.add(t)
+        if len(fresh) >= 8:
+            break
+    if fresh:
+        L += ["## Fresh from MCP — not scored yet", ""]
+        L += [f"- {_clean(t)} — [\U0001F501 Score it](/should-sell?q={_uq(t)})"
+              for t in fresh]
+        L.append("")
+
+    return "\n".join(L)
+
+
+def _simple_row(r):
+    """One row of the Start Here shortlist: keyword, why (evidence), any
+    safety flag, what to do, and a one-click path to the draft. Five fields
+    instead of the Inbox's twelve — same underlying data, less to read."""
+    kw = _clean(r["keyword"])
+    pr = r.get("proof")
+    tier = r.get("proof_tier", 9)
+    if pr and tier == 0:
+        evidence = f"\U0001F3C6 {_clean(pr.get('evidence') or '')}"
+    elif pr and tier in (1, 2):
+        evidence = f"\U0001F4AA {_clean(pr.get('evidence') or '')}"
+    else:
+        v = r.get("verdict")
+        evidence = f"{_MKT_ICON.get(v, '')} {v}".strip() if v else "—"
+    if pr and str(pr.get("source") or "").lower() != "loop" and \
+            str(pr.get("match") or "").lower() in ("fuzzy", "niche"):
+        # The proof is a group/niche match, not this exact keyword verified on
+        # its own -- near-duplicate rows can share the same evidence text, so
+        # this stays visible even in the cut-down column (never silently
+        # implies more independently-verified rows than actually exist).
+        evidence += " ⚠ group — verify"
+
+    fit = r.get("fit_label") or "—"
+
+    exec_action = r["execution"].get("execution_action") or r.get("action")
+    labels = {"BUILD_NOW": "✅ Build now",
+              "CONFIRM_FIRST": "\U0001F50E Confirm first",
+              "MINE_NICHE": "⛏ Niche down", "REVIEW": "\U0001F6A9 Review",
+              "WATCH": "\U0001F440 Watch", "SKIP": "⏭ Skip",
+              "BLOCKED": "\U0001F6AB Blocked"}
+    action = labels.get(exec_action, exec_action or "—")
+
+    do = (f"[Build draft →](/draft-listing?q={_uq(r['keyword'])})"
+          if exec_action not in ("BLOCKED", "SKIP") else "—")
+    return f"| {kw} | {evidence} | {fit} | {action} | {do} |"
+
+
 def mine_niche(keyword, mode=None):
     """Patch 4 Stage 2 — Mine Niche: real child-niche candidates for a
     BROAD_PARENT keyword, found in your OWN already-ranked data

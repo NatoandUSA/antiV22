@@ -1928,6 +1928,13 @@ def build_app(password, secret):
         except (SystemExit, Exception) as exc:  # noqa: BLE001
             return _tool_error(title, exc)
 
+    @app.route("/start")
+    @login_required
+    def start_here():
+        return _kw_mode_tool(lambda iv, q, m: iv.start_here(q, m),
+                             "Start Here", path="/start",
+                             button="\U0001F50D Research this seed")
+
     @app.route("/should-sell")
     @login_required
     def should_sell():
@@ -4409,7 +4416,8 @@ def build_app(password, secret):
         # Trimmed per owner: Research, Review and the old Team board removed from
         # the top bar. Review is still reachable from the Manager Desk on Home;
         # team work now lives entirely under Team Ops.
-        links = [("/", "🏠 Home"), ("/longtail", "💎 Long-tail"),
+        links = [("/", "🏠 Home"), ("/start", "🔎 Start Here"),
+                 ("/longtail", "💎 Long-tail"),
                  ("/build-queue", "🎯 Build"),
                  ("/design-skill-bridge", "🎨 Design"), ("/launch-kit", "🚀 Launch Kit")]
         links += ([] if is_mgr else [("/me/tasks", "✅ My work")])
