@@ -1,0 +1,72 @@
+name: P0 Contract CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/contracts.py'
+      - 'src/product_fit.py'
+      - 'tests/test_golden_workflow_contract.py'
+      - 'requirements*.txt'
+      - '.github/workflows/p0-contract-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+
+      - name: Show exact SHA
+        run: |
+          git rev-parse HEAD
+          python --version
+
+      - name: Focused P0-A.6 contract tests
+        env:
+          YTX_IMPORT_TOKEN: test-token
+        run: python -m pytest -q tests/test_golden_workflow_contract.py
+
+      - name: Full pytest suite
+        env:
+          YTX_IMPORT_TOKEN: test-token
+        # Deselected: these read the operator's real local data/agent.db (30MB+
+        # of accumulated keyword/supplier data, gitignored) rather than a fixture.
+        # A clean checkout always gets an empty DB, so they cannot pass in CI on
+        # any PR regardless of content. Left fully active for local runs, where
+        # they're real regression coverage against live data.
+        run: >
+          python -m pytest -q
+          --deselect tests/test_feasibility_gate.py::test_the_inbox_exposes_the_badge_and_the_coverage_that_justifies_it
+          --deselect tests/test_freshness.py::test_the_build_queue_carries_the_column_too
+          --deselect tests/test_freshness.py::test_the_build_queue_costs_one_lookup_for_the_whole_page
+
+      - name: Selftest
+        env:
+          YTX_IMPORT_TOKEN: test-token
+        run: python main.py selftest
+
+      - name: Compileall
+        run: python -m compileall -q src tests
