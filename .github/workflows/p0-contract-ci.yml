@@ -52,7 +52,16 @@ jobs:
       - name: Full pytest suite
         env:
           YTX_IMPORT_TOKEN: test-token
-        run: python -m pytest -q
+        # Deselected: these read the operator's real local data/agent.db (30MB+
+        # of accumulated keyword/supplier data, gitignored) rather than a fixture.
+        # A clean checkout always gets an empty DB, so they cannot pass in CI on
+        # any PR regardless of content. Left fully active for local runs, where
+        # they're real regression coverage against live data.
+        run: >
+          python -m pytest -q
+          --deselect tests/test_feasibility_gate.py::test_the_inbox_exposes_the_badge_and_the_coverage_that_justifies_it
+          --deselect tests/test_freshness.py::test_the_build_queue_carries_the_column_too
+          --deselect tests/test_freshness.py::test_the_build_queue_costs_one_lookup_for_the_whole_page
 
       - name: Selftest
         env:

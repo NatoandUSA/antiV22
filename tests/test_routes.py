@@ -307,13 +307,16 @@ def test_assign_defaults_to_24h_deadline(client):
     unassigned tasks stay open-ended."""
     from datetime import datetime
     from src import auth, tasks as tk
+    from src.timestamp import tz
     owner = auth.get_user_by_email("owner@test.local")
     client.post("/confirm/assign", data={"q": "24h deadline kw",
                 "assigned_to": str(owner["user_id"])})
     t = [x for x in tk.list_tasks() if x["related_keyword"] == "24h deadline kw"][0]
     assert t["due_date"], "assigned task should get a default deadline"
+    # due_date is a naive string but ICT-valued (tasks.default_due uses tz()) —
+    # compare against ICT wall-clock too, not the runner's local timezone.
     hrs = (datetime.strptime(t["due_date"], "%Y-%m-%dT%H:%M")
-           - datetime.now()).total_seconds() / 3600
+           - datetime.now(tz()).replace(tzinfo=None)).total_seconds() / 3600
     assert 23 < hrs < 25, hrs
     assert not tk.create_task(title="no assignee", task_type="SUPPLIER_CHECK")["due_date"]
 
