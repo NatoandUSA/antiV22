@@ -1559,13 +1559,17 @@ def studio(keyword, mode=None):
     been fully built and tested since P0-A.6 but never had a real caller
     until this; this compiles from real already-computed engine output
     (score, verdict, fit, actions) plus real captured proof when it exists
-    -- nothing here is invented to satisfy the schema.
+    -- nothing here is invented to satisfy the schema. Evidence is gathered
+    from the typed keyword AND its real neighbors (same focus_rows lookup
+    Queue already uses) -- a real Etsy listing tags on related terms too,
+    not just the literal seed, so restricting evidence to one exact keyword
+    was leaving real, already-captured proof on the table.
 
-    Deliberately NOT yet linked from Queue's "Build draft" button:
-    compile_package()'s title has no enrichment yet (bare capitalized
-    keyword vs. draft_listing's richer suggested title), so this ships
-    alongside the existing tool to prove the compile pipeline is real and
-    correct, not as a silent downgrade in place of it."""
+    Deliberately NOT yet linked from Queue's "Build draft" button: the
+    title still doesn't claim anything unverified (correctly, per the
+    module's own neutral-offer-semantics rule), but Studio's title-building
+    itself hasn't been extended to use the richer evidence gathered here
+    yet -- that's the remaining piece before a safe cutover."""
     from src import contracts as ct
     from src import opportunity_inbox as oi, execution_action as ea
     from src.timestamp import tz
@@ -1591,14 +1595,24 @@ def studio(keyword, mode=None):
 
     exec_out = ea.derive_execution_action(row, resolved_mode)
 
-    evidence_refs, supported_terms = [], []
-    pr = row.get("proof")
-    if pr and row.get("proof_tier", 9) < 9 and pr.get("verdict") in ct.VALID_VERDICTS:
-        # Real captured evidence exists for this exact keyword -- carry it
-        # through as one real EvidenceRef instead of leaving every tag slot
-        # a TAG_GAP. retrieved_at is "when this compile ran," not the
-        # original capture date (etsy_proof.py doesn't expose that per-proof
-        # today) -- a known approximation, not a silent one.
+    # focus_rows always includes the exact-match row itself (full token
+    # overlap sorts it first), so one loop covers both "this keyword's own
+    # proof" and "real neighbor proof" -- no separate special case needed.
+    now_str = datetime.now(tz()).strftime("%Y-%m-%d")
+    evidence_refs, supported_terms, seen_terms = [], [], set()
+    for r in oi.focus_rows(pool, kw)[:60]:
+        if len(supported_terms) >= ct.TAG_LIMIT:
+            break
+        nkw = r["keyword"].strip().lower()
+        if nkw in seen_terms or len(nkw) > ct.MAX_TAG_LEN:
+            continue
+        pr = r.get("proof")
+        if not (pr and r.get("proof_tier", 9) < 9
+                and pr.get("verdict") in ct.VALID_VERDICTS):
+            continue
+        # retrieved_at is "when this compile ran," not the original capture
+        # date (etsy_proof.py doesn't expose that per-proof today) -- a
+        # known approximation, not a silent one.
         match_type = "EXACT" if str(pr.get("match") or "").lower() == "exact" \
             else "GROUP"
         raw_facts = {k: v for k, v in (
@@ -1607,17 +1621,16 @@ def studio(keyword, mode=None):
             ("young_winners", pr.get("young")),
         ) if v is not None}
         ev = ct.make_evidence_ref(
-            source="etsy_proof_capture",
-            retrieved_at=datetime.now(tz()).strftime("%Y-%m-%d"),
-            match_type=match_type,
-            verdict=pr["verdict"],
-            raw_facts=raw_facts,
-            supported_terms_contained=[kw],
-            term_source_paths=[(kw, "capture.evidence")],
+            source="etsy_proof_capture", retrieved_at=now_str,
+            match_type=match_type, verdict=pr["verdict"], raw_facts=raw_facts,
+            supported_terms_contained=[r["keyword"]],
+            term_source_paths=[(r["keyword"], "capture.evidence")],
         )
         evidence_refs.append(ev)
         supported_terms.append(ct.SupportedTerm(
-            kw, "EVIDENCE", (ev.provenance_hash,), ("capture.evidence",)))
+            r["keyword"], "EVIDENCE", (ev.provenance_hash,),
+            ("capture.evidence",)))
+        seen_terms.add(nkw)
 
     try:
         master = ct.create_master_keyword(
@@ -1641,12 +1654,36 @@ def studio(keyword, mode=None):
                 "worth reporting, not a reason this keyword can't be "
                 "built._\n")
 
+    # Suggested longer title, built ONLY from the real evidence tags just
+    # gathered -- contracts.py's own title stays bare/neutral by design
+    # (rule #5), so this is shown as a separate suggestion, never silently
+    # substituted for the compiled contract's own title. Same word-
+    # repetition/length discipline already proven in listing_factory.py's
+    # title builder, applied inline rather than imported (small enough not
+    # to warrant extracting shared code from an already-working module).
+    suggested = package.title
+    used_words = set(kw.lower().split())
+    for t in package.evidence_tags:
+        if suggested.count(",") >= 2:
+            break
+        tw = t.split()
+        if all(w in used_words for w in tw):
+            continue
+        cand = f"{suggested}, {t.title()}"
+        if len(cand) <= 140 and len(cand.split()) <= 15:
+            suggested = cand
+            used_words |= set(tw)
+
     L = [f"# \U0001F3ED Studio: {_clean(kw)}", "",
          "_Compiled by src/contracts.py -- deterministic, no live calls. "
          "Not yet linked from Queue's main button; trying it directly._", "",
-         "## Title", f"`{package.title}`", "",
-         f"## Tags ({len(package.evidence_tags)} evidence-backed, "
-         f"{len(package.tag_gaps)} gap)", ""]
+         "## Title", f"`{package.title}`", ""]
+    if suggested != package.title:
+        L += ["_Suggested longer title, built from the evidence tags below "
+              "-- not part of the compiled contract itself:_",
+              f"`{suggested}`", ""]
+    L += [f"## Tags ({len(package.evidence_tags)} evidence-backed, "
+          f"{len(package.tag_gaps)} gap)", ""]
     L += [f"- ✅ {_clean(t)}" for t in package.evidence_tags]
     L += [f"- ⬜ {t} — _no evidence yet, never invented_" for t in package.tag_gaps]
     L += ["", "## Buyer copy", "```", package.buyer_copy, "```", "",
