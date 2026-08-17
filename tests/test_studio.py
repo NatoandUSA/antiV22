@@ -65,6 +65,41 @@ def test_real_captured_proof_becomes_one_evidence_backed_tag(monkeypatch):
     assert "bridesmaid bag" in tags_section
 
 
+def test_real_neighbor_proof_becomes_additional_evidence_backed_tags(monkeypatch):
+    # The typed keyword itself has no proof, but a real close neighbor does
+    # -- that neighbor's real evidence must still surface as a tag, since a
+    # real Etsy listing tags on related terms too, not just the literal seed.
+    proof = {"sold": 40, "verdict": "SELLING", "match": "fuzzy",
+             "evidence": "40 sold/24h"}
+    rows = [_row("bridesmaid bag"),
+            _row("bridesmaid gift bag", proof=proof, proof_tier=2)]
+    _setup(monkeypatch, rows)
+    out = interactive.studio("bridesmaid bag", mode=None)
+    assert "1 evidence-backed, 12 gap" in out
+    tags_section = out.split("## Tags")[1].split("##")[0]
+    assert "bridesmaid gift bag" in tags_section
+
+
+def test_suggested_title_uses_real_evidence_tags_without_overriding_the_compiled_title(monkeypatch):
+    proof = {"sold": 40, "verdict": "SELLING", "match": "fuzzy"}
+    rows = [_row("bridesmaid bag"),
+            _row("bridesmaid gift bag", proof=proof, proof_tier=2)]
+    _setup(monkeypatch, rows)
+    out = interactive.studio("bridesmaid bag", mode=None)
+    assert "## Title\n`Bridesmaid Bag`" in out  # compiled title untouched
+    assert "Suggested longer title" in out
+    assert "Bridesmaid Gift Bag" in out.split("Suggested longer title")[1]
+
+
+def test_no_suggested_title_line_when_evidence_adds_nothing_new(monkeypatch):
+    # only the exact keyword itself has proof -- no new words to add
+    proof = {"sold": 40, "verdict": "SELLING", "match": "exact"}
+    rows = [_row("bridesmaid bag", proof=proof, proof_tier=1)]
+    _setup(monkeypatch, rows)
+    out = interactive.studio("bridesmaid bag", mode=None)
+    assert "Suggested longer title" not in out
+
+
 def test_proof_with_a_verdict_outside_the_contract_vocabulary_is_skipped_not_forced(monkeypatch):
     # etsy_proof.py's verdict vocabulary is expected to already match
     # contracts.VALID_VERDICTS, but this must degrade honestly (skip the
