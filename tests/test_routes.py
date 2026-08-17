@@ -68,6 +68,19 @@ def test_start_route_browses_the_queue_with_no_seed_typed(client):
     assert "Type a keyword" not in body
 
 
+def test_studio_route_requires_login():
+    app = web.build_app("", "secret")
+    anon = app.test_client()
+    r = anon.get("/studio", follow_redirects=False)
+    assert r.status_code in (301, 302)
+    assert "/login" in r.headers.get("Location", "")
+
+
+def test_studio_route_prompts_for_a_keyword_before_any_query(client):
+    body = client.get("/studio").get_data(as_text=True)
+    assert "Type a keyword" in body
+
+
 def test_home_is_clean(client):
     body = client.get("/").get_data(as_text=True)
     assert "Archive — reports" not in body           # Archive card removed
