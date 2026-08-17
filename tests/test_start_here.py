@@ -27,15 +27,17 @@ def test_high_trademark_risk_blocks_before_any_data_pull(monkeypatch):
 
 
 def test_specific_actionable_sorts_before_broad_parent(monkeypatch):
+    # Neither row is a literal exact match for the seed, so this isolates
+    # the specificity-based sort from the exact-match-first rule.
     monkeypatch.setattr(interactive, "tm_check", lambda kw: ("OK", ""))
-    rows = [_row("bag"), _row("bridesmaid bag")]
+    rows = [_row("big tote"), _row("bridesmaid tote")]
     monkeypatch.setattr("src.opportunity_inbox.build_inbox",
                         lambda *a, **k: {"rows": rows})
     monkeypatch.setattr("src.opportunity_inbox.focus_rows",
                         lambda pool, q: pool)
 
     def _exec(row, mode):
-        spec = "SPECIFIC_ACTIONABLE" if row["keyword"] == "bridesmaid bag" \
+        spec = "SPECIFIC_ACTIONABLE" if row["keyword"] == "bridesmaid tote" \
             else "BROAD_PARENT"
         return {"execution_action": row["action"], "specificity_class": spec}
     monkeypatch.setattr("src.execution_action.derive_execution_action", _exec)
@@ -44,11 +46,11 @@ def test_specific_actionable_sorts_before_broad_parent(monkeypatch):
     monkeypatch.setattr("src.ytrends_mcp.research_keyword",
                         lambda kw: {})
 
-    out = interactive.start_here("bag", mode=None)
+    out = interactive.start_here("tote", mode=None)
     lines = [l for l in out.splitlines() if l.startswith("| ")]
     # lines[0] is the header row; the niche keyword must sort first among data rows
-    assert "bridesmaid bag" in lines[1]
-    assert "bag" in lines[2] and "bridesmaid" not in lines[2]
+    assert "bridesmaid tote" in lines[1]
+    assert "big tote" in lines[2] and "bridesmaid" not in lines[2]
 
 
 def test_no_local_data_and_no_children_shows_research_guidance_not_a_blank_page(monkeypatch):
@@ -96,6 +98,94 @@ def test_fresh_mcp_suggestions_dedup_against_already_scored_rows(monkeypatch):
     assert "bridesmaid tote bag" in fresh_section
     # already-scored keyword must not be repeated as an unscored "fresh" one
     assert "bridesmaid bag" not in fresh_section
+
+
+def _setup(monkeypatch, rows, exec_map, needs_research=False, related=None):
+    """Shared wiring for the tests below: real tm_check pass-through, a
+    controlled pool, and execution results keyed by keyword."""
+    monkeypatch.setattr(interactive, "tm_check", lambda kw: ("OK", ""))
+    monkeypatch.setattr("src.opportunity_inbox.build_inbox",
+                        lambda *a, **k: {"rows": rows})
+    monkeypatch.setattr("src.opportunity_inbox.focus_rows",
+                        lambda pool, q: pool)
+    monkeypatch.setattr(
+        "src.execution_action.derive_execution_action",
+        lambda row, mode: exec_map[row["keyword"]])
+    monkeypatch.setattr("src.execution_action.find_children",
+                        lambda *a, **k: ([], needs_research))
+    monkeypatch.setattr("src.ytrends_mcp.research_keyword",
+                        lambda kw: {"related_keywords": related or []})
+
+
+def test_exact_seed_match_sorts_first_even_over_a_more_specific_relative(monkeypatch):
+    rows = [_row("teacher shirt"), _row("funny teacher shirt")]
+    _setup(monkeypatch, rows, {
+        "teacher shirt": {"execution_action": "WATCH",
+                          "specificity_class": "BROAD_PARENT"},
+        "funny teacher shirt": {"execution_action": "CONFIRM_FIRST",
+                                "specificity_class": "SPECIFIC_ACTIONABLE"},
+    })
+    out = interactive.start_here("teacher shirt", mode=None)
+    lines = [l for l in out.splitlines() if l.startswith("| ")]
+    assert "teacher shirt" in lines[1] and "funny" not in lines[1]
+    # exact match present -> no "no data on that exact phrase" disclaimer
+    assert "No data yet on that exact phrase" not in out
+
+
+def test_no_exact_match_gets_an_explicit_disclaimer_not_silence(monkeypatch):
+    rows = [_row("funny teacher shirt")]
+    _setup(monkeypatch, rows, {
+        "funny teacher shirt": {"execution_action": "CONFIRM_FIRST",
+                                "specificity_class": "SPECIFIC_ACTIONABLE"},
+    })
+    out = interactive.start_here("teacher appreciation shirt", mode=None)
+    assert "No data yet on that exact phrase" in out
+
+
+def test_empty_pool_does_not_show_the_no_exact_match_disclaimer(monkeypatch):
+    # Nothing to compare against -> the "closest related keywords" framing
+    # would be actively misleading (there's no list below it).
+    _setup(monkeypatch, [], {}, needs_research=True)
+    out = interactive.start_here("brand new phrase", mode=None)
+    assert "No data yet on that exact phrase" not in out
+    assert "Nothing worth building yet" in out
+
+
+def test_skip_and_blocked_rows_are_pulled_out_of_the_main_table(monkeypatch):
+    rows = [_row("good keyword"), _row("dead keyword"), _row("risky keyword")]
+    _setup(monkeypatch, rows, {
+        "good keyword": {"execution_action": "BUILD_NOW",
+                         "specificity_class": "SPECIFIC_ACTIONABLE"},
+        "dead keyword": {"execution_action": "SKIP",
+                         "specificity_class": "SPECIFIC_ACTIONABLE"},
+        "risky keyword": {"execution_action": "BLOCKED",
+                          "specificity_class": "SPECIFIC_ACTIONABLE"},
+    })
+    out = interactive.start_here("keyword", mode=None)
+    table_lines = [l for l in out.splitlines() if l.startswith("| ")]
+    # only the one real opportunity gets a full row
+    assert len(table_lines) == 2  # header + 1 data row
+    assert "good keyword" in table_lines[1]
+    # the other two are still disclosed, just not given a full table row
+    assert "dead keyword" in out and "risky keyword" in out
+    assert "2 more checked and not worth building" in out
+
+
+def test_mcp_failure_is_distinguished_from_genuinely_nothing_new(monkeypatch):
+    _setup(monkeypatch, [], {}, needs_research=True)
+    monkeypatch.setattr(
+        "src.ytrends_mcp.research_keyword",
+        lambda kw: (_ for _ in ()).throw(RuntimeError("MCP down")))
+    out = interactive.start_here("some seed", mode=None)
+    assert "Fresh from MCP — unavailable" in out
+    assert "Fresh from MCP — nothing new" not in out
+
+
+def test_mcp_success_with_no_related_keywords_says_nothing_new_not_unavailable(monkeypatch):
+    _setup(monkeypatch, [], {}, needs_research=True, related=[])
+    out = interactive.start_here("some seed", mode=None)
+    assert "Fresh from MCP — nothing new" in out
+    assert "unavailable" not in out
 
 
 def test_simple_row_never_fabricates_evidence_when_none_exists():

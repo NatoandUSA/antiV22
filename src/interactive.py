@@ -2594,23 +2594,43 @@ def start_here(q, mode=None):
     scored = [{**r, "execution": ea.derive_execution_action(r, mode)}
               for r in matches]
 
+    kwl = kw.lower()
+    has_exact = any(r["keyword"].strip().lower() == kwl for r in scored)
+    if scored and not has_exact:
+        L += ["_No data yet on that exact phrase — these are the closest "
+              "related keywords already in your data:_", ""]
+
     def _rank_key(r):
+        exact = 0 if r["keyword"].strip().lower() == kwl else 1
         broad = 0 if r["execution"].get("specificity_class") == \
             "SPECIFIC_ACTIONABLE" else 1
-        return (broad, r.get("priority", 9), -(r.get("score") or 0))
+        return (exact, broad, r.get("priority", 9), -(r.get("score") or 0))
     scored.sort(key=_rank_key)
 
-    if scored:
-        L += [f"## {len(scored)} keyword(s) already in your data", "",
+    # SKIP/BLOCKED rows have no build link and no real decision left to make --
+    # showing them at full weight in the main table is exactly the noise this
+    # page exists to cut. They still get an honest, low-key mention below.
+    actionable, not_worth = [], []
+    for r in scored:
+        exec_action = r["execution"].get("execution_action") or r.get("action")
+        (not_worth if exec_action in ("SKIP", "BLOCKED") else actionable) \
+            .append(r)
+
+    if actionable:
+        L += [f"## {len(actionable)} keyword(s) worth a look", "",
               "| Keyword | Evidence | Flag | Action | |",
               "|---|---|---|---|---|"]
-        L += [_simple_row(r) for r in scored]
+        L += [_simple_row(r) for r in actionable]
         L.append("")
     else:
-        L += ["## Nothing in your data yet for this seed", ""]
+        L += ["## Nothing worth building yet from your data", ""]
+    if not_worth:
+        names = ", ".join(_clean(r["keyword"]) for r in not_worth)
+        L += [f"_{len(not_worth)} more checked and not worth building right "
+              f"now: {names}._", ""]
 
     children, needs_research = ea.find_children(kw, mode, limit=8)
-    if needs_research and not scored:
+    if needs_research and not actionable:
         L += ["## Needs niche research first", "",
               f"Nothing narrows **{_clean(kw)}** to a real buyer angle yet. "
               "Don't guess — go get real data:", "",
@@ -2621,18 +2641,19 @@ def start_here(q, mode=None):
               f"3. **[Generate real long-tails in Keyword Lab]"
               f"(/keyword-lab?q={_uq(kw)})** from that pattern.", ""]
 
+    mcp_ok = True
     try:
         from src import ytrends_mcp as _mcp
         rk = _mcp.research_keyword(kw)
         related = (rk.get("related_keywords") if isinstance(rk, dict)
                    else None) or []
     except Exception:  # noqa: BLE001 - MCP down is not a page-breaking error
-        related = []
+        related, mcp_ok = [], False
     seen = {r["keyword"].strip().lower() for r in scored}
     fresh, fseen = [], set()
     for cand in related:
         t = (cand.get("tag") or cand.get("keyword") or "").strip().lower()
-        if t and t not in seen and t not in fseen and t != kw.lower():
+        if t and t not in seen and t not in fseen and t != kwl:
             fresh.append(t)
             fseen.add(t)
         if len(fresh) >= 8:
@@ -2642,6 +2663,15 @@ def start_here(q, mode=None):
         L += [f"- {_clean(t)} — [\U0001F501 Score it](/should-sell?q={_uq(t)})"
               for t in fresh]
         L.append("")
+    elif not mcp_ok:
+        L += ["## Fresh from MCP — unavailable", "",
+              "_Couldn't reach the live MCP index just now — that's not the "
+              "same as \"nothing new,\" the check itself failed. Try again "
+              "shortly._", ""]
+    else:
+        L += ["## Fresh from MCP — nothing new", "",
+              "_Checked live — no related keywords beyond what's already "
+              "in your data._", ""]
 
     return "\n".join(L)
 
