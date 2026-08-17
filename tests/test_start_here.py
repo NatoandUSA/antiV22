@@ -297,3 +297,122 @@ def test_fresh_underlying_data_gets_no_caveat(monkeypatch):
     })
     out = interactive.start_here("teacher shirt", mode=None)
     assert "YTRENDS_FRESH_DAYS old" not in out
+
+
+# ---- Queue: browsing with no seed typed -----------------------------------
+
+def test_empty_seed_routes_to_queue_browse_not_the_seeded_path(monkeypatch):
+    tm_called = []
+    monkeypatch.setattr(interactive, "tm_check",
+                        lambda kw: (tm_called.append(1), ("OK", ""))[1])
+    monkeypatch.setattr(
+        "src.opportunity_inbox.build_inbox",
+        lambda *a, **k: {"rows": [_row("anything", action="BUILD_NOW")]})
+    monkeypatch.setattr(
+        "src.execution_action.derive_execution_action",
+        lambda row, mode: {"execution_action": "BUILD_NOW",
+                           "specificity_class": "SPECIFIC_ACTIONABLE"})
+    out = interactive.start_here("", mode=None)
+    assert "Queue" in out
+    # no seed to trademark-check
+    assert not tm_called
+
+
+def test_queue_browse_excludes_skip_and_blocked_rows(monkeypatch):
+    rows = [_row("keeper", action="BUILD_NOW"),
+            _row("dead", action="SKIP"), _row("risky", action="BLOCKED")]
+    exec_map = {
+        "keeper": {"execution_action": "BUILD_NOW",
+                  "specificity_class": "SPECIFIC_ACTIONABLE"},
+        "dead": {"execution_action": "SKIP",
+                "specificity_class": "SPECIFIC_ACTIONABLE"},
+        "risky": {"execution_action": "BLOCKED",
+                 "specificity_class": "SPECIFIC_ACTIONABLE"},
+    }
+    monkeypatch.setattr("src.opportunity_inbox.build_inbox",
+                        lambda *a, **k: {"rows": rows})
+    monkeypatch.setattr(
+        "src.execution_action.derive_execution_action",
+        lambda row, mode: exec_map[row["keyword"]])
+    from src import opportunity_inbox as oi, execution_action as ea
+    out = interactive._queue_browse(oi, ea, None)
+    assert "keeper" in out
+    assert "dead" not in out and "risky" not in out
+
+
+def test_queue_browse_prioritizes_actionability_over_specificity(monkeypatch):
+    # A buildable-but-broader row must outrank a specific-but-WATCH row --
+    # the browse queue answers "what should I work on," not "closest match,"
+    # so priority is the primary key and specificity only a tiebreaker.
+    # real ranking_engine._PRI: BLOCKED=0, SKIP=1, WATCH=2, REVIEW=3,
+    # CONFIRM_FIRST=4, BUILD_NOW=5 -- higher is better.
+    rows = [_row("specific but watch", action="WATCH", priority=2),
+            _row("broad but build now", action="BUILD_NOW", priority=5)]
+    exec_map = {
+        "specific but watch": {"execution_action": "WATCH",
+                               "specificity_class": "SPECIFIC_ACTIONABLE"},
+        "broad but build now": {"execution_action": "BUILD_NOW",
+                                "specificity_class": "BROAD_PARENT"},
+    }
+    monkeypatch.setattr("src.opportunity_inbox.build_inbox",
+                        lambda *a, **k: {"rows": rows})
+    monkeypatch.setattr(
+        "src.execution_action.derive_execution_action",
+        lambda row, mode: exec_map[row["keyword"]])
+    from src import opportunity_inbox as oi, execution_action as ea
+    out = interactive._queue_browse(oi, ea, None)
+    lines = [l for l in out.splitlines() if l.startswith("| ")]
+    assert "broad but build now" in lines[1]
+
+
+def test_queue_browse_uses_specificity_as_a_tiebreaker_within_equal_priority(monkeypatch):
+    rows = [_row("broad one", action="WATCH"),
+            _row("specific one", action="WATCH")]
+    exec_map = {
+        "broad one": {"execution_action": "WATCH",
+                     "specificity_class": "BROAD_PARENT"},
+        "specific one": {"execution_action": "WATCH",
+                         "specificity_class": "SPECIFIC_ACTIONABLE"},
+    }
+    monkeypatch.setattr("src.opportunity_inbox.build_inbox",
+                        lambda *a, **k: {"rows": rows})
+    monkeypatch.setattr(
+        "src.execution_action.derive_execution_action",
+        lambda row, mode: exec_map[row["keyword"]])
+    from src import opportunity_inbox as oi, execution_action as ea
+    out = interactive._queue_browse(oi, ea, None)
+    lines = [l for l in out.splitlines() if l.startswith("| ")]
+    assert "specific one" in lines[1]
+
+
+def test_queue_browse_respects_the_limit(monkeypatch):
+    rows = [_row(f"kw{i}", action="BUILD_NOW") for i in range(30)]
+    monkeypatch.setattr("src.opportunity_inbox.build_inbox",
+                        lambda *a, **k: {"rows": rows})
+    monkeypatch.setattr(
+        "src.execution_action.derive_execution_action",
+        lambda row, mode: {"execution_action": "BUILD_NOW",
+                           "specificity_class": "SPECIFIC_ACTIONABLE"})
+    from src import opportunity_inbox as oi, execution_action as ea
+    out = interactive._queue_browse(oi, ea, None, limit=5)
+    table_lines = [l for l in out.splitlines() if l.startswith("| ")]
+    assert len(table_lines) == 6  # header + 5 data rows
+
+
+def test_queue_browse_empty_state_is_honest_not_blank(monkeypatch):
+    monkeypatch.setattr("src.opportunity_inbox.build_inbox",
+                        lambda *a, **k: {"rows": []})
+    from src import opportunity_inbox as oi, execution_action as ea
+    out = interactive._queue_browse(oi, ea, None)
+    assert "Nothing in your data clears the bar" in out
+
+
+def test_queue_browse_does_not_request_archived_rows(monkeypatch):
+    calls = []
+    def _record(*a, **k):
+        calls.append(k)
+        return {"rows": []}
+    monkeypatch.setattr("src.opportunity_inbox.build_inbox", _record)
+    from src import opportunity_inbox as oi, execution_action as ea
+    interactive._queue_browse(oi, ea, None)
+    assert calls and calls[0].get("show_archived") is not True
