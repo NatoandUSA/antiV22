@@ -507,3 +507,51 @@ def test_no_publish_button_language_leaks(client):
         "description": "short"}).get_data(as_text=True)
     assert "Publish now" not in body
     assert ">Publish<" not in body
+
+
+def test_studio_save_route_requires_login():
+    app = web.build_app("", "secret")
+    anon = app.test_client()
+    r = anon.post("/studio/save", data={"keyword": "x", "mode": "pod"},
+                  follow_redirects=False)
+    assert r.status_code in (301, 302)
+    assert "/login" in r.headers.get("Location", "")
+
+
+def test_studio_save_route_rejects_missing_keyword_or_mode(client):
+    r = client.post("/studio/save", data={"keyword": "", "mode": "pod"})
+    assert r.status_code == 400
+    r = client.post("/studio/save", data={"keyword": "x", "mode": "bogus"})
+    assert r.status_code == 400
+
+
+def test_studio_save_route_persists_and_redirects_back_to_studio(client):
+    import time
+    from src import owner_checks as oc
+    kw = f"___test_studio_save_route___{time.time()}"
+    r = client.post("/studio/save", data={
+        "keyword": kw, "mode": "pod",
+        "value_material": "100% Cotton", "verified_material": "on",
+        "value_sku": "Printify #372", "verified_sku": "on",
+        "price": "24.99",
+    }, follow_redirects=False)
+    assert r.status_code in (301, 302)
+    assert r.headers.get("Location", "").startswith("/studio?q=")
+
+    checks = oc.get_checks(kw, "pod")
+    assert checks["Material Composition"]["value"] == "100% Cotton"
+    assert checks["Material Composition"]["verified"] is True
+    assert checks["Exact SKU / Supplier"]["note"] == "Printify #372"
+    price = oc.get_price(kw, "pod")
+    assert price["price"] == 24.99
+
+
+def test_studio_save_route_ignores_a_zero_or_invalid_price(client):
+    import time
+    from src import owner_checks as oc
+    kw = f"___test_studio_save_route_badprice___{time.time()}"
+    client.post("/studio/save", data={
+        "keyword": kw, "mode": "pod", "price": "not-a-number"})
+    assert oc.get_price(kw, "pod") is None
+    client.post("/studio/save", data={"keyword": kw, "mode": "pod", "price": "0"})
+    assert oc.get_price(kw, "pod") is None

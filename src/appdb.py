@@ -111,6 +111,35 @@ CREATE TABLE IF NOT EXISTS tool_feedback (
     resolved_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_feedback_status ON tool_feedback(status);
+
+-- Studio (src/contracts.py) compiles a fresh package on every visit -- these
+-- two tables are the one thing that DOES persist across visits: which Owner
+-- Check fields an owner has actually verified with what real value, and any
+-- real owner-set price. Without this, publish_ready could never reach YES
+-- through the UI at all, since every compile started from zero every time.
+CREATE TABLE IF NOT EXISTS owner_checks (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    keyword     TEXT NOT NULL,
+    mode        TEXT NOT NULL,
+    field       TEXT NOT NULL,
+    value       TEXT,
+    verified    INTEGER NOT NULL DEFAULT 0,
+    note        TEXT,
+    updated_by  TEXT,
+    updated_at  TEXT NOT NULL,
+    UNIQUE(keyword, mode, field)
+);
+CREATE INDEX IF NOT EXISTS idx_owner_checks_kw ON owner_checks(keyword, mode);
+
+CREATE TABLE IF NOT EXISTS owner_prices (
+    keyword     TEXT NOT NULL,
+    mode        TEXT NOT NULL,
+    price       REAL NOT NULL,
+    currency    TEXT NOT NULL DEFAULT 'USD',
+    updated_by  TEXT,
+    updated_at  TEXT NOT NULL,
+    PRIMARY KEY (keyword, mode)
+);
 """
 
 

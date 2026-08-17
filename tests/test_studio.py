@@ -5,7 +5,9 @@ create_master_keyword, honest empty/error states, and that real captured
 proof becomes a real evidence-backed tag instead of leaving every slot a
 TAG_GAP.
 """
-from src import interactive
+import time
+
+from src import appdb, interactive, owner_checks as oc
 
 
 def _row(keyword, action="CONFIRM_FIRST", score=42, verdict="GO",
@@ -165,3 +167,110 @@ def test_derived_reference_price_never_makes_publish_ready_true(monkeypatch):
     # MODELED, not OWNER_SET -- a real derived price still can't satisfy
     # publish readiness on its own
     assert "Publish ready: ❌ NO" in out
+
+
+def setup_module():
+    appdb.init_db()
+
+
+_counter = [0]
+
+
+def _kw():
+    _counter[0] += 1
+    return f"___test_studio_persist___{time.time()}_{_counter[0]}"
+
+
+def test_saved_owner_checks_and_price_reach_publish_ready_yes(monkeypatch):
+    kw = _kw()
+    rows = [_row(kw)]
+    _setup(monkeypatch, rows)
+    oc.save_check(kw, "pod", "Material Composition", value="100% Cotton",
+                 verified=True, updated_by="boss")
+    oc.save_check(kw, "pod", "Dimensions & Sizing", value="12x16 in",
+                 verified=True, updated_by="boss")
+    oc.save_check(kw, "pod", "Available Color Palette", value="Black, White",
+                 verified=True, updated_by="boss")
+    oc.save_check(kw, "pod", "Shipping / Processing", value="3-5 business days",
+                 verified=True, updated_by="boss")
+    oc.save_check(kw, "pod", "Exact SKU / Supplier", note="Printify #372",
+                 verified=True, updated_by="boss")
+    oc.save_check(kw, "pod", "Design-Level IP QA", note="cleared 2026-08-17",
+                 verified=True, updated_by="boss")
+    oc.save_price(kw, "pod", 24.99, updated_by="boss")
+
+    out = interactive.studio(kw, mode="pod")
+    assert "Publish ready: ✅ YES" in out
+    assert "100% Cotton" in out
+    assert "$24.99 — owner-set" in out
+
+
+def test_verified_checkbox_with_no_value_stays_unverified(monkeypatch):
+    # a checked box alone (no real value typed) must not count -- otherwise
+    # staff could rubber-stamp Publish ready without entering real facts
+    kw = _kw()
+    rows = [_row(kw)]
+    _setup(monkeypatch, rows)
+    oc.save_check(kw, "pod", "Material Composition", value="", verified=True,
+                 updated_by="boss")
+    out = interactive.studio(kw, mode="pod")
+    # the checkbox click is honestly reflected, but with no bound fact value
+    # the subject_ref can never match -- publish_ready must still be NO
+    assert "Publish ready: ❌ NO" in out
+
+
+def test_saved_price_alone_without_owner_checks_stays_not_ready(monkeypatch):
+    kw = _kw()
+    rows = [_row(kw)]
+    _setup(monkeypatch, rows)
+    oc.save_price(kw, "pod", 19.99, updated_by="boss")
+    out = interactive.studio(kw, mode="pod")
+    assert "$19.99 — owner-set" in out
+    assert "Publish ready: ❌ NO" in out
+
+
+def test_owner_checks_are_scoped_per_keyword_and_do_not_leak(monkeypatch):
+    kw_a, kw_b = _kw(), _kw()
+    rows = [_row(kw_a), _row(kw_b)]
+    _setup(monkeypatch, rows)
+    oc.save_check(kw_a, "pod", "Material Composition", value="100% Cotton",
+                 verified=True, updated_by="boss")
+    out_b = interactive.studio(kw_b, mode="pod")
+    assert "100% Cotton" not in out_b
+    assert "- ⬜ Material Composition" in out_b
+
+
+def test_personalization_limits_field_only_required_when_keyword_personalizes(monkeypatch):
+    kw = f"personalized tote ___test___{time.time()}"
+    rows = [_row(kw)]
+    _setup(monkeypatch, rows)
+    for field, val in (("Material Composition", "100% Cotton"),
+                       ("Dimensions & Sizing", "12x16 in"),
+                       ("Available Color Palette", "Black, White"),
+                       ("Shipping / Processing", "3-5 business days")):
+        oc.save_check(kw, "pod", field, value=val, verified=True, updated_by="boss")
+    oc.save_check(kw, "pod", "Exact SKU / Supplier", verified=True, updated_by="boss")
+    oc.save_check(kw, "pod", "Design-Level IP QA", verified=True, updated_by="boss")
+    oc.save_price(kw, "pod", 24.99, updated_by="boss")
+
+    out = interactive.studio(kw, mode="pod")
+    assert "Personalization Limits" in out
+    assert "Publish ready: ❌ NO" in out  # personalization check still unverified
+
+    oc.save_check(kw, "pod", "Personalization Limits", verified=True,
+                 note="max 20 chars", updated_by="boss")
+    out2 = interactive.studio(kw, mode="pod")
+    assert "Publish ready: ✅ YES" in out2
+
+
+def test_save_form_prefills_saved_values_for_re_verification(monkeypatch):
+    kw = _kw()
+    rows = [_row(kw)]
+    _setup(monkeypatch, rows)
+    oc.save_check(kw, "pod", "Material Composition", value="100% Cotton",
+                 verified=True, updated_by="boss")
+    out = interactive.studio(kw, mode="pod")
+    assert '<form method="post" action="/studio/save">' in out
+    assert 'value="100% Cotton"' in out
+    assert 'name="verified_material"' in out
+    assert 'name="price"' in out

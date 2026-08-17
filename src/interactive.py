@@ -1650,6 +1650,32 @@ def studio(keyword, mode=None):
         except (TypeError, ValueError):
             price_fact = None
 
+    # Persisted Owner Check state (src/owner_checks.py) is the one thing
+    # Studio does NOT recompute fresh each visit -- a human actually
+    # verifying a fact is the whole point of the gate, so it has to survive
+    # a page reload. A saved, verified, real owner price always outranks
+    # the derived MODELED reference above.
+    from src import owner_checks as ocheck
+    saved_checks = ocheck.get_checks(kw, resolved_mode)
+    saved_price = ocheck.get_price(kw, resolved_mode)
+    if saved_price:
+        price_fact = ct.PriceFact(saved_price["price"], saved_price["currency"],
+                                  "OWNER_SET", True)
+
+    truth_facts = []
+    fact_by_field = {}
+    for tf in sorted(ct.VALID_PRODUCT_TRUTH_FIELDS):
+        check_field = next((cf for cf, f in ct.TRUTH_CHECK_TO_FIELD.items()
+                            if f == tf), None)
+        saved = saved_checks.get(check_field) if check_field else None
+        if saved and saved["verified"] and saved["value"]:
+            provenance_ref = f"owner:{saved['updated_by']}:{saved['updated_at']}"
+            fact = ct.ProductTruthFact(tf, saved["value"], True, provenance_ref)
+        else:
+            fact = ct.ProductTruthFact(tf, "UNVERIFIED", False, "")
+        truth_facts.append(fact)
+        fact_by_field[tf] = fact
+
     try:
         master = ct.create_master_keyword(
             keyword=kw, mode=resolved_mode,
@@ -1664,7 +1690,30 @@ def studio(keyword, mode=None):
             evidence_refs=evidence_refs,
         )
         cluster = ct.compile_cluster(master, supported_terms=supported_terms)
-        package = ct.compile_package(cluster, price_fact_override=price_fact)
+
+        owner_checks_list = []
+        for field_name, category, _msg, truth_field in ct.OWNER_CHECK_SPECS:
+            saved = saved_checks.get(field_name)
+            if saved and saved["verified"]:
+                subject_ref = fact_by_field[truth_field].revision_id if truth_field else ""
+                owner_checks_list.append(ct.OwnerCheck(
+                    field_name, category, True, saved["note"], subject_ref))
+            else:
+                owner_checks_list.append(ct.OwnerCheck(field_name, category, False))
+        if cluster.personalization_angles:
+            # compile_package's own default list adds this field only when
+            # personalization is present -- an override must mirror that or
+            # a personalized listing could never satisfy publish_ready at all.
+            saved = saved_checks.get("Personalization Limits")
+            verified = bool(saved and saved["verified"])
+            owner_checks_list.append(ct.OwnerCheck(
+                "Personalization Limits", "PRODUCT_TRUTH", verified,
+                saved["note"] if saved else "Character count limits unverified"))
+
+        package = ct.compile_package(
+            cluster, owner_checks_override=owner_checks_list,
+            product_truth_facts_override=truth_facts,
+            price_fact_override=price_fact)
     except ValueError as exc:
         return (f"# \U0001F3ED Studio: {_clean(kw)}\n\n"
                 f"_Couldn't compile: {exc}. That means this row's ranked "
@@ -1704,20 +1753,82 @@ def studio(keyword, mode=None):
           f"{len(package.tag_gaps)} gap)", ""]
     L += [f"- ✅ {_clean(t)}" for t in package.evidence_tags]
     L += [f"- ⬜ {t} — _no evidence yet, never invented_" for t in package.tag_gaps]
+    if package.price_fact.provenance_type == "OWNER_SET":
+        price_line = f"${package.price_fact.value:.2f} — owner-set"
+    elif package.price_fact.provenance_type == "MODELED":
+        price_line = (f"${package.price_fact.value:.2f} — real revenue/sold from "
+                      "captured proof, reference only, not owner-set")
+    else:
+        price_line = "DATA UNAVAILABLE — no captured sales data to derive from"
+
     L += ["", "## Buyer copy", "```", package.buyer_copy, "```", "",
           "## Photo brief", "```", package.photo_brief, "```", "",
-          "## Price",
-          (f"${package.price_fact.value:.2f} — real revenue/sold from "
-           "captured proof, reference only, not owner-set"
-           if package.price_fact.value is not None
-           else "DATA UNAVAILABLE — no captured sales data to derive from"),
+          "## Price", price_line,
           "", "## Owner Checks", ""]
     L += [f"- {'✅' if c.verified else '⬜'} {c.field} — {c.note or 'verified'}"
           for c in package.owner_checks]
+    L += ["", "### Verify & save",
+          "_Enter what you've actually confirmed. A checked box with no "
+          "value doesn't satisfy Publish ready -- material/dimensions/"
+          "colors/shipping need the real value, not just a checkmark._", "",
+          _studio_save_form(kw, resolved_mode, package)]
     L += ["", f"## Publish ready: {'✅ YES' if package.publish_ready else '❌ NO'}",
           "_Only becomes YES once every Owner Check above is verified and "
           "a real OWNER_SET price is entered — never automatically._"]
     return "\n".join(L)
+
+
+def _esc_attr(s):
+    return (str(s or "")).replace("&", "&amp;").replace('"', "&quot;") \
+        .replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _studio_save_form(kw, mode, package):
+    """One combined save form for every Owner Check field + price. Same
+    text-input + verified-checkbox shape for every row, on purpose -- Studio
+    exists because staff found the old tool too complicated, so this does
+    not grow extra widgets per field type."""
+    from src import contracts as ct
+    truth_by_field = {f.field: f for f in package.product_truth_facts}
+    check_by_field = {c.field: c for c in package.owner_checks}
+
+    specs = list(ct.OWNER_CHECK_SPECS)
+    if check_by_field.get("Personalization Limits"):
+        specs.append(("Personalization Limits", "PRODUCT_TRUTH",
+                      "Character count limits unverified", None))
+
+    rows = []
+    for field_name, _category, _msg, truth_field in specs:
+        slug = truth_field or ct.CHECK_FIELD_SLUGS[field_name]
+        check = check_by_field.get(field_name)
+        checked = " checked" if check and check.verified else ""
+        if truth_field:
+            fact = truth_by_field.get(truth_field)
+            current = fact.value if fact and fact.value != "UNVERIFIED" else ""
+        else:
+            current = check.note if check else ""
+        rows.append(
+            '<div class="ock-row">'
+            f'<label>{_esc_attr(field_name)}</label> '
+            f'<input type="text" name="value_{slug}" value="{_esc_attr(current)}" '
+            'placeholder="real value" size="30"> '
+            f'<label><input type="checkbox" name="verified_{slug}"{checked}> '
+            'Verified</label></div>')
+
+    price_val = (package.price_fact.value
+                if package.price_fact.provenance_type == "OWNER_SET" else "")
+    rows.append(
+        '<div class="ock-row"><label>Price ($)</label> '
+        f'<input type="number" step="0.01" min="0.01" name="price" '
+        f'value="{_esc_attr(price_val)}" placeholder="e.g. 24.99"></div>')
+
+    return (
+        '<form method="post" action="/studio/save">'
+        f'<input type="hidden" name="keyword" value="{_esc_attr(kw)}">'
+        f'<input type="hidden" name="mode" value="{_esc_attr(mode)}">'
+        + "".join(rows) +
+        '<button type="submit">\U0001F4BE Save &amp; re-compile</button>'
+        '</form>')
 
 
 def _mode_for(kw, mode=None):
