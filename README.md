@@ -294,7 +294,7 @@ schema validation + audit hardening.**
 - **Bugs fixed:** alerts now auto-resolve (no stale Day-3/7 pile-up), market
   `opportunity` is now computed, `alerts` CLI is crash-safe.
 - **66 tests** (new publish-gate + route suites) + internal Claude maintenance
-  skills (`.claude/skills/`). See `AUDIT_REPORT.md`.
+  skills (`.claude/skills/`). See `archive/old-docs/AUDIT_REPORT.md`.
 
 **V24.1 — Spy becomes a Competitor Reverse Engine + a sticky Home button.**
 
@@ -347,7 +347,7 @@ still caught. New `tests/test_os_modules.py` (12 tests) + `.pre-commit-config.ya
   6 AM `daily-run` now catch the MCP `SystemExit` (rate-limit/network) and show a
   graceful "data source unavailable" notice instead of a 500 / aborting the
   nightly job. The home page always shows the Command Center (even on a fresh
-  deploy before any report sync). See `AUDIT_REPORT.md`.
+  deploy before any report sync). See `archive/old-docs/AUDIT_REPORT.md`.
 
 Publishing is still always manual, gated on `PUBLISH_READY = true`. (English only.)
 

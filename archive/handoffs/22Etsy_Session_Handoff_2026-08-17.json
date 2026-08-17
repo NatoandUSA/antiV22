@@ -1,0 +1,70 @@
+{
+  "project": "22Etsy / antiV22",
+  "repository": "NatoandUSA/antiV22 (mirrored to NatoandUSA/etsy-agent as origin, kept in sync)",
+  "document_type": "session handoff",
+  "timestamp_local": "2026-08-17T10:35:00+07:00",
+  "supersedes": "22Etsy_Session_Handoff_2026-08-17.json (earlier version, same filename, written mid-session before PRs #4-#6)",
+  "branch": "main",
+  "current_sha": "628c5ec",
+  "current_sha_note": "identical on antiV22/main, origin/main, and local main -- confirmed via git log, zero delta",
+  "current_state": "ANTIGRAVITY/CLAUDE-VERIFIED locally (PRs #4-#6 not GitHub-CI-covered -- p0-contract-ci.yml's path filter only watches src/contracts.py + src/product_fit.py + their tests). Deployed state: VPS is still at an earlier commit from earlier tonight (0823029) -- PRs #4/#5/#6 (the /start page and its two follow-up fixes) have NOT been deployed to the live VPS yet, by explicit owner instruction (new staff-facing page, wants to review before it goes live).",
+
+  "objective_this_session": "Close out P0-A.6 with real evidence (not self-reported DONE), reconcile it against a prior GPT-side audit, then respond to direct owner feedback that staff barely use the tool because it's too complicated -- iterating from a single new page toward a full simplification direction.",
+
+  "what_changed_full_session_in_order": [
+    "PR #1 (antiV22#1): fixed 2 real CI failures in the already-drafted P0-A.6 contracts work (frozen-baseline hash drift, ICT-vs-runner-timezone test bug) + CI-only deselects for 3 tests that need real local data no clean checkout has. CI green on exact SHA 443453f, run 31953566661.",
+    "PR #2 (antiV22#2): independent 6-angle review of the full P0-A.6 diff surfaced 7 findings; fixed the 2 confirmed-actionable ones (OWNER_CHECK_SPECS single-source-of-truth table so publish_ready's field-name strings can't silently drift; added the missing gift-intent regression test -- no behavior change, confirmed correct per the module's own docstring rule and independently validated by a GPT-side audit document naming the same fix in advance). CI green on 7038d68, run 31956880827.",
+    "Reconciliation pass (read-only): document #8's (P0-A.5 independent audit) C1-C3/H1-H5 checklist verified against actual current code, not self-reports. 6/8 fully closed and verified by direct code read; C1 (provenance_ref resolution to a real stored source) and H5 (a whitespace-normalization bug in SupportedTerm/EvidenceRef path matching) correctly remain open/deferred.",
+    "PR #3 (antiV22#3): investigated wiring src/contracts.py into src/listing_factory.py directly -- found a real architecture blocker (ad-hoc keywords have no market_verdict/fit_status available; contracts.py needs a Master Keyword materialized view that doesn't exist yet). Owner chose the smaller safe option instead: fixed listing_factory.py's 3 self-contained fabrication bugs directly (invented tag padding removed, $20 synthetic price fallback removed -> real cost-plus-margin or honest None, full description-blocking on missing supplier data removed -> stable copy always generated). 7 new tests; listing_factory.py had zero prior coverage.",
+    "Repo hygiene: origin (etsy-agent) had been 9 commits stale the entire session -- brought into sync via fast-forward push, kept in sync on every subsequent merge since.",
+    "Production deploy (this part of the session): found DEPLOY_VPS.md is stale (documents the wrong git remote -- VPS's actual remote is already antiV22, not etsy-agent as the doc says). VPS was undeployed since commit 780a66e, predating this entire session. Deployed 780a66e -> 0823029: git pull (clean fast-forward), pip install (no-op), compileall under the VPS's real Python 3.10 as the pre-restart safety gate (passed), systemctl restart, verified via direct HTTPS probe (302 login-redirect, expected) and journalctl (clean gunicorn boot, no exceptions).",
+    "Local dev login friction: local data/app.db has never been synced with the VPS's (by design -- push-to-vps.sh explicitly never touches it). Local DB turned out to be full of stale test/seed accounts from 2026-07-08 through 07-14, not the owner's real credentials. Resolved via `python main.py auth create-admin` (documented, pre-existing CLI command) -- no data touched, no VPS involvement.",
+    "PR #4 (antiV22#4): built /start -- the single front-door research page discussed at length with the owner (seed phrase in, ranked evidence-backed shortlist scoped to it out, one-click to a listing draft). Wraps opportunity_inbox.build_inbox()/focus_rows(), execution_action.derive_execution_action()/find_children(), ytrends_mcp.research_keyword(), and the pre-existing /draft-listing (confirmed already honest, no fabrication bugs -- a third parallel 'listing draft' implementation alongside listing_factory.py and contracts.py, not consolidated this session, flagged for later). Added to main nav. No existing route removed.",
+    "PR #5 (antiV22#5): owner actually used /start with real data and called it 'cheap, unprofessional, 0 of my intent.' Diagnosed 4 concrete logic gaps (not cosmetic): exact seed-phrase match wasn't shown or explained when absent; SKIP/BLOCKED rows (75% of one real test case) cluttered the main table with dead placeholders; a meaningless 'verify' caveat appeared on rows already marked skip; MCP suggestion failures were indistinguishable from genuinely-nothing-new. Fixed all 4 in code-execution order. Verified against the owner's exact reported seed phrase before and after.",
+    "Owner ran local harvest + daily pod build mid-session (2,019 keywords, 1,101 new) to refresh what had been ~11-day-stale local data -- unrelated to code, done at owner's explicit request.",
+    "Owner pointed at YTrends' own docs pages (JS-rendered, unreadable via WebFetch) and asked whether the tool's data-pulling was actually being used to its full potential. Pulled the full live MCP tool schema directly (this session has its own direct MCP access to the ytrends server, separate from the app's Python wrapper) -- 14 distinct tools exist; src/ytrends_mcp.py wraps 11. explore_niche, get_keyword_rank, and fetch are live and unused. Also surfaced two facts from the schema that hadn't been explicit anywhere in the app: YTrends' backend refreshes once daily at a fixed UTC window, and individual listing snapshots can be far staler than that daily cadence implies (median ~30 days on some endpoints) -- the app's 'sold/24h' framing had been overstating recency.",
+    "PR #6 (antiV22#6): built the reconciliation the owner explicitly asked for -- 'don't replicate ytuong, analyze/compare to one master list, then compare with real manual data.' _reconcile() compares the YTrends-modeled market verdict against etsy_proof.py's staff-captured real evidence (already two independent inputs feeding one row, never told to agree/disagree out loud before). Confirmed on real local data: every 'bridesmaid bag' variant flags 'real evidence contradicts the model' (real: 1,124 sold/24h, $794K revenue, actual shops; model: watch/skip) -- a finding that was previously invisible. Also added a data-freshness caveat reusing timestamp.data_is_fresh() (the same utility the homepage's DATA DEGRADED banner already uses)."
+  ],
+
+  "files_changed_this_session": [
+    "src/contracts.py", "src/product_fit.py",
+    "tests/test_feasibility_gate.py", "tests/test_golden_workflow_contract.py", "tests/test_routes.py",
+    ".github/workflows/p0-contract-ci.yml",
+    "src/listing_factory.py", "tests/test_listing_factory.py (new)",
+    "src/interactive.py", "src/web.py", "tests/test_start_here.py (new)"
+  ],
+
+  "ci_evidence": [
+    {"pr": "antiV22#1", "sha": "443453fb714967562ae91d31b07bb0bd0fd9db4a", "run_id": 31953566661, "conclusion": "success"},
+    {"pr": "antiV22#2", "sha": "7038d68899d3ce06c9e66341df2a27ddc3978887", "run_id": 31956880827, "conclusion": "success"},
+    {"pr": "antiV22#3-6", "conclusion": "N/A -- p0-contract-ci.yml's path filter doesn't cover listing_factory.py/interactive.py/web.py. Antiv22/CLAUDE/GPT-agent-verified locally (full suite, focused suite, selftest, compileall, manual real-data smoke tests) for each, not GitHub-CI-verified. Provenance labeled explicitly rather than blurred with the CI-verified PRs."}
+  ],
+
+  "runtime_evidence": "VPS deployed once this session (780a66e -> 0823029, verified via compileall-under-real-Python + systemctl + HTTPS probe + journalctl). PRs #4/#5/#6 (the /start page and its two follow-ups, commits e3a4bda/219fa94/628c5ec) are merged to main but NOT yet deployed to the VPS -- owner's explicit instruction, wants to review a new staff-facing page before it goes live.",
+
+  "known_risks": [
+    "Three parallel 'compile a listing' implementations now exist: contracts.py (unintegrated, zero callers), listing_factory.py (CLI, fixed this session), interactive.draft_listing() (web-wired, already honest, used by /start's Do button). Not consolidated -- flagged, not acted on.",
+    "H5's whitespace path-matching bug in contracts.py (SupportedTerm vs EvidenceRef) is still unfixed. Zero current risk since contracts.py has no caller, but raises in priority the moment any wiring work begins.",
+    "The app's 'sold/24h' evidence framing across the codebase (not just /start) may overstate recency given YTrends' per-listing snapshot staleness (median ~30 days on some endpoints) -- only addressed on /start's new freshness caveat this session, not audited elsewhere (e.g. the /inbox page's proof_cell, which has the same underlying data).",
+    "DEPLOY_VPS.md is confirmed stale (wrong git remote documented) and has not been corrected.",
+    "22Etsy_P0A6_Implementation_Handoff_2026-08-16.json (a prior document, not authored this session) is now superseded by the work in PRs #1-#2 but has not been marked as such on whatever system produced it."
+  ],
+
+  "open_questions_for_next_session": [
+    "Owner has asked for a full dashboard rebuild: 3 staff screens (Queue / Studio / Publish & Learn) replacing ~40 current routes, consolidating the 3 parallel listing-draft implementations into one (contracts.py, finally wired to a real caller), and moving everything else to an owner-only debug area. This session ended mid-pitch for that rebuild, with Claude stating intent to start on the 'Queue' screen next (natural extension of /start) absent redirection. NOT YET STARTED as of this handoff.",
+    "explore_niche, get_keyword_rank, and fetch (live MCP tools, unwired) -- get_keyword_rank in particular (actual trend-direction/rank-history data) was flagged as a real gap. Owner has not yet said go on wiring these in specifically, separate from the Queue-screen rebuild.",
+    "Should the /start-page work (PRs #4-#6) be deployed to the VPS now, or held until the larger 3-screen rebuild replaces it entirely -- deploying an intermediate step that will itself be replaced soon may not be worth the owner's review time."
+  ],
+
+  "recommended_next_step": "Start building the Queue screen (Priority #1 from the just-discussed 3-screen rebuild) as the natural next increment of /start -- highest leverage, most already exists (opportunity_inbox + execution_action + the reconciliation signal from PR #6), lowest net-new engineering. Studio screen next (wire contracts.py to a real caller for the first time, consolidating the 3 parallel draft implementations). Publish & Learn last (mostly UI consolidation of Launchpad/Alerts/Trackers/Profit Center around existing data).",
+  "requested_review": "Owner should decide the deploy-timing question above before more /start-adjacent work piles up undeployed. Otherwise: no external review pending -- this is Antigravity/Claude-verified work awaiting the owner's own usage/reaction, same as PRs #4-#6 already were.",
+
+  "provenance": {
+    "ci_runs": "ANTIGRAVITY/CLAUDE-VERIFIED -- fetched directly from the GitHub Actions API where applicable",
+    "local_test_evidence": "ANTIGRAVITY/CLAUDE-VERIFIED -- executed directly, output read directly, for every PR this session",
+    "vps_deploy": "ANTIGRAVITY/CLAUDE-VERIFIED -- executed directly via SSH, HTTP probe, and journalctl",
+    "mcp_tool_schema": "ANTIGRAVITY/CLAUDE-VERIFIED -- pulled directly from live MCP tool definitions available in this session, not from the unreadable docs pages the owner linked",
+    "owner_feedback_on_start_page": "OWNER-REPORTED -- direct quotes and pasted real-data HTML from actual usage, the strongest form of evidence available: not a report about the system, the owner's own hands-on reaction to it",
+    "3_screen_rebuild_pitch": "ANTIGRAVITY/CLAUDE-AUTHORED -- this session's own recommendation in response to the owner's 'what would you build' question, not yet validated by any implementation"
+  }
+}
