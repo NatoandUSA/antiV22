@@ -1553,6 +1553,117 @@ def draft_listing(kw):
     return "\n".join(L)
 
 
+def studio(keyword, mode=None):
+    """Studio -- compile a real ListingPackage via src/contracts.py from an
+    already-ranked keyword (reached from Queue/Start Here). contracts.py has
+    been fully built and tested since P0-A.6 but never had a real caller
+    until this; this compiles from real already-computed engine output
+    (score, verdict, fit, actions) plus real captured proof when it exists
+    -- nothing here is invented to satisfy the schema.
+
+    Deliberately NOT yet linked from Queue's "Build draft" button:
+    compile_package()'s title has no enrichment yet (bare capitalized
+    keyword vs. draft_listing's richer suggested title), so this ships
+    alongside the existing tool to prove the compile pipeline is real and
+    correct, not as a silent downgrade in place of it."""
+    from src import contracts as ct
+    from src import opportunity_inbox as oi, execution_action as ea
+    from src.timestamp import tz
+    from datetime import datetime
+
+    kw = (keyword or "").strip()
+    risk, reason = tm_check(kw.lower())
+    if risk == "HIGH":
+        return (f"# \U0001F3ED Studio: {_clean(kw)}\n\n"
+                f"⚠️ **Trademark risk is HIGH** — {reason}. Not compiling "
+                "a package for this keyword.\n")
+
+    resolved_mode = _mode_for(kw, mode)
+    pool = oi.build_inbox(mode, limit=100000, show_archived=True)["rows"]
+    row = next((r for r in pool if r["keyword"].strip().lower() == kw.lower()),
+               None)
+    if not row:
+        return (f"# \U0001F3ED Studio: {_clean(kw)}\n\n"
+                "_This keyword hasn't been through the ranking engine yet -- "
+                "Studio compiles from already-ranked data, it doesn't rank "
+                "on the fly. Score it first: "
+                f"[Should I sell?](/should-sell?q={_uq(kw)})_\n")
+
+    exec_out = ea.derive_execution_action(row, resolved_mode)
+
+    evidence_refs, supported_terms = [], []
+    pr = row.get("proof")
+    if pr and row.get("proof_tier", 9) < 9 and pr.get("verdict") in ct.VALID_VERDICTS:
+        # Real captured evidence exists for this exact keyword -- carry it
+        # through as one real EvidenceRef instead of leaving every tag slot
+        # a TAG_GAP. retrieved_at is "when this compile ran," not the
+        # original capture date (etsy_proof.py doesn't expose that per-proof
+        # today) -- a known approximation, not a silent one.
+        match_type = "EXACT" if str(pr.get("match") or "").lower() == "exact" \
+            else "GROUP"
+        raw_facts = {k: v for k, v in (
+            ("sold", pr.get("sold")), ("revenue", pr.get("revenue")),
+            ("shops", pr.get("shops")), ("listings", pr.get("listings")),
+            ("young_winners", pr.get("young")),
+        ) if v is not None}
+        ev = ct.make_evidence_ref(
+            source="etsy_proof_capture",
+            retrieved_at=datetime.now(tz()).strftime("%Y-%m-%d"),
+            match_type=match_type,
+            verdict=pr["verdict"],
+            raw_facts=raw_facts,
+            supported_terms_contained=[kw],
+            term_source_paths=[(kw, "capture.evidence")],
+        )
+        evidence_refs.append(ev)
+        supported_terms.append(ct.SupportedTerm(
+            kw, "EVIDENCE", (ev.provenance_hash,), ("capture.evidence",)))
+
+    try:
+        master = ct.create_master_keyword(
+            keyword=kw, mode=resolved_mode,
+            opp_score=float(row.get("score") or 0),
+            market_verdict=row.get("verdict") or "WATCH",
+            fit_status=row.get("fit_status") or "NEEDS_REVIEW",
+            tm_risk=risk if risk in ct.VALID_TM_RISKS else "OK",
+            engine_action=row.get("action") or "WATCH",
+            execution_action=exec_out.get("execution_action")
+            or row.get("action") or "WATCH",
+            specificity_class=exec_out.get("specificity_class"),
+            evidence_refs=evidence_refs,
+        )
+        cluster = ct.compile_cluster(master, supported_terms=supported_terms)
+        package = ct.compile_package(cluster)
+    except ValueError as exc:
+        return (f"# \U0001F3ED Studio: {_clean(kw)}\n\n"
+                f"_Couldn't compile: {exc}. That means this row's ranked "
+                "data has an inconsistency the contract layer caught -- "
+                "worth reporting, not a reason this keyword can't be "
+                "built._\n")
+
+    L = [f"# \U0001F3ED Studio: {_clean(kw)}", "",
+         "_Compiled by src/contracts.py -- deterministic, no live calls. "
+         "Not yet linked from Queue's main button; trying it directly._", "",
+         "## Title", f"`{package.title}`", "",
+         f"## Tags ({len(package.evidence_tags)} evidence-backed, "
+         f"{len(package.tag_gaps)} gap)", ""]
+    L += [f"- ✅ {_clean(t)}" for t in package.evidence_tags]
+    L += [f"- ⬜ {t} — _no evidence yet, never invented_" for t in package.tag_gaps]
+    L += ["", "## Buyer copy", "```", package.buyer_copy, "```", "",
+          "## Photo brief", "```", package.photo_brief, "```", "",
+          "## Price",
+          (f"${package.price_fact.value:.2f} ({package.price_fact.provenance_type})"
+           if package.price_fact.value is not None
+           else "DATA UNAVAILABLE — no owner-set price yet"), "",
+          "## Owner Checks", ""]
+    L += [f"- {'✅' if c.verified else '⬜'} {c.field} — {c.note or 'verified'}"
+          for c in package.owner_checks]
+    L += ["", f"## Publish ready: {'✅ YES' if package.publish_ready else '❌ NO'}",
+          "_Only becomes YES once every Owner Check above is verified and "
+          "a real OWNER_SET price is entered — never automatically._"]
+    return "\n".join(L)
+
+
 def _mode_for(kw, mode=None):
     """Resolve pod/embroidery for a keyword.
 

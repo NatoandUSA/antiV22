@@ -1956,6 +1956,16 @@ def build_app(password, secret):
     def draft_listing():
         return _kw_tool(lambda iv, q: iv.draft_listing(q), "Listing draft")
 
+    @app.route("/studio")
+    @login_required
+    def studio():
+        # New: compiles via src/contracts.py's real deterministic pipeline
+        # (its first real caller). Not yet linked from Queue -- see
+        # interactive.studio()'s docstring for why.
+        return _kw_mode_tool(lambda iv, q, m: iv.studio(q, m),
+                             "Studio", path="/studio",
+                             button="\U0001F3ED Compile package")
+
     def _kw_mode():
         """(cleaned keyword, mode) from ?q= plus ?mode= or the command bar's
         supplier_type radio (embroidery/pod/both)."""
