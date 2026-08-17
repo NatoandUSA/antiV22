@@ -2570,15 +2570,68 @@ def inbox(mode=None, q="", show_archived=False, changed_only=False):
     return "\n".join(L)
 
 
+def _queue_browse(oi, ea, mode, limit=20):
+    """No seed typed -- browse the top of the whole ranked queue instead of
+    a seed-scoped shortlist. Same gating (SKIP/BLOCKED excluded), same
+    reconciliation signal, same row renderer as the seeded path -- just the
+    whole queue instead of one keyword's neighborhood. Archived (stale-
+    WATCH) rows are excluded by default: showing them here would defeat the
+    point of archiving them.
+
+    Sort order is deliberately NOT the same as the seeded path's: browsing
+    a heterogeneous queue answers "what should I work on," so actionability
+    (priority/action) has to be the primary key, with niche-specificity only
+    as a tiebreaker -- a specific-but-WATCH row must never outrank a
+    buildable-but-broader one. The seeded path sorts the other way around
+    because it's answering a different question (closest match to one
+    typed phrase), where every candidate is already about the same topic."""
+    pool = oi.build_inbox(mode, limit=100000)["rows"]
+    scored = [{**r, "execution": ea.derive_execution_action(r, mode)}
+              for r in pool]
+
+    def _rank_key(r):
+        broad = 0 if r["execution"].get("specificity_class") == \
+            "SPECIFIC_ACTIONABLE" else 1
+        # ranking_engine._PRI: BLOCKED=0 ... BUILD_NOW=5 -- higher is better,
+        # so this must sort descending (negated), not ascending.
+        return (-r.get("priority", 0), broad, -(r.get("score") or 0))
+    scored.sort(key=_rank_key)
+
+    actionable = []
+    for r in scored:
+        exec_action = r["execution"].get("execution_action") or r.get("action")
+        if exec_action not in ("SKIP", "BLOCKED"):
+            actionable.append(r)
+        if len(actionable) >= limit:
+            break
+
+    L = ["# \U0001F50E Queue", "",
+         "_Have a specific idea? Type a seed phrase above. Otherwise, "
+         "here's what's worth a look right now, best first:_", ""]
+    if actionable:
+        L += ["| Keyword | Evidence | Flag | Action | |",
+              "|---|---|---|---|---|"]
+        L += [_simple_row(r) for r in actionable]
+    else:
+        L += ["_Nothing in your data clears the bar right now. Type a seed "
+              "phrase above to research something specific._"]
+    return "\n".join(L)
+
+
 def start_here(q, mode=None):
-    """Start Here — single front door: one seed phrase in, a ranked,
-    evidence-backed shortlist scoped to it out, with a one-click path to a
+    """Start Here / Queue — single front door: no seed typed browses the top
+    of the whole ranked queue; a seed phrase scopes to a shortlist around it.
+    Either way: a ranked, evidence-backed list with a one-click path to a
     listing draft. Wraps the existing engine (opportunity_inbox +
     execution_action + etsy_proof + ytrends_mcp) — adds no new scoring,
     ranking, or classification logic of its own."""
     from src import opportunity_inbox as oi
     from src import execution_action as ea
     kw = (q or "").strip()
+
+    if not kw:
+        return _queue_browse(oi, ea, mode)
+
     risk, reason = tm_check(kw.lower())
     L = [f"# \U0001F50E {_clean(kw)}", ""]
     if risk == "HIGH":
@@ -2612,7 +2665,9 @@ def start_here(q, mode=None):
         exact = 0 if r["keyword"].strip().lower() == kwl else 1
         broad = 0 if r["execution"].get("specificity_class") == \
             "SPECIFIC_ACTIONABLE" else 1
-        return (exact, broad, r.get("priority", 9), -(r.get("score") or 0))
+        # ranking_engine._PRI: BLOCKED=0 ... BUILD_NOW=5 -- higher is better,
+        # so this must sort descending (negated), not ascending.
+        return (exact, broad, -r.get("priority", 0), -(r.get("score") or 0))
     scored.sort(key=_rank_key)
 
     # SKIP/BLOCKED rows have no build link and no real decision left to make --

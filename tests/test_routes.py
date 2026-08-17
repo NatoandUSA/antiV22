@@ -60,11 +60,12 @@ def test_start_route_requires_login():
     assert "/login" in r.headers.get("Location", "")
 
 
-def test_start_route_shows_the_seed_box_before_any_query(client):
+def test_start_route_browses_the_queue_with_no_seed_typed(client):
     body = client.get("/start").get_data(as_text=True)
     assert 'href="/start"' in body  # nav link present
-    # empty q short-circuits before touching opportunity_inbox/execution_action
-    assert "Type a keyword" in body or "keyword" in body.lower()
+    # empty q now browses the top of the queue instead of prompting for one
+    assert "Queue" in body
+    assert "Type a keyword" not in body
 
 
 def test_home_is_clean(client):

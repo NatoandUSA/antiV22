@@ -1931,9 +1931,20 @@ def build_app(password, secret):
     @app.route("/start")
     @login_required
     def start_here():
-        return _kw_mode_tool(lambda iv, q, m: iv.start_here(q, m),
-                             "Start Here", path="/start",
-                             button="\U0001F50D Research this seed")
+        # Deliberately NOT _kw_mode_tool: that helper short-circuits to a
+        # bare "type a keyword" prompt when q is empty, which is right for
+        # single-keyword tools but wrong here -- an empty seed means "browse
+        # the queue," not "nothing to show yet."
+        q, mode = _kw_mode()
+        m = request.args.get("mode") or request.args.get("supplier_type") or ""
+        head = _tool_head("/start", q, m, action="/start",
+                          button="\U0001F50D Research this seed")
+        from src import interactive
+        try:
+            return _render_tool(f"Start Here: {q}" if q else "Queue",
+                                interactive.start_here(q, mode), switch=head)
+        except (SystemExit, Exception) as exc:  # noqa: BLE001
+            return _tool_error("Start Here", exc)
 
     @app.route("/should-sell")
     @login_required
