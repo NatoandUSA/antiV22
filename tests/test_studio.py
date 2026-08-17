@@ -136,3 +136,32 @@ def test_publish_ready_is_never_true_with_zero_owner_verification(monkeypatch):
     out = interactive.studio("hot keyword", mode=None)
     # even strong real evidence never auto-satisfies Owner Checks or price
     assert "Publish ready: ❌ NO" in out
+
+
+def test_real_sold_and_revenue_derive_a_reference_price(monkeypatch):
+    proof = {"sold": 100, "revenue": 5000, "verdict": "SELLING", "match": "exact"}
+    rows = [_row("priced keyword", proof=proof, proof_tier=1)]
+    _setup(monkeypatch, rows)
+    out = interactive.studio("priced keyword", mode=None)
+    assert "$50.00" in out
+    assert "reference only, not owner-set" in out
+    assert "DATA UNAVAILABLE" not in out
+
+
+def test_no_price_derived_when_proof_lacks_sold_or_revenue(monkeypatch):
+    proof = {"verdict": "SELLING", "match": "exact"}  # no sold/revenue
+    rows = [_row("unpriced keyword", proof=proof, proof_tier=1)]
+    _setup(monkeypatch, rows)
+    out = interactive.studio("unpriced keyword", mode=None)
+    assert "DATA UNAVAILABLE" in out
+
+
+def test_derived_reference_price_never_makes_publish_ready_true(monkeypatch):
+    proof = {"sold": 100, "revenue": 5000, "verdict": "PROVEN_WINNER", "match": "exact"}
+    rows = [_row("priced keyword", proof=proof, proof_tier=0)]
+    _setup(monkeypatch, rows)
+    out = interactive.studio("priced keyword", mode=None)
+    assert "$50.00" in out
+    # MODELED, not OWNER_SET -- a real derived price still can't satisfy
+    # publish readiness on its own
+    assert "Publish ready: ❌ NO" in out
