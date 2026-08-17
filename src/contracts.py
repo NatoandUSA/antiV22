@@ -54,6 +54,17 @@ OWNER_CHECK_SPECS = (
 BASE_REQUIRED_OWNER_CHECK_FIELDS = {spec[0] for spec in OWNER_CHECK_SPECS}
 TRUTH_CHECK_TO_FIELD = {spec[0]: spec[3] for spec in OWNER_CHECK_SPECS if spec[3]}
 
+# Stable, form-safe identifiers for the owner-check fields that have no
+# bound product-truth field -- truth-bound fields reuse their own truth
+# field name ("material", "dimensions", ...) as the slug already. Shared by
+# Studio's save form (src/interactive.py) and its save route (src/web.py)
+# so the two sides of one HTML form can't drift on field naming.
+CHECK_FIELD_SLUGS = {
+    "Exact SKU / Supplier": "sku",
+    "Design-Level IP QA": "ipqa",
+    "Personalization Limits": "personalization_limits",
+}
+
 # Buyer role alone (bridesmaid, grandpa, ...) is inferred, not explicit --
 # rule #5 requires explicit gift intent, so only occasion words or a literal
 # "gift"/"gifts" token trigger the photo-brief Gift Context slot. See

@@ -1966,6 +1966,47 @@ def build_app(password, secret):
                              "Studio", path="/studio",
                              button="\U0001F3ED Compile package")
 
+    @app.route("/studio/save", methods=["POST"])
+    @login_required
+    def studio_save():
+        _check_csrf()
+        from src import contracts as ct, owner_checks as ocheck
+        from urllib.parse import quote_plus as _qps
+        kw = (request.form.get("keyword") or "").strip()
+        mode = (request.form.get("mode") or "").strip()
+        if not kw or mode not in ("pod", "embroidery"):
+            abort(400)
+        by = (current_user() or {}).get("email", "")
+
+        specs = list(ct.OWNER_CHECK_SPECS)
+        specs.append(("Personalization Limits", "PRODUCT_TRUTH", "", None))
+        for field_name, _category, _msg, truth_field in specs:
+            slug = truth_field or ct.CHECK_FIELD_SLUGS[field_name]
+            text = (request.form.get(f"value_{slug}") or "").strip()
+            verified = request.form.get(f"verified_{slug}") == "on"
+            # truth-bound fields (material/dimensions/colors/shipping) store
+            # the real fact in `value` (studio() rebuilds ProductTruthFact
+            # from it); the rest have no bound fact, so the same text box
+            # stores as a free-text `note` instead (studio() reads that for
+            # the OwnerCheck display).
+            if truth_field:
+                ocheck.save_check(kw, mode, field_name, value=text,
+                                  verified=verified, updated_by=by)
+            else:
+                ocheck.save_check(kw, mode, field_name, note=text,
+                                  verified=verified, updated_by=by)
+
+        price_raw = (request.form.get("price") or "").strip()
+        if price_raw:
+            try:
+                price = float(price_raw)
+            except ValueError:
+                price = 0
+            if price > 0:
+                ocheck.save_price(kw, mode, price, updated_by=by)
+
+        return redirect(f"/studio?q={_qps(kw)}&mode={mode}")
+
     def _kw_mode():
         """(cleaned keyword, mode) from ?q= plus ?mode= or the command bar's
         supplier_type radio (embroidery/pod/both)."""
