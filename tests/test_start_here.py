@@ -231,3 +231,69 @@ def test_blocked_and_skip_rows_get_no_build_link():
         row = {**_row("risky term"), "execution": {"execution_action": action}}
         line = interactive._simple_row(row)
         assert "/draft-listing" not in line
+
+
+# ---- reconciliation: YTrends model vs staff's real captured proof --------
+
+def test_reconcile_model_and_real_evidence_agree():
+    row = _row("x", verdict="GO", proof_tier=1)
+    assert interactive._reconcile(row) == "confirmed by real evidence"
+
+
+def test_reconcile_model_hot_but_unverified_by_staff():
+    row = _row("x", verdict="GO", proof_tier=9)
+    assert interactive._reconcile(row) == "model says hot, not staff-verified yet"
+
+
+def test_reconcile_real_evidence_contradicts_the_model():
+    # the valuable case: YTrends says watch/skip but staff have real proof
+    row = _row("x", verdict="WATCH", proof_tier=0)
+    out = interactive._reconcile(row)
+    assert out is not None and "contradicts the model" in out
+
+
+def test_reconcile_returns_none_when_both_sources_agree_on_low_priority():
+    row = _row("x", verdict="WATCH", proof_tier=9)
+    assert interactive._reconcile(row) is None
+
+
+def test_simple_row_surfaces_the_reconciliation_verdict():
+    row = {**_row("nurse tote", verdict="WATCH", proof_tier=0,
+                  proof={"evidence": "2 shops selling"}),
+           "execution": {"execution_action": "CONFIRM_FIRST"}}
+    line = interactive._simple_row(row)
+    assert "contradicts the model" in line
+
+
+def test_simple_row_stays_clean_when_nothing_to_reconcile():
+    row = {**_row("dull term", verdict="WATCH", proof_tier=9),
+           "execution": {"execution_action": "WATCH"}}
+    line = interactive._simple_row(row)
+    assert "·" not in line  # no reconciliation marker appended
+
+
+# ---- data-freshness caveat -----------------------------------------------
+
+def test_stale_underlying_data_gets_an_explicit_caveat(monkeypatch):
+    from datetime import date, timedelta
+    stale = (date.today() - timedelta(days=30)).isoformat()
+    rows = [_row("teacher shirt")]
+    rows[0]["collected_at"] = stale
+    _setup(monkeypatch, rows, {
+        "teacher shirt": {"execution_action": "CONFIRM_FIRST",
+                          "specificity_class": "SPECIFIC_ACTIONABLE"},
+    })
+    out = interactive.start_here("teacher shirt", mode=None)
+    assert "more than" in out and "YTRENDS_FRESH_DAYS old" in out
+
+
+def test_fresh_underlying_data_gets_no_caveat(monkeypatch):
+    from datetime import date
+    rows = [_row("teacher shirt")]
+    rows[0]["collected_at"] = date.today().isoformat()
+    _setup(monkeypatch, rows, {
+        "teacher shirt": {"execution_action": "CONFIRM_FIRST",
+                          "specificity_class": "SPECIFIC_ACTIONABLE"},
+    })
+    out = interactive.start_here("teacher shirt", mode=None)
+    assert "YTRENDS_FRESH_DAYS old" not in out
