@@ -1632,6 +1632,24 @@ def studio(keyword, mode=None):
             ("capture.evidence",)))
         seen_terms.add(nkw)
 
+    # Real derived reference price from the primary keyword's OWN captured
+    # proof (never neighbors -- price is specific to this listing, not a
+    # blend across related terms). revenue/sold is a real number from real
+    # captures, not a fabricated default -- but it's MODELED, not owner-set,
+    # so it can never satisfy publish_ready on its own. DATA UNAVAILABLE
+    # stays honest when there's nothing real to derive it from.
+    price_fact = None
+    own_proof = row.get("proof")
+    if own_proof and row.get("proof_tier", 9) < 9:
+        sold, revenue = own_proof.get("sold"), own_proof.get("revenue")
+        try:
+            if sold and revenue and float(sold) > 0:
+                avg_price = round(float(revenue) / float(sold), 2)
+                if avg_price > 0:
+                    price_fact = ct.PriceFact(avg_price, "USD", "MODELED", False)
+        except (TypeError, ValueError):
+            price_fact = None
+
     try:
         master = ct.create_master_keyword(
             keyword=kw, mode=resolved_mode,
@@ -1646,7 +1664,7 @@ def studio(keyword, mode=None):
             evidence_refs=evidence_refs,
         )
         cluster = ct.compile_cluster(master, supported_terms=supported_terms)
-        package = ct.compile_package(cluster)
+        package = ct.compile_package(cluster, price_fact_override=price_fact)
     except ValueError as exc:
         return (f"# \U0001F3ED Studio: {_clean(kw)}\n\n"
                 f"_Couldn't compile: {exc}. That means this row's ranked "
@@ -1689,10 +1707,11 @@ def studio(keyword, mode=None):
     L += ["", "## Buyer copy", "```", package.buyer_copy, "```", "",
           "## Photo brief", "```", package.photo_brief, "```", "",
           "## Price",
-          (f"${package.price_fact.value:.2f} ({package.price_fact.provenance_type})"
+          (f"${package.price_fact.value:.2f} — real revenue/sold from "
+           "captured proof, reference only, not owner-set"
            if package.price_fact.value is not None
-           else "DATA UNAVAILABLE — no owner-set price yet"), "",
-          "## Owner Checks", ""]
+           else "DATA UNAVAILABLE — no captured sales data to derive from"),
+          "", "## Owner Checks", ""]
     L += [f"- {'✅' if c.verified else '⬜'} {c.field} — {c.note or 'verified'}"
           for c in package.owner_checks]
     L += ["", f"## Publish ready: {'✅ YES' if package.publish_ready else '❌ NO'}",
