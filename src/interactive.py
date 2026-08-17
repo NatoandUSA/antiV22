@@ -2594,6 +2594,14 @@ def start_here(q, mode=None):
     scored = [{**r, "execution": ea.derive_execution_action(r, mode)}
               for r in matches]
 
+    from src.timestamp import data_is_fresh
+    collected = [r.get("collected_at") for r in scored if r.get("collected_at")]
+    if collected and not data_is_fresh(collected):
+        L += ["⚠️ _The market data behind these rows is more than "
+              "YTRENDS_FRESH_DAYS old — YTrends itself only refreshes once "
+              "daily, so this means nobody's pulled since then, not that "
+              "the source is behind. Verify before acting._", ""]
+
     kwl = kw.lower()
     has_exact = any(r["keyword"].strip().lower() == kwl for r in scored)
     if scored and not has_exact:
@@ -2676,6 +2684,24 @@ def start_here(q, mode=None):
     return "\n".join(L)
 
 
+def _reconcile(r):
+    """Compare YTrends' modeled market verdict against staff's own real
+    captured proof (etsy_proof.py) -- two independent sources that already
+    feed one row but were never told to agree or disagree out loud.
+    Neither is ground truth alone: YTrends is a modeled subset of Etsy,
+    proof is only as complete as what staff have captured so far. Returns
+    None when both sides simply agree there's nothing worth flagging."""
+    model_hot = (r.get("verdict") or "").upper() in ("GO", "CONDITIONAL")
+    has_real = r.get("proof_tier", 9) < 9
+    if model_hot and has_real:
+        return "confirmed by real evidence"
+    if model_hot and not has_real:
+        return "model says hot, not staff-verified yet"
+    if not model_hot and has_real:
+        return "⚡ real evidence contradicts the model — trust the evidence"
+    return None
+
+
 def _simple_row(r):
     """One row of the Start Here shortlist: keyword, why (evidence), any
     safety flag, what to do, and a one-click path to the draft. Five fields
@@ -2696,7 +2722,11 @@ def _simple_row(r):
         # its own -- near-duplicate rows can share the same evidence text, so
         # this stays visible even in the cut-down column (never silently
         # implies more independently-verified rows than actually exist).
-        evidence += " ⚠ group — verify"
+        evidence += " · ⚠ group — verify"
+
+    recon = _reconcile(r)
+    if recon:
+        evidence += f" · {recon}"
 
     fit = r.get("fit_label") or "—"
 
