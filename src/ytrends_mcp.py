@@ -465,6 +465,77 @@ def research_keyword(keyword, days=30):
     return p.get("data", p) if isinstance(p, dict) else {}
 
 
+def pull_keyword_ecosystem(seed, limit=25):
+    """Pull comprehensive, data-driven keyword ecosystem for a seed keyword.
+    Returns:
+      {
+        'seed': seed,
+        'stats': dict of quantitative market metrics,
+        'related_keywords': list of related keywords with metrics,
+        'competitor_tags': list of (tag, count/metric),
+        'top_listings': list of top competitor listings,
+      }
+    """
+    res = {
+        "seed": seed,
+        "stats": {},
+        "related_keywords": [],
+        "competitor_tags": [],
+        "top_listings": [],
+    }
+    try:
+        kw_data = research_keyword(seed)
+    except Exception:
+        kw_data = {}
+
+    if isinstance(kw_data, dict):
+        res["stats"] = kw_data.get("stats") or {}
+        # Related keywords from research
+        rel = kw_data.get("related_keywords") or kw_data.get("related") or []
+        for r in rel[:limit]:
+            if isinstance(r, dict):
+                res["related_keywords"].append(r)
+            elif isinstance(r, str):
+                res["related_keywords"].append({"keyword": r, "source": "mcp_related"})
+        # Top listings
+        res["top_listings"] = kw_data.get("top_listings") or kw_data.get("listings") or []
+        # Competitor tags from listings
+        tags_raw = kw_data.get("tags") or []
+        if tags_raw:
+            res["competitor_tags"] = tags_raw
+        elif res["top_listings"]:
+            from collections import Counter
+            c = Counter()
+            for l in res["top_listings"]:
+                ltags = l.get("tags") or []
+                if isinstance(ltags, str):
+                    import re
+                    ltags = [t.strip().lower() for t in re.split(r"[,;|]", ltags) if t.strip()]
+                for t in ltags:
+                    if 2 < len(t) <= 20:
+                        c[t] += 1
+            res["competitor_tags"] = [{"tag": t, "count": cnt} for t, cnt in c.most_common(20)]
+
+    # Fallback/complement with unified search if related keywords are sparse
+    if len(res["related_keywords"]) < 5:
+        try:
+            s_results = search(seed, limit=limit, kinds=["keyword", "listing"])
+            for s in s_results:
+                name = s.get("name") or s.get("title") or s.get("keyword") or ""
+                if name and name.lower() != seed.lower() and not any(r.get("keyword") == name for r in res["related_keywords"]):
+                    res["related_keywords"].append({
+                        "keyword": name,
+                        "competition_level": s.get("competition_level"),
+                        "views_24h": s.get("views_24h"),
+                        "avg_price": s.get("price") or s.get("avg_price"),
+                        "source": "mcp_search"
+                    })
+        except Exception:
+            pass
+
+    return res
+
+
 if __name__ == "__main__":  # quick manual smoke test: py -m src.ytrends_mcp
     import sys
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -480,3 +551,4 @@ if __name__ == "__main__":  # quick manual smoke test: py -m src.ytrends_mcp
         for g in hidden_gems(limit=5):
             print(f"  GEM    {g.get('tag'):<28} gem_score={g.get('gem_score')} "
                   f"conv={g.get('avg_conversion_rate')}")
+

@@ -31,10 +31,21 @@ _ADJACENT = {
     "dad": ["dog dad", "girl dad", "boy dad", "new dad", "fishing dad", "golf dad"],
     "golf": ["golf dad", "golf grandpa", "disc golf", "golf lover", "retired golfer"],
     "coach": ["baseball coach", "soccer coach", "football coach", "cheer coach"],
+    "hija": ["para mi hija", "regalo para hija", "collar para mi hija", "pulsera para mi hija",
+             "regalo de mama para hija", "regalo de papa para hija", "hija cumpleanos", "hija graduacion"],
+    "daughter": ["daughter gift", "daughter necklace", "daughter bracelet", "to my daughter from mom",
+                 "to my daughter from dad", "bonus daughter gift", "step daughter gift", "daughter birthday gift", "daughter graduation"],
+    "son": ["son gift", "to my son from mom", "to my son from dad", "son graduation gift", "bonus son gift"],
+    "hijo": ["para mi hijo", "regalo para mi hijo", "collar para mi hijo", "regalo de mama para hijo", "regalo de papa para hijo"],
+    "mama": ["regalo para mama", "mama e hija", "mama necklace", "mama sweatshirt"],
+    "grandma": ["grandma sweatshirt", "grandma gift", "abuela gift", "abuela shirt", "grandma embroidery"],
+    "sister": ["sister gift", "hermana regalo", "best sister gift", "sister sweatshirt"],
+    "bride": ["bride sweatshirt", "future bride", "maid of honor", "bridesmaid gift", "bride embroidered"],
 }
 _OCCASIONS = ["gift", "birthday gift", "graduation gift", "christmas gift",
-              "appreciation gift", "retirement gift"]
-_MODIFIERS = ["personalized", "custom", "embroidered"]
+              "appreciation gift", "retirement gift", "cumpleanos", "graduacion", "regalo"]
+_MODIFIERS = ["personalized", "custom", "embroidered", "para", "de"]
+
 
 
 def _subject(seed_words, keyword):
@@ -169,6 +180,23 @@ def generate(keyword=None, limit=14, mode=None):
             if alt.split()[0] != product:
                 add(f"personalized {subject} {material}{alt}".replace("  ", " "),
                     f"product swap: {alt}")
+
+    # (c) Multi-source MCP expansion: if candidates are sparse (<10), pull related keywords & tags from YTrends MCP
+    if len(cands) < 10 and keyword:
+        try:
+            from src import ytrends_mcp as _mcp
+            eco = _mcp.pull_keyword_ecosystem(keyword, limit=20)
+            for rk in eco.get("related_keywords") or []:
+                kw_text = rk.get("keyword") or ""
+                if kw_text:
+                    add(kw_text, "mcp related keyword")
+            for tg in eco.get("competitor_tags") or []:
+                tag_text = tg.get("tag") if isinstance(tg, dict) else str(tg)
+                if tag_text and len(tag_text.split()) >= 3:
+                    add(tag_text, "mcp competitor tag")
+        except Exception:
+            pass
+
 
     # V37.4 safety screen: never SUGGEST a trademark-infringing long-tail. A
     # trademarked seed ("disney princess shirt") otherwise emits build-ready

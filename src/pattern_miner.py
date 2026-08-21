@@ -383,11 +383,45 @@ def audit(keyword):
     return out
 
 
+def _from_historical(keyword):
+    """Load matching rows from data/historical/ingested_*.csv if available."""
+    try:
+        from pathlib import Path
+        import csv
+        from src.raw_ingest import find_ingested_data
+        csv_path = find_ingested_data(keyword)
+        if not csv_path or not Path(csv_path).exists():
+            return []
+        rows = []
+        with open(csv_path, "r", encoding="utf-8-sig", errors="ignore") as f:
+            for r in csv.DictReader(f):
+                t = r.get("title") or ""
+                p = r.get("price_usd")
+                price_val = float(p) if p and p != "None" else None
+                rows.append({
+                    "title": t,
+                    "price": price_val,
+                    "shop": r.get("shop") or "",
+                    "star": r.get("star_seller") in ("1", "true", "True"),
+                    "ad": r.get("ad") in ("1", "true", "True"),
+                    "freeship": r.get("free_shipping") in ("1", "true", "True"),
+                    "tags": r.get("he_tags") or "",
+                    "view": keyword or "",
+                    "category": r.get("category_clean") or "",
+                })
+        return rows
+    except Exception:
+        return []
+
+
+
 def load_batch(keyword=None):
     """(kw, batch, matched, scanned) for a keyword. Order: clean SQLite index
-    first (keyword-keyed, normalized), then the raw file scan, then master CSV —
-    each a fallback so the miner still works if the DB isn't populated yet."""
+    first, then historical ingested data, then raw file scan, then master CSV."""
     if keyword:
+        hist_batch = _from_historical(keyword)
+        if hist_batch:
+            return keyword, hist_batch, len(hist_batch), len(hist_batch)
         db_batch = _from_db(keyword)
         if db_batch:
             return keyword, db_batch, len(db_batch), len(db_batch)
@@ -396,6 +430,7 @@ def load_batch(keyword=None):
         return (keyword or hint), batch, matched, scanned
     kw2, batch2 = _from_master(keyword)
     return kw2, batch2, len(batch2), len(batch2)
+
 
 
 # --------------------------- the mining ------------------------------------
@@ -555,4 +590,45 @@ def mine(keyword=None):
         res["listing_structure"] = _fer2.structure_for_keyword(keyword or kw)
     except Exception:  # noqa: BLE001 — additive, never blocks mining
         res["listing_structure"] = {"has_structure": False}
+
+    # 11. Etsy Learning Box: Few-Shot Contextual DNA
+    provenance = []
+    for b in batch[:5]:
+        provenance.append({
+            "title": b.get("title"),
+            "shop": b.get("shop"),
+            "price": b.get("price"),
+            "star": b.get("star"),
+            "freeship": b.get("freeship"),
+        })
+
+    leading_terms = [w for w, _pct in res["leading"][:3]]
+    syntax_formula = (
+        f"[{'/'.join(leading_terms).title()}] + [Product/Subject] + [Occasion/Recipient]"
+        if leading_terms else "[Primary Keyword] + [Product Noun] + [Personalization Detail]"
+    )
+
+    tag_distribution = {
+        "primary_niche": "3-4 tags (Exact niche & Core search query)",
+        "product_material": "3-4 tags (Product format, style, craft)",
+        "occasion_recipient": "3-4 tags (Gift intent, recipient identity)",
+        "longtail_modifiers": "2-3 tags (Personalized, custom, aesthetic)",
+    }
+
+    res["contextual_dna"] = {
+        "has_dna": True,
+        "provenance": provenance,
+        "sample_size": n,
+        "title_syntax_dna": syntax_formula,
+        "tag_distribution_dna": tag_distribution,
+        "price_band_dna": res["price"],
+        "signals_dna": res["signals"],
+        "data_proofs": [
+            f"{res['structure']['personalization']}% listings use personalization in title ({res['matched']} listings mined)",
+            f"{res['structure']['gift']}% listings frame explicitly as gift",
+            f"{res['signals']['freeship']}% offer free shipping",
+            f"Median price: ${res['price']['median'] if res['price'] else 'N/A'} (Range: ${res['price']['low'] if res['price'] else 'N/A'} - ${res['price']['high'] if res['price'] else 'N/A'})",
+        ],
+    }
     return res
+

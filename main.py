@@ -661,9 +661,38 @@ def cmd_workspace(cmd, args):
     print(f"  Saved run -> {folder}")
 
 
+def cmd_ingest_raw(cmd, args):
+    if not args:
+        print("Usage: python main.py ingest-raw <folder_path> [keyword]")
+        sys.exit(2)
+    folder_path = args[0]
+    keyword = args[1] if len(args) > 1 else None
+    from src import raw_ingest as ri
+    print(f"Ingesting raw Etsy search data from: {folder_path}...")
+    res = ri.ingest_raw_folder(folder_path, keyword=keyword)
+    print(f"\n[INGESTION COMPLETE]")
+    print(f"  Files processed:     {res['total_files']}")
+    print(f"  Unique listings:     {res['total_listings']}")
+    print(f"  Unique tags mined:   {len(res['tags_counter'])}")
+    print(f"  HTML query chips:    {len(res['html_query_chips'])}")
+    print(f"  Saved clean data:    {res['saved_path']}")
+    if res['pricing']['median']:
+        print(f"  Median price:        ${res['pricing']['median']} (Range: ${res['pricing']['min']} - ${res['pricing']['max']})")
+    print(f"  Total sales recorded:{res['signals']['total_sold']:,}")
+    print(f"\nTop 10 Overlap Competitor Tags:")
+    for t, cnt, pct in res['top_tags'][:10]:
+        print(f"  - {t:<30}: {cnt} listings ({pct}%)")
+    print(f"\nTop Product Categories:")
+    for c, cnt, pct in res['categories'][:5]:
+        print(f"  - {c:<45}: {cnt} listings ({pct}%)")
+
+
 # Single source of truth for command routing: name -> handler(cmd, args).
 COMMANDS = {
+    "ingest-raw": cmd_ingest_raw,
+    "ingest": cmd_ingest_raw,
     "listreports": cmd_listreports,
+
     "tasks": cmd_ops, "blockers": cmd_ops, "statusboard": cmd_ops,
     "finalqa": cmd_ops, "performance": cmd_ops,
     "openreports": cmd_openreports,
@@ -716,7 +745,7 @@ LIVE_API_CMDS = {"grow", "listing", "discover", "ideas", "expand",
 # MCP-backed command on the REST probe therefore refuses to run a command that
 # works. Every other LIVE_API_CMD really does import src.ytrends_client, so they
 # keep the REST probe.
-_MCP_CMDS = {"enrich"}
+_MCP_CMDS = {"enrich", "listing"}
 
 
 def _live_api_guard(cmd):
